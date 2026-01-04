@@ -1,2 +1,2 @@
-# CodeBook-
+# CodeBook
 交互式人工智能通识教育数字教材平台
