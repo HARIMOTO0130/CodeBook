@@ -1,0 +1,102 @@
+"""书籍序列化器"""
+from rest_framework import serializers
+from .models import Book, Chapter, Practice, TestCase
+
+
+class TestCaseSerializer(serializers.ModelSerializer):
+    """测试用例序列化器"""
+    class Meta:
+        model = TestCase
+        fields = ('input_data', 'expected_output')
+
+
+class PracticeSerializer(serializers.ModelSerializer):
+    """练习题序列化器"""
+    test_cases = TestCaseSerializer(many=True, read_only=True)
+    
+    class Meta:
+        model = Practice
+        fields = ('question', 'code_template', 'test_cases')
+
+
+class ChapterSerializer(serializers.ModelSerializer):
+    """章节序列化器（兼容性保留）"""
+    practice = PracticeSerializer(read_only=True)
+    # 添加merged_content字段
+    merged_content = serializers.JSONField(default=dict, allow_null=True)
+    # 添加层级关系字段
+    is_main_chapter = serializers.BooleanField(default=True)
+    parent_chapter = serializers.PrimaryKeyRelatedField(read_only=True)
+    sub_chapters = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
+    
+    class Meta:
+        model = Chapter
+        fields = ('id', 'title', 'type', 'duration', 'description', 'content', 'code', 'language', 'video_url', 'practice', 'merged_content', 'is_main_chapter', 'parent_chapter', 'sub_chapters')
+
+
+class ChapterSummarySerializer(serializers.ModelSerializer):
+    """章节摘要序列化器（用于书籍详情中展示章节列表）"""
+    # 添加层级关系字段
+    is_main_chapter = serializers.BooleanField(default=True)
+    parent_chapter = serializers.PrimaryKeyRelatedField(read_only=True)
+    
+    class Meta:
+        model = Chapter
+        fields = ('id', 'title', 'type', 'duration', 'description', 'is_main_chapter', 'parent_chapter')
+
+
+class ChapterDetailSerializer(serializers.ModelSerializer):
+    """章节详情序列化器（用于单独获取章节内容时）"""
+    practice = PracticeSerializer(read_only=True)
+    # 添加子章节信息
+    sub_chapters = ChapterSummarySerializer(many=True, read_only=True)
+    
+    # 确保content字段总是被返回，即使为空
+    content = serializers.CharField(default='', allow_blank=True)
+    content_type = serializers.CharField(default='markdown', allow_blank=True)
+    jupyter_content = serializers.JSONField(default=dict, allow_null=True)
+    # 优先使用merged_content字段，它包含了所有内容的统一表示
+    merged_content = serializers.JSONField(default=dict, allow_null=True)
+    # 添加层级关系字段
+    is_main_chapter = serializers.BooleanField(default=True)
+    parent_chapter = serializers.PrimaryKeyRelatedField(read_only=True)
+    
+    class Meta:
+        model = Chapter
+        fields = ('id', 'title', 'type', 'duration', 'description', 'content', 'content_type', 'jupyter_content', 'code', 'language', 'video_url', 'practice', 'merged_content', 'sub_chapters', 'is_main_chapter', 'parent_chapter')
+
+
+class BookListSerializer(serializers.ModelSerializer):
+    """书籍列表序列化器"""
+    owner = serializers.SerializerMethodField()
+    class Meta:
+        model = Book
+        fields = ('id', 'title', 'author', 'cover', 'pdf_file', 'description', 'tag_list', 'chapter_count', 'progress', 'last_learn_time', 'owner')
+    
+    # 添加动态字段
+    progress = serializers.SerializerMethodField()
+    last_learn_time = serializers.SerializerMethodField()
+    
+    def get_progress(self, obj):
+        # 这个字段将在视图中根据用户学习记录计算
+        return None
+    
+    def get_last_learn_time(self, obj):
+        # 这个字段将在视图中根据用户学习记录计算
+        return None
+
+    def get_owner(self, obj):
+        return getattr(obj.owner, 'id', None)
+
+
+class BookDetailSerializer(serializers.ModelSerializer):
+    """书籍详情序列化器"""
+    chapters = ChapterSummarySerializer(many=True, read_only=True)
+    owner = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Book
+        fields = ('id', 'title', 'author', 'cover', 'pdf_file', 'description', 'tag_list', 'chapter_count', 'chapters', 'owner')
+
+    def get_owner(self, obj):
+        return getattr(obj.owner, 'id', None)
