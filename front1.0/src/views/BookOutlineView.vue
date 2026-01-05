@@ -94,6 +94,13 @@
                 <span class="expand-icon">{{ expandedChapters.has(chapter.id) ? '▼' : '▶' }}</span>
                 <span class="chapter-title">{{ chapter.title }}</span>
                 <span class="chapter-status">{{ getChapterStatus(chapter) }}</span>
+                <router-link 
+                  :to="`/practice?bookId=${bookId}&chapterId=${chapter.id}`" 
+                  class="practice-button"
+                  @click.stop
+                >
+                  📝 练习
+                </router-link>
               </div>
               
               <div 
@@ -830,6 +837,23 @@ export default {
 .chapter-status {
   font-size: 12px;
   color: #999;
+}
+
+.practice-button {
+  padding: 6px 12px;
+  background-color: #409EFF;
+  color: white;
+  border-radius: 4px;
+  font-size: 12px;
+  text-decoration: none;
+  transition: all 0.3s;
+  margin-left: 10px;
+}
+
+.practice-button:hover {
+  background-color: #66b1ff;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(64, 158, 255, 0.3);
 }
 
 .section-list {

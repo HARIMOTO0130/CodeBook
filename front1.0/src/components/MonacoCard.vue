@@ -63,14 +63,28 @@ import { ref, onMounted, watch, nextTick, onBeforeUnmount } from 'vue'
 import * as monaco from 'monaco-editor'
 import { getCodeTemplate, getDefaultTemplate } from '../api/codeSandbox.js'
 
-// 配置Monaco Environment以解决worker错误
+// 配置Monaco Environment以使用正确版本的worker
+import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
+import JsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker'
+import CssWorker from 'monaco-editor/esm/vs/language/css/css.worker?worker'
+import HtmlWorker from 'monaco-editor/esm/vs/language/html/html.worker?worker'
+import TsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker'
+
 window.MonacoEnvironment = {
-  getWorkerUrl: function(moduleId, label) {
-    // 使用内联worker模式
-    return 'data:text/javascript;charset=utf-8,' + encodeURIComponent(`
-      self.MonacoEnvironment = {}
-      importScripts('https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.30.1/min/vs/base/worker/workerMain.js')
-    `)
+  getWorker(_, label) {
+    if (label === 'json') {
+      return new JsonWorker()
+    }
+    if (label === 'css' || label === 'scss' || label === 'less') {
+      return new CssWorker()
+    }
+    if (label === 'html' || label === 'handlebars' || label === 'razor') {
+      return new HtmlWorker()
+    }
+    if (label === 'typescript' || label === 'javascript') {
+      return new TsWorker()
+    }
+    return new EditorWorker()
   }
 }
 

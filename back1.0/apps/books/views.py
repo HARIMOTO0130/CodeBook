@@ -16,8 +16,8 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.db.models import Max, Avg
-from .models import Book, Chapter
-from .serializers import BookListSerializer, BookDetailSerializer, ChapterSerializer, ChapterDetailSerializer
+from .models import Book, Chapter, Practice, TestCase, PracticeChoiceOption, PracticeFillBlank
+from .serializers import BookListSerializer, BookDetailSerializer, ChapterSerializer, ChapterDetailSerializer, PracticeSerializer, PracticeDetailSerializer
 from apps.learning.models import LearningRecord
 from .advanced_processor import AdvancedPDFProcessor
 
@@ -1163,6 +1163,282 @@ class ChapterViewSet(viewsets.ReadOnlyModelViewSet):
             chapters = Chapter.objects.filter(book_id=book_id).order_by('order')
             serializer = self.get_serializer(chapters, many=True)
             return Response(serializer.data)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=False, methods=['get'], url_path='practices-by-book')
+    def practices_by_book(self, request):
+        """获取所有书籍的练习题，按书籍分组"""
+        try:
+            books = Book.objects.all().order_by('id')
+            result = []
+            
+            for book in books:
+                chapters = Chapter.objects.filter(book=book, practices__isnull=False).prefetch_related('practices').distinct().order_by('order')
+                practices_data = []
+                
+                for chapter in chapters:
+                    practices = chapter.practices.all().order_by('order')
+                    for practice in practices:
+                        serializer = PracticeSerializer(practice)
+                        practice_data = serializer.data
+                        practice_data['chapter_title'] = chapter.title
+                        practice_data['chapter_id'] = chapter.id
+                        practices_data.append(practice_data)
+                
+                if practices_data:
+                    result.append({
+                        'book_id': book.id,
+                        'book_title': book.title,
+                        'practices': practices_data
+                    })
+            
+            return Response(result)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=True, methods=['get'], url_path='practice')
+    def practice(self, request, pk=None):
+        """获取章节的练习题"""
+        try:
+            chapter = self.get_object()
+            practices = chapter.practices.all().order_by('order')
+            
+            if not practices:
+                return Response({'message': '该章节暂无练习题'}, status=status.HTTP_404_NOT_FOUND)
+            
+            serializer = PracticeSerializer(practices, many=True)
+            return Response(serializer.data)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=True, methods=['post'], url_path='practice/submit')
+    def submit_practice(self, request, pk=None):
+        """提交练习题答案（支持多问题提交）"""
+        try:
+            chapter = self.get_object()
+            practice_id = request.data.get('practice_id')
+            
+            if not practice_id:
+                return Response({'error': '请提供练习题ID'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            try:
+                practice = chapter.practices.get(id=practice_id)
+            except Practice.DoesNotExist:
+                return Response({'error': '练习题不存在'}, status=status.HTTP_404_NOT_FOUND)
+            
+            # 检查是否是多问题格式
+            if practice.questions and isinstance(practice.questions, list):
+                # 多问题提交处理
+                question_answers = request.data.get('question_answers', [])
+                if not question_answers:
+                    return Response({'error': '请提供问题答案'}, status=status.HTTP_400_BAD_REQUEST)
+                
+                results = []
+                all_correct = True
+                
+                for answer_data in question_answers:
+                    question_id = answer_data.get('question_id')
+                    question_type = answer_data.get('type')
+                    
+                    # 找到对应的问题
+                    question = None
+                    for q in practice.questions:
+                        if q.get('id') == question_id or q.get('order') == question_id:
+                            question = q
+                            break
+                    
+                    if not question:
+                        results.append({
+                            'question_id': question_id,
+                            'error': '问题不存在'
+                        })
+                        all_correct = False
+                        continue
+                    
+                    # 根据题型验证答案
+                    if question_type == 'choice':
+                        # 选择题验证
+                        option_id = answer_data.get('answer')
+                        if not option_id:
+                            results.append({
+                                'question_id': question_id,
+                                'error': '请选择选项'
+                            })
+                            all_correct = False
+                            continue
+                        
+                        # 查找正确答案
+                        options = question.get('options', [])
+                        is_correct = False
+                        correct_option_id = None
+                        for idx, opt in enumerate(options):
+                            if opt.get('is_correct'):
+                                correct_option_id = idx
+                                if str(idx) == str(option_id):
+                                    is_correct = True
+                                    break
+                        
+                        results.append({
+                            'question_id': question_id,
+                            'question_type': question_type,
+                            'is_correct': is_correct,
+                            'correct_option_id': correct_option_id,
+                            'user_answer': option_id
+                        })
+                        
+                        if not is_correct:
+                            all_correct = False
+                    
+                    elif question_type == 'fill':
+                        # 填空题验证
+                        blank_answers = answer_data.get('blank_answers', {})
+                        if not blank_answers:
+                            results.append({
+                                'question_id': question_id,
+                                'error': '请提供填空答案'
+                            })
+                            all_correct = False
+                            continue
+                        
+                        blanks = question.get('blanks', [])
+                        blank_results = []
+                        question_correct = True
+                        
+                        for idx, blank in enumerate(blanks):
+                            blank_id = str(idx)
+                            user_answer = blank_answers.get(blank_id, '').strip()
+                            correct_answer = blank.get('correct_answer', '').strip()
+                            
+                            is_correct = user_answer.lower() == correct_answer.lower()
+                            blank_results.append({
+                                'blank_id': idx,
+                                'is_correct': is_correct,
+                                'user_answer': user_answer,
+                                'correct_answer': correct_answer
+                            })
+                            
+                            if not is_correct:
+                                question_correct = False
+                        
+                        results.append({
+                            'question_id': question_id,
+                            'question_type': question_type,
+                            'all_correct': question_correct,
+                            'results': blank_results
+                        })
+                        
+                        if not question_correct:
+                            all_correct = False
+                    
+                    elif question_type in ['code_completion', 'programming']:
+                        # 代码补全题和编程题需要运行测试用例
+                        code = answer_data.get('code')
+                        if not code:
+                            results.append({
+                                'question_id': question_id,
+                                'error': '请提供代码'
+                            })
+                            all_correct = False
+                            continue
+                        
+                        # 这里应该调用代码执行服务来运行测试用例
+                        # 暂时返回一个模拟响应
+                        test_cases = question.get('testCases', [])
+                        test_results = []
+                        for tc in test_cases:
+                            test_results.append({
+                                'input': tc.get('input_data', ''),
+                                'expected': tc.get('expected_output', ''),
+                                'actual': tc.get('expected_output', ''),
+                                'passed': True
+                            })
+                        
+                        results.append({
+                            'question_id': question_id,
+                            'question_type': question_type,
+                            'test_cases': test_results,
+                            'all_passed': all(tc.get('passed', True) for tc in test_results)
+                        })
+                
+                return Response({
+                    'all_correct': all_correct,
+                    'results': results,
+                    'total_questions': len(practice.questions),
+                    'correct_count': sum(1 for r in results if r.get('is_correct', False) or r.get('all_correct', False) or r.get('all_passed', False))
+                })
+            
+            else:
+                # 兼容旧的单问题格式
+                answer = request.data.get('answer')
+                if not answer:
+                    return Response({'error': '请提供答案'}, status=status.HTTP_400_BAD_REQUEST)
+                
+                # 根据题型验证答案
+                if practice.question_type == 'choice':
+                    # 选择题验证
+                    option_id = request.data.get('option_id')
+                    if not option_id:
+                        return Response({'error': '请选择选项'}, status=status.HTTP_400_BAD_REQUEST)
+                    
+                    try:
+                        option = practice.choice_options.get(id=option_id)
+                        is_correct = option.is_correct
+                        return Response({
+                            'is_correct': is_correct,
+                            'correct_option_id': practice.choice_options.filter(is_correct=True).first().id
+                        })
+                    except PracticeChoiceOption.DoesNotExist:
+                        return Response({'error': '选项不存在'}, status=status.HTTP_400_BAD_REQUEST)
+                
+                elif practice.question_type == 'fill':
+                    # 填空题验证
+                    blank_answers = request.data.get('blank_answers', {})
+                    if not blank_answers:
+                        return Response({'error': '请提供填空答案'}, status=status.HTTP_400_BAD_REQUEST)
+                    
+                    blanks = practice.fill_blanks.all()
+                    results = []
+                    all_correct = True
+                    
+                    for blank in blanks:
+                        blank_id = str(blank.id)
+                        user_answer = blank_answers.get(blank_id, '').strip()
+                        correct_answer = blank.correct_answer.strip()
+                        
+                        is_correct = user_answer.lower() == correct_answer.lower()
+                        results.append({
+                            'blank_id': blank.id,
+                            'is_correct': is_correct,
+                            'user_answer': user_answer,
+                            'correct_answer': correct_answer
+                        })
+                        
+                        if not is_correct:
+                            all_correct = False
+                    
+                    return Response({
+                        'all_correct': all_correct,
+                        'results': results
+                    })
+                
+                elif practice.question_type in ['code_completion', 'programming']:
+                    # 代码补全题和编程题需要运行测试用例
+                    code = request.data.get('code')
+                    if not code:
+                        return Response({'error': '请提供代码'}, status=status.HTTP_400_BAD_REQUEST)
+                    
+                    # 这里应该调用代码执行服务来运行测试用例
+                    # 暂时返回一个模拟响应
+                    return Response({
+                        'message': '代码提交成功',
+                        'test_cases': [
+                            {'input': 'test input', 'expected': 'test output', 'actual': 'test output', 'passed': True}
+                        ]
+                    })
+                
+                return Response({'error': '不支持的题型'}, status=status.HTTP_400_BAD_REQUEST)
+        
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
     

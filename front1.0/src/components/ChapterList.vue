@@ -12,9 +12,25 @@
         :class="{ active: isActiveChapter(chapter.id) }"
         @click="navigateToChapter(chapter.id)"
       >
-        <div class="chapter-title">{{ chapter.title }}</div>
-        <div v-if="chapter.status" class="chapter-status" :class="`status-${chapter.status}`">
-          {{ getStatusText(chapter.status) }}
+        <div class="chapter-info">
+          <div class="chapter-title">{{ chapter.title }}</div>
+          <div v-if="chapter.has_practice" class="practice-badge">
+            <span class="practice-icon">💡</span>
+            <span class="practice-text">有练习</span>
+          </div>
+        </div>
+        <div class="chapter-actions">
+          <button 
+            v-if="chapter.has_practice" 
+            class="practice-btn" 
+            @click.stop="openPractice(chapter.id)"
+            title="开始练习"
+          >
+            <span class="practice-btn-icon">📝</span>
+          </button>
+          <div v-if="chapter.status" class="chapter-status" :class="`status-${chapter.status}`">
+            {{ getStatusText(chapter.status) }}
+          </div>
         </div>
       </div>
     </div>
@@ -67,11 +83,20 @@ export default {
       return statusMap[status] || ''
     }
 
+    // 打开练习题
+    const openPractice = (chapterId) => {
+      router.push({
+        path: `/books/${props.bookId}/chapter/${chapterId}`,
+        query: { openPractice: 'true' }
+      })
+    }
+
     return {
       chapterCount,
       isActiveChapter,
       navigateToChapter,
-      getStatusText
+      getStatusText,
+      openPractice
     }
   }
 }
@@ -134,20 +159,81 @@ export default {
   border-left-color: #409eff;
 }
 
+.chapter-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-right: 12px;
+}
+
+.chapter-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 .chapter-title {
   font-size: 14px;
   color: #303133;
   line-height: 1.5;
-  flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  margin-right: 12px;
 }
 
 .chapter-item.active .chapter-title {
   color: #409eff;
   font-weight: 500;
+}
+
+.practice-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  padding: 2px 8px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-radius: 10px;
+  align-self: flex-start;
+}
+
+.practice-icon {
+  font-size: 10px;
+}
+
+.practice-text {
+  font-weight: 500;
+}
+
+.practice-btn {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 28px;
+}
+
+.practice-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.4);
+}
+
+.practice-btn:active {
+  transform: translateY(0);
+}
+
+.practice-btn-icon {
+  font-size: 14px;
 }
 
 .chapter-status {

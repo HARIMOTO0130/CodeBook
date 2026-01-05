@@ -12,8 +12,21 @@
       <p class="page-description">通过实践巩固所学知识，提升编程能力</p>
     </div>
 
+    <!-- 书籍标签 -->
+    <div class="book-tabs" v-if="books.length > 0">
+      <button
+        v-for="book in books"
+        :key="book.book_id"
+        class="book-tab"
+        :class="{ active: selectedBookId === book.book_id }"
+        @click="selectBook(book.book_id)"
+      >
+        {{ book.book_title }}
+      </button>
+    </div>
+
     <!-- 过滤和筛选 -->
-    <div class="filter-section">
+    <div class="filter-section" v-if="currentBookPractices.length > 0">
       <div class="filter-controls">
         <select v-model="selectedLanguage" class="select-input">
           <option value="">所有语言</option>
@@ -33,40 +46,58 @@
       </div>
     </div>
 
-    <!-- 练习题列表 -->
+    <!-- 练习题列表 - 按章节分组 -->
     <div class="practice-list">
       <div v-if="loading" class="loading-state">
         <p>正在加载练习题...</p>
       </div>
       
-      <div v-else-if="practiceChapters.length === 0" class="empty-state">
-        <p>暂无符合条件的练习题</p>
+      <div v-else-if="currentBookChapters.length === 0" class="empty-state">
+        <p>该书籍暂无练习题</p>
       </div>
       
-      <div v-else class="practice-grid">
+      <div v-else>
         <div 
-          v-for="practice in practiceChapters" 
-          :key="practice.id" 
-          class="practice-card"
-          @click="startPractice(practice)"
+          v-for="chapter in currentBookChapters" 
+          :key="chapter.chapter_id" 
+          class="chapter-section"
         >
-          <div class="practice-header">
-            <div class="practice-icon">{{ getLanguageIcon(practice.language) }}</div>
-            <div class="practice-info">
-              <h3 class="practice-title">{{ practice.title }}</h3>
+          <div class="chapter-section-header">
+            <h2 class="chapter-section-title">{{ chapter.chapter_title }}</h2>
+            <span class="chapter-section-count">{{ chapter.practices.length }} 道题</span>
+          </div>
+          
+          <div v-if="getFilteredPracticesForChapter(chapter).length === 0" class="chapter-empty">
+            <p>该章节没有符合条件的练习题</p>
+          </div>
+          
+          <div v-else class="practice-grid">
+            <div 
+              v-for="practice in getFilteredPracticesForChapter(chapter)" 
+              :key="practice.id" 
+              class="practice-card"
+              @click="startPractice(practice)"
+            >
+              <div class="practice-header">
+                <div class="practice-icon">{{ getLanguageIcon(practice.language) }}</div>
+                <div class="practice-info">
+                  <h3 class="practice-title">{{ practice.title }}</h3>
+                  <p class="practice-type">{{ getQuestionTypesText(practice) }}</p>
+                </div>
+              </div>
+              
+              <div class="practice-content">
+                <p class="practice-description">{{ truncateText(practice.description, 150) }}</p>
+              </div>
+              
+              <div class="practice-footer">
+                <span class="question-count-badge">{{ getQuestionCount(practice) }} 道题</span>
+                <span class="difficulty-badge" :class="getDifficultyClass(practice.difficulty)">
+                  {{ getDifficultyText(practice.difficulty) }}
+                </span>
+                <button class="start-button">开始练习</button>
+              </div>
             </div>
-          </div>
-          
-          <div class="practice-content">
-            <p class="practice-description">{{ truncateText(practice.practice?.question || practice.description || practice.questions?.[0]?.question, 100) }}</p>
-          </div>
-          
-          <div class="practice-footer">
-            <span class="difficulty-badge" :class="getDifficultyClass(practice.difficulty)">
-              {{ getDifficultyText(practice.difficulty) }}
-            </span>
-            <span class="question-count">{{ getQuestionCount(practice) }} 题</span>
-            <button class="start-button">开始练习</button>
           </div>
         </div>
       </div>
@@ -109,8 +140,8 @@
 </template>
 
 <script>
-import { ref, onMounted, computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, onMounted, computed, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { api } from '../api/api.js'
 import PracticeModal from '../components/PracticeModal.vue'
 
@@ -121,11 +152,18 @@ export default {
   },
   setup() {
     const router = useRouter()
+    const route = useRoute()
     
     // 状态管理
     const loading = ref(true)
-    const practiceChapters = ref([]) // 现在直接存储练习题，不再与书籍关联
+    const books = ref([]) // 存储所有书籍及其练习题
+    const selectedBookId = ref(null) // 当前选中的书籍ID
+    const selectedChapterId = ref(null) // 当前选中的章节ID
     const practiceRecords = ref([])
+    
+    // 获取URL参数
+    const urlBookId = computed(() => Number(route.query.bookId))
+    const urlChapterId = computed(() => Number(route.query.chapterId))
     
     // 过滤条件
     const selectedLanguage = ref('')
@@ -138,6 +176,42 @@ export default {
     const currentPracticeId = ref(null)
     
     // 计算属性
+    const currentBookPractices = computed(() => {
+      if (!selectedBookId.value) return []
+      const book = books.value.find(b => b.book_id === selectedBookId.value)
+      return book ? book.practices : []
+    })
+    
+    const currentBookChapters = computed(() => {
+      if (!selectedBookId.value) return []
+      const book = books.value.find(b => b.book_id === selectedBookId.value)
+      if (!book) return []
+      
+      // 从practices中提取章节信息
+      const chaptersMap = new Map()
+      book.practices.forEach(practice => {
+        const chapterId = practice.chapter_id
+        const chapterTitle = practice.chapter_title || `章节 ${chapterId}`
+        
+        if (!chaptersMap.has(chapterId)) {
+          chaptersMap.set(chapterId, {
+            chapter_id: chapterId,
+            chapter_title: chapterTitle,
+            practices: []
+          })
+        }
+        chaptersMap.get(chapterId).practices.push(practice)
+      })
+      
+      return Array.from(chaptersMap.values())
+    })
+    
+    const currentChapterPractices = computed(() => {
+      if (!selectedChapterId.value) return []
+      const chapter = currentBookChapters.value.find(c => c.chapter_id === selectedChapterId.value)
+      return chapter && chapter.practices ? chapter.practices : []
+    })
+    
     const totalPractices = computed(() => practiceRecords.value.length)
     const completedPractices = computed(() => 
       practiceRecords.value.filter(record => record.completed).length
@@ -151,9 +225,11 @@ export default {
       // 简化计算，实际应该基于日期计算连续天数
       return Math.floor(Math.random() * 7) + 1
     })
+    
     // 计算过滤后的练习题
     const filteredPractices = computed(() => {
-      return practiceChapters.value.filter(practice => {
+      const practices = currentChapterPractices.value || []
+      return practices.filter(practice => {
         // 语言筛选
         const languageMatch = !selectedLanguage.value || 
                              (practice.language && 
@@ -168,29 +244,57 @@ export default {
       })
     })
     
+    // 获取章节的过滤后练习题
+    const getFilteredPracticesForChapter = (chapter) => {
+      const practices = chapter.practices || []
+      return practices.filter(practice => {
+        // 语言筛选
+        const languageMatch = !selectedLanguage.value || 
+                             (practice.language && 
+                              practice.language.toString().toLowerCase() === selectedLanguage.value.toLowerCase())
+        
+        // 难度筛选
+        const difficultyMatch = !difficultyFilter.value || 
+                               (practice.difficulty !== undefined && 
+                                practice.difficulty.toString().toLowerCase() === difficultyFilter.value.toLowerCase())
+        
+        return languageMatch && difficultyMatch
+      })
+    }
+    
+    // 选择书籍
+    const selectBook = (bookId) => {
+      selectedBookId.value = bookId
+      selectedChapterId.value = null
+      // 重置过滤条件
+      selectedLanguage.value = ''
+      difficultyFilter.value = ''
+    }
+    
     // 获取练习题 - 直接从数据库获取
     const fetchPracticeChapters = async () => {
       loading.value = true
       try {
-        // 尝试直接获取练习题列表
-        let allPractices = []
+        // 使用新的API端点获取按书籍分组的练习题
+        const booksData = await api.getPractices()
         
-        try {
-          // 首先尝试使用新的API端点直接获取练习题
-          // 这里假设有一个getPractices API，如果不存在会使用模拟数据
-          const practices = await api.getPractices()
-          allPractices = Array.isArray(practices) ? practices : []
-        } catch (apiError) {
-          console.log('直接获取练习题API失败，使用模拟数据:', apiError)
-          // 如果没有专门的练习题API，使用模拟数据
-          allPractices = getMockPracticeChapters()
+        if (Array.isArray(booksData) && booksData.length > 0) {
+          books.value = booksData
+          // 默认选择第一本书
+          if (!selectedBookId.value) {
+            selectedBookId.value = booksData[0].book_id
+          }
+        } else {
+          books.value = []
+          selectedBookId.value = null
         }
-        
-        practiceChapters.value = allPractices
       } catch (error) {
         console.error('获取练习题失败:', error)
         // 使用模拟数据确保页面能正常显示
-        practiceChapters.value = getMockPracticeChapters()
+        books.value = getMockBooks()
+        if (!selectedBookId.value && books.value.length > 0) {
+          selectedBookId.value = books.value[0].book_id
+        }
       } finally {
         loading.value = false
       }
@@ -248,7 +352,20 @@ export default {
       // 构建问题列表
       if (practice.questions && Array.isArray(practice.questions)) {
         // 如果已经是问题数组格式
-        currentQuestions.value = practice.questions
+        currentQuestions.value = practice.questions.map((q, index) => ({
+          id: q.id || index + 1,
+          type: q.type,
+          title: q.title,
+          description: q.description,
+          question: q.question,
+          code_template: q.code_template,
+          language: q.language || practice.language,
+          difficulty: q.difficulty || practice.difficulty,
+          options: q.options,
+          blanks: q.blanks,
+          testCases: q.testCases || [],
+          order: q.order || index + 1
+        }))
       } else {
         // 兼容旧格式
         currentQuestions.value = buildQuestionsFromPractice(practice.practice)
@@ -267,28 +384,34 @@ export default {
     // 处理练习完成
     const handlePracticeComplete = (result) => {
       closePractice()
-      // 这里可以添加完成后的逻辑，如显示成绩、更新统计等
       console.log('练习完成:', result)
       
-      // 收集错题信息
-      const wrongQuestions = currentQuestions.value
-        .filter(q => q.userAnswer && q.passed !== true)
-        .map(q => ({
-          id: q.id,
-          title: q.title || `练习题 ${q.id}`,
-          difficulty: q.difficulty || 3, // 默认中等难度
-          type: determineQuestionType(q),
-          userAnswer: q.userAnswer,
-          correctAnswer: q.expectedOutput || q.correctAnswer,
-          errorType: determineErrorType(q.userAnswer, q.expectedOutput || q.correctAnswer)
-        }))
+      // 收集所有问题的答案
+      const questionAnswers = currentQuestions.value.map((q, index) => {
+        const answer = {
+          question_id: q.id || q.order || index + 1,
+          type: q.type
+        }
         
-      result.wrongQuestions = wrongQuestions
+        // 根据题型收集答案
+        if (q.type === 'choice') {
+          answer.answer = q.selectedOption !== undefined ? q.selectedOption : null
+        } else if (q.type === 'fill') {
+          answer.blank_answers = {}
+          if (q.blanks && Array.isArray(q.blanks)) {
+            q.blanks.forEach((blank, idx) => {
+              answer.blank_answers[idx] = q.userAnswers ? q.userAnswers[idx] : ''
+            })
+          }
+        } else if (q.type === 'code_completion' || q.type === 'programming') {
+          answer.code = q.userCode || ''
+        }
+        
+        return answer
+      })
       
-      // 提交练习结果
-      if (result.score !== undefined) {
-        submitPracticeResult(result)
-      }
+      // 提交多问题答案
+      submitMultiQuestionPractice(questionAnswers, result)
     }
 
     // 判断错误类型
@@ -329,6 +452,40 @@ export default {
     }
 
     // 提交练习结果
+    // 提交多问题练习结果
+    const submitMultiQuestionPractice = async (questionAnswers, result) => {
+      try {
+        // 获取当前练习所属的章节ID
+        const currentPractice = practices.value.find(p => p.id === currentPracticeId.value)
+        const chapterId = currentPractice ? currentPractice.chapter_id : null
+        
+        if (!chapterId) {
+          console.error('无法找到章节ID')
+          return
+        }
+        
+        // 调用章节练习提交API
+        const response = await api.submitChapterPractice(chapterId, {
+          practice_id: currentPracticeId.value,
+          question_answers: questionAnswers
+        })
+        
+        console.log('多问题提交成功:', response)
+        
+        // 显示提交结果
+        if (response.all_correct) {
+          console.log('恭喜！所有题目都回答正确！')
+        } else {
+          console.log(`共 ${response.total_questions} 道题，答对 ${response.correct_count} 道题`)
+        }
+        
+        // 重新获取练习记录
+        fetchPracticeRecords()
+      } catch (error) {
+        console.error('提交多问题练习结果失败:', error)
+      }
+    }
+
     const submitPracticeResult = async (result) => {
       try {
         // 使用新的API参数格式
@@ -419,12 +576,43 @@ export default {
       }
     }
     
+    const getQuestionTypeText = (questionType) => {
+      const typeMap = {
+        'choice': '选择题',
+        'true_false': '判断题',
+        'fill': '填空题',
+        'code_completion': '代码补全',
+        'programming': '编程题'
+      }
+      return typeMap[questionType] || '未知类型'
+    }
+    
     const getQuestionCount = (practice) => {
       // 根据练习类型计算题目数量
       if (practice.questions && Array.isArray(practice.questions)) {
         return practice.questions.length
       }
       return practice.practice?.test_cases?.length || 1
+    }
+    
+    const getQuestionTypesText = (practice) => {
+      if (!practice.questions || !Array.isArray(practice.questions)) {
+        return '未知类型'
+      }
+      
+      const types = practice.questions.map(q => {
+        const typeMap = {
+          'choice': '选择题',
+          'true_false': '判断题',
+          'fill': '填空题',
+          'code_completion': '代码补全',
+          'programming': '编程题'
+        }
+        return typeMap[q.type] || '未知'
+      })
+      
+      const uniqueTypes = [...new Set(types)]
+      return uniqueTypes.join('、')
     }
     
     const truncateText = (text, maxLength) => {
@@ -453,6 +641,224 @@ export default {
     }
     
     // 模拟数据 - 直接的练习题格式，不再与书籍关联
+    const getMockBooks = () => {
+      return [
+        {
+          book_id: 1,
+          book_title: 'Python编程基础',
+          practices: [
+            {
+              id: 1,
+              chapter_title: '第1章：Python变量与数据类型',
+              language: 'python',
+              difficulty: 1,
+              questions: [
+                {
+                  id: 101,
+                  type: 'programming',
+                  title: '编程练习：计算两数之和',
+                  stem: '编写一个函数，计算两个数的和',
+                  code_template: 'def add(a, b):\n    # 请在此处编写代码\n    pass',
+                  language: 'python',
+                  testCases: [
+                    { input_data: { a: 1, b: 2 }, expected_output: 3 },
+                    { input_data: { a: 5, b: 10 }, expected_output: 15 }
+                  ]
+                },
+                {
+                  id: 102,
+                  type: 'programming',
+                  title: '编程练习：变量赋值',
+                  stem: '声明一个变量并赋值，然后打印出变量的值',
+                  code_template: '# 请声明变量并赋值\n# 打印变量的值',
+                  language: 'python',
+                  testCases: [
+                    { input_data: {}, expected_output: 'Hello Python' }
+                  ]
+                }
+              ]
+            },
+            {
+              id: 2,
+              chapter_title: '第2章：Python控制流',
+              language: 'python',
+              difficulty: 2,
+              questions: [
+                {
+                  id: 201,
+                  type: 'programming',
+                  title: '编程练习：打印偶数',
+                  stem: '使用for循环打印1到10之间的所有偶数',
+                  code_template: '# 请在此处编写代码',
+                  language: 'python',
+                  testCases: [
+                    { input_data: {}, expected_output: '2\n4\n6\n8\n10' }
+                  ]
+                },
+                {
+                  id: 202,
+                  type: 'programming',
+                  title: '编程练习：if-else判断',
+                  stem: '判断一个数是否为正数',
+                  code_template: 'def is_positive(num):\n    # 请在此处编写代码\n    pass',
+                  language: 'python',
+                  testCases: [
+                    { input_data: { num: 5 }, expected_output: true },
+                    { input_data: { num: -3 }, expected_output: false }
+                  ]
+                }
+              ]
+            },
+            {
+              id: 3,
+              chapter_title: '第3章：Python函数',
+              language: 'python',
+              difficulty: 2,
+              questions: [
+                {
+                  id: 301,
+                  type: 'programming',
+                  title: '编程练习：定义函数',
+                  stem: '定义一个函数，计算圆的面积',
+                  code_template: 'def circle_area(radius):\n    # 请在此处编写代码\n    pass',
+                  language: 'python',
+                  testCases: [
+                    { input_data: { radius: 5 }, expected_output: 78.54 }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          book_id: 2,
+          book_title: 'JavaScript编程入门',
+          practices: [
+            {
+              id: 4,
+              chapter_title: '第1章：JavaScript基础语法',
+              language: 'javascript',
+              difficulty: 1,
+              questions: [
+                {
+                  id: 401,
+                  type: 'programming',
+                  title: '编程练习：变量声明',
+                  stem: '使用let和const声明变量',
+                  code_template: '// 请在此处编写代码',
+                  language: 'javascript',
+                  testCases: [
+                    { input_data: {}, expected_output: 'Hello JavaScript' }
+                  ]
+                }
+              ]
+            },
+            {
+              id: 5,
+              chapter_title: '第2章：JavaScript函数',
+              language: 'javascript',
+              difficulty: 2,
+              questions: [
+                {
+                  id: 501,
+                  type: 'programming',
+                  title: '编程练习：箭头函数',
+                  stem: '使用箭头函数定义一个求和函数',
+                  code_template: 'const sum = (a, b) => {\n    // 请在此处编写代码\n};',
+                  language: 'javascript',
+                  testCases: [
+                    { input_data: { a: 1, b: 2 }, expected_output: 3 }
+                  ]
+                }
+              ]
+            },
+            {
+              id: 6,
+              chapter_title: '第3章：JavaScript数组',
+              language: 'javascript',
+              difficulty: 2,
+              questions: [
+                {
+                  id: 601,
+                  type: 'programming',
+                  title: '编程练习：数组操作',
+                  stem: '使用数组方法过滤偶数',
+                  code_template: 'const filterEven = (arr) => {\n    // 请在此处编写代码\n};',
+                  language: 'javascript',
+                  testCases: [
+                    { input_data: { arr: [1, 2, 3, 4, 5] }, expected_output: [2, 4] }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          book_id: 3,
+          book_title: 'Java编程进阶',
+          practices: [
+            {
+              id: 7,
+              chapter_title: '第1章：Java面向对象',
+              language: 'java',
+              difficulty: 2,
+              questions: [
+                {
+                  id: 701,
+                  type: 'programming',
+                  title: '编程练习：类定义',
+                  stem: '定义一个Person类',
+                  code_template: 'class Person {\n    // 请在此处编写代码\n}',
+                  language: 'java',
+                  testCases: [
+                    { input_data: {}, expected_output: 'Person created' }
+                  ]
+                }
+              ]
+            },
+            {
+              id: 8,
+              chapter_title: '第2章：Java集合框架',
+              language: 'java',
+              difficulty: 3,
+              questions: [
+                {
+                  id: 801,
+                  type: 'programming',
+                  title: '编程练习：ArrayList使用',
+                  stem: '使用ArrayList存储和遍历数据',
+                  code_template: 'import java.util.ArrayList;\n\npublic class ArrayListDemo {\n    // 请在此处编写代码\n}',
+                  language: 'java',
+                  testCases: [
+                    { input_data: {}, expected_output: 'ArrayList demo' }
+                  ]
+                }
+              ]
+            },
+            {
+              id: 9,
+              chapter_title: '第3章：Java异常处理',
+              language: 'java',
+              difficulty: 3,
+              questions: [
+                {
+                  id: 901,
+                  type: 'programming',
+                  title: '编程练习：try-catch',
+                  stem: '使用try-catch处理异常',
+                  code_template: 'public class ExceptionDemo {\n    // 请在此处编写代码\n}',
+                  language: 'java',
+                  testCases: [
+                    { input_data: {}, expected_output: 'Exception handled' }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+
     const getMockPracticeChapters = () => {
       return [
         {
@@ -941,11 +1347,39 @@ export default {
     onMounted(async () => {
       await fetchPracticeChapters()
       await fetchPracticeRecords()
+      
+      // 检查URL参数,自动选择对应的书籍和章节
+      if (urlBookId.value) {
+        const bookExists = books.value.some(b => b.book_id === urlBookId.value)
+        if (bookExists) {
+          selectedBookId.value = urlBookId.value
+          // 自动选择第一个章节
+          const book = books.value.find(b => b.book_id === urlBookId.value)
+          if (book && book.practices.length > 0) {
+            const firstChapterId = book.practices[0].chapter_id
+            selectedChapterId.value = firstChapterId
+          }
+          
+          // 如果URL中指定了章节ID,则选择该章节
+          if (urlChapterId.value) {
+            const chapterExists = book.practices.some(p => p.chapter_id === urlChapterId.value)
+            if (chapterExists) {
+              selectedChapterId.value = urlChapterId.value
+            }
+          }
+        }
+      }
     })
     
     return {
       loading,
-      practiceChapters,
+      books,
+      selectedBookId,
+      selectedChapterId,
+      currentBookPractices,
+      currentBookChapters,
+      currentChapterPractices,
+      practiceRecords,
       selectedLanguage,
       difficultyFilter,
       showPracticeModal,
@@ -955,14 +1389,19 @@ export default {
       completedPractices,
       averageScore,
       streakDays,
+      selectBook,
       startPractice,
       closePractice,
       handlePracticeComplete,
       getLanguageIcon,
       getDifficultyClass,
       getDifficultyText,
+      getQuestionTypeText,
+      getQuestionTypesText,
       getQuestionCount,
-      truncateText
+      truncateText,
+      filteredPractices,
+      getFilteredPracticesForChapter
     }
   }
 }
@@ -998,6 +1437,44 @@ export default {
   color: #333;
   font-weight: 500;
   pointer-events: none;
+}
+
+.book-tabs {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.book-tab {
+  padding: 10px 20px;
+  background: #f5f7fa;
+  border: 1px solid #e4e7ed;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #606266;
+  transition: all 0.3s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.book-tab:hover {
+  background: #ecf5ff;
+  border-color: #c6e2ff;
+  color: #409eff;
+}
+
+.book-tab.active {
+  background: #409eff;
+  border-color: #409eff;
+  color: #fff;
+}
+
+.book-tab:not(.active) .practice-count {
+  background: #e4e7ed;
+  color: #909399;
 }
 
 .breadcrumb-separator {
@@ -1051,6 +1528,41 @@ export default {
 
 .practice-list {
   margin-bottom: 40px;
+}
+
+.chapter-section {
+  margin-bottom: 40px;
+}
+
+.chapter-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 0;
+  border-bottom: 2px solid #e4e7ed;
+  margin-bottom: 24px;
+}
+
+.chapter-section-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.chapter-section-count {
+  padding: 4px 12px;
+  background: #f0f2f5;
+  border-radius: 12px;
+  font-size: 14px;
+  color: #606266;
+}
+
+.chapter-empty {
+  text-align: center;
+  padding: 40px 20px;
+  color: #999;
+  font-size: 14px;
 }
 
 .loading-state,
@@ -1153,6 +1665,15 @@ export default {
 .difficulty-badge.hard {
   background: #fef0f0;
   color: #f56c6c;
+}
+
+.question-count-badge {
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+  background: #f4f4f5;
+  color: #909399;
 }
 
 .question-count {

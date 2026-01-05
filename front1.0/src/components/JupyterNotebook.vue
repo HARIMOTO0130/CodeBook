@@ -92,9 +92,8 @@
               class="markdown-preview"
               v-html="renderMarkdown(cell.content)"
               @click="(event) => {
-                // 获取点击位置的偏移量
-                const selection = window.getSelection()
-                if (selection.rangeCount > 0) {
+                const selection = window.getSelection?.()
+                if (selection && selection.rangeCount > 0) {
                   const range = selection.getRangeAt(0)
                   const preCaretRange = range.cloneRange()
                   preCaretRange.selectNodeContents(event.currentTarget)
@@ -105,6 +104,7 @@
                   toggleCellEdit(index, true)
                 }
               }"
+              @mouseup="handlePreviewTextSelection(index, $event)"
             ></div>
           </div>
           
@@ -226,7 +226,7 @@ export default {
       default: null
     }
   },
-  emits: ['update:title', 'contentChange', 'save', 'update:documentId', 'update:isPublic'],
+  emits: ['update:title', 'contentChange', 'save', 'update:documentId', 'update:isPublic', 'text-selected'],
   setup(props, { emit }) {
     // 单元格状态管理
     const cells = ref([])
@@ -1575,11 +1575,65 @@ const toggleCellEdit = (index, isEditing, clickOffset = null) => {
             left: rect.right - 40
           }
         }
+        
+        // 发送文本选中事件到父组件
+        emit('text-selected', {
+          text: selectedText,
+          rect: rect,
+          cellIndex: cellIndex
+        })
       } else {
         // 清除选中状态
         if (textSelectionState.value[cellIndex]) {
           textSelectionState.value[cellIndex].hasSelection = false
         }
+        
+        // 发送取消选中事件到父组件
+        emit('text-selected', {
+          text: '',
+          rect: null,
+          cellIndex: cellIndex
+        })
+      }
+    }
+    
+    // 处理Markdown预览中的文本选中
+    const handlePreviewTextSelection = (cellIndex, event) => {
+      const selection = window.getSelection()
+      const selectedText = selection.toString().trim()
+      
+      if (selectedText.length > 0) {
+        // 获取选中区域的位置信息
+        const range = selection.getRangeAt(0)
+        const rect = range.getBoundingClientRect()
+        
+        textSelectionState.value[cellIndex] = {
+          hasSelection: true,
+          selectedText: selectedText,
+          position: {
+            top: rect.top + 10,
+            left: rect.right - 40
+          }
+        }
+        
+        // 发送文本选中事件到父组件
+        emit('text-selected', {
+          text: selectedText,
+          rect: rect,
+          cellIndex: cellIndex
+        })
+      } else {
+        // 清除选中状态
+        if (textSelectionState.value[cellIndex]) {
+          textSelectionState.value[cellIndex].hasSelection = false
+        }
+        
+        // 发送取消选中事件到父组件
+        emit('text-selected', {
+          text: '',
+          rect: null,
+          cellIndex: cellIndex
+        })
       }
     }
 
@@ -1796,6 +1850,7 @@ const toggleCellEdit = (index, isEditing, clickOffset = null) => {
       getOutputClass,
       handleAIInteract,
       handleTextSelection,
+      handlePreviewTextSelection,
       getTextAIPositionStyle,
       handleTextAIInteract,
       handleCodeSelection,

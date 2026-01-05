@@ -1,6 +1,7 @@
 """书籍相关模型定义"""
 from django.db import models
 from django.conf import settings
+from django.utils import timezone
 import json
 import os
 import logging
@@ -215,16 +216,62 @@ class Chapter(models.Model):
 
 class Practice(models.Model):
     """练习题模型"""
-    chapter = models.OneToOneField(Chapter, on_delete=models.CASCADE, related_name='practice', verbose_name='所属章节')
-    question = models.TextField(verbose_name='问题描述')
-    code_template = models.TextField(blank=True, null=True, verbose_name='代码模板')
+    chapter = models.ForeignKey(Chapter, on_delete=models.CASCADE, related_name='practices', verbose_name='所属章节')
+    
+    title = models.CharField(max_length=255, verbose_name='练习题集名称')
+    description = models.TextField(blank=True, null=True, verbose_name='练习题集描述')
+    
+    questions = models.JSONField(verbose_name='问题列表', default=list, help_text='存储多个问题的JSON数组')
+    
+    language = models.CharField(max_length=50, default='python', verbose_name='编程语言')
+    difficulty = models.IntegerField(default=2, choices=[
+        (1, '简单'), (2, '中等'), (3, '困难')
+    ], verbose_name='难度')
+    
+    order = models.IntegerField(default=0, verbose_name='排序')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
     
     class Meta:
         verbose_name = '练习题'
         verbose_name_plural = '练习题'
+        ordering = ['order']
     
     def __str__(self):
-        return f"{self.chapter.title} - 练习题"
+        return f"{self.chapter.title} - {self.title}"
+
+
+class PracticeChoiceOption(models.Model):
+    """选择题选项模型"""
+    practice = models.ForeignKey(Practice, on_delete=models.CASCADE, related_name='choice_options', verbose_name='所属练习题')
+    content = models.TextField(verbose_name='选项内容')
+    is_correct = models.BooleanField(default=False, verbose_name='是否正确答案')
+    order = models.IntegerField(default=0, verbose_name='选项顺序')
+    
+    class Meta:
+        verbose_name = '选择题选项'
+        verbose_name_plural = '选择题选项'
+        ordering = ['order']
+    
+    def __str__(self):
+        return f"{self.practice.title} - 选项 {self.order + 1}"
+
+
+class PracticeFillBlank(models.Model):
+    """填空题空位模型"""
+    practice = models.ForeignKey(Practice, on_delete=models.CASCADE, related_name='fill_blanks', verbose_name='所属练习题')
+    prompt = models.CharField(max_length=255, verbose_name='提示文本')
+    placeholder = models.CharField(max_length=100, blank=True, null=True, verbose_name='占位符')
+    correct_answer = models.CharField(max_length=255, verbose_name='正确答案')
+    order = models.IntegerField(default=0, verbose_name='空位顺序')
+    
+    class Meta:
+        verbose_name = '填空题空位'
+        verbose_name_plural = '填空题空位'
+        ordering = ['order']
+    
+    def __str__(self):
+        return f"{self.practice.title} - 空位 {self.order + 1}"
 
 
 class TestCase(models.Model):
@@ -232,10 +279,12 @@ class TestCase(models.Model):
     practice = models.ForeignKey(Practice, on_delete=models.CASCADE, related_name='test_cases', verbose_name='所属练习')
     input_data = models.JSONField(verbose_name='输入数据')
     expected_output = models.JSONField(verbose_name='期望输出')
+    order = models.IntegerField(default=0, verbose_name='测试用例顺序')
     
     class Meta:
         verbose_name = '测试用例'
         verbose_name_plural = '测试用例'
+        ordering = ['order']
     
     def __str__(self):
-        return f"{self.practice} - 测试用例"
+        return f"{self.practice.title} - 测试用例 {self.order + 1}"

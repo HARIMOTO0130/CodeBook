@@ -146,6 +146,31 @@ import { useRouter, useRoute } from 'vue-router'
 import * as monaco from 'monaco-editor'
 import { getSupportedLanguages, getCodeTemplate } from '../api/codeSandbox'
 
+// 配置Monaco Environment以使用正确版本的worker
+import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
+import JsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker'
+import CssWorker from 'monaco-editor/esm/vs/language/css/css.worker?worker'
+import HtmlWorker from 'monaco-editor/esm/vs/language/html/html.worker?worker'
+import TsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker'
+
+window.MonacoEnvironment = {
+  getWorker(_, label) {
+    if (label === 'json') {
+      return new JsonWorker()
+    }
+    if (label === 'css' || label === 'scss' || label === 'less') {
+      return new CssWorker()
+    }
+    if (label === 'html' || label === 'handlebars' || label === 'razor') {
+      return new HtmlWorker()
+    }
+    if (label === 'typescript' || label === 'javascript') {
+      return new TsWorker()
+    }
+    return new EditorWorker()
+  }
+}
+
 export default {
   name: 'FullCodeView',
   setup() {
@@ -212,26 +237,6 @@ export default {
     // 初始化Monaco编辑器
     const initMonacoEditor = async () => {
       if (!monacoContainer.value) return
-      
-      // 配置Monaco Environment
-      window.MonacoEnvironment = {
-        getWorkerUrl: function (moduleId, label) {
-          const getCDNUrl = (filename) => {
-            return `https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/${filename}`;
-          };
-          
-          if (label === 'json') {
-            return getCDNUrl('vs/language/json/json.worker.js');
-          } else if (label === 'css') {
-            return getCDNUrl('vs/language/css/css.worker.js');
-          } else if (label === 'html') {
-            return getCDNUrl('vs/language/html/html.worker.js');
-          } else if (label === 'typescript' || label === 'javascript') {
-            return getCDNUrl('vs/language/typescript/ts.worker.js');
-          }
-          return getCDNUrl('vs/editor/editor.worker.js');
-        }
-      };
       
       // 获取初始代码模板
       let initialCode = '';

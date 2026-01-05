@@ -110,6 +110,15 @@ async function httpPost(path, body, requireAuth = false, method = 'POST') {
   return res.json().catch(() => ({}));
 }
 
+// 添加缺失的httpDelete和httpPut函数
+export async function httpDelete(path, requireAuth = false) {
+  return httpPost(path, {}, requireAuth, 'DELETE');
+}
+
+export async function httpPut(path, body, requireAuth = false) {
+  return httpPost(path, body, requireAuth, 'PUT');
+}
+
 async function httpPostForm(path, formData, requireAuth = false) {
   const fullUrl = `${API_BASE_URL}${path}`;
   console.log(`[HTTP POST_FORM] 请求: ${fullUrl}`);
@@ -358,7 +367,8 @@ export const api = {
               description: chapter.description || '',
               status: 'notStarted',
               difficulty: 3,
-              lastLearnTime: null
+              lastLearnTime: null,
+              has_practice: chapter.has_practice || false
             });
           }
         }
@@ -378,7 +388,8 @@ export const api = {
               description: chapterData.description,
               status: 'notStarted',
               difficulty: 3,
-              lastLearnTime: null
+              lastLearnTime: null,
+              has_practice: chapterData.has_practice || false
             });
           }
         }
@@ -415,6 +426,30 @@ export const api = {
       console.error('获取章节内容失败:', error);
       console.error('错误详情:', error.message, '状态码:', error.response?.status);
       console.error('请求URL:', `${API_BASE_URL}/books/chapters/${chapterId}/`);
+      throw error;
+    }
+  },
+  
+  async getChapterPractice(chapterId) {
+    try {
+      console.log(`获取章节练习题: chapterId=${chapterId}`);
+      const response = await httpGet(`/books/chapters/${chapterId}/practice/`);
+      console.log('章节练习题API响应:', response);
+      return response;
+    } catch (error) {
+      console.error('获取章节练习题失败:', error);
+      throw error;
+    }
+  },
+  
+  async submitChapterPractice(chapterId, answerData) {
+    try {
+      console.log(`提交章节练习题答案: chapterId=${chapterId}`, answerData);
+      const response = await httpPost(`/books/chapters/${chapterId}/practice/submit/`, answerData, true);
+      console.log('提交练习题API响应:', response);
+      return response;
+    } catch (error) {
+      console.error('提交练习题答案失败:', error);
       throw error;
     }
   },
@@ -460,7 +495,7 @@ export const api = {
   async getPractices() {
     try {
       console.log('获取练习题列表');
-      const response = await httpGet('/learning/practices/', true);
+      const response = await httpGet('/books/chapters/practices-by-book/', true);
       console.log('练习题API响应:', response);
       return response;
     } catch (error) {
@@ -484,22 +519,10 @@ export const api = {
   },
   async getHeatmapData() {
     return httpGet('/learning/heatmap/', true);
-  }
-  ,
+  },
   async executeCode({ language, code, input = '' }) {
     // 正确的API路径是/learning/execute/
     return httpPost('/learning/execute/', { language, code, input }, true);
-  }
-  ,
-  async getPractices() {
-    // 尝试获取所有练习题
-    try {
-      // 使用学习模块下的练习题API路径
-      return httpGet('/learning/practices/', true);
-    } catch (error) {
-      console.error('获取练习题失败:', error);
-      throw error;
-    }
   },
   
   async getWrongQuestions() {
@@ -708,5 +731,56 @@ export const api = {
       }
       reader.readAsDataURL(file)
     })
+  },
+  
+  // 笔记相关API
+  async getNotes() {
+    return httpGet('/learning/notes/', true);
+  },
+  
+  async getNoteTags() {
+    return httpGet('/learning/notes/tags/', true);
+  },
+  
+  async createNote(noteData) {
+    return httpPost('/learning/notes/', noteData, true);
+  },
+  
+  async updateNote(noteId, noteData) {
+    return httpPut(`/learning/notes/${noteId}/`, noteData, true);
+  },
+  
+  async deleteNote(noteId) {
+    return httpDelete(`/learning/notes/${noteId}/`, true);
+  },
+  
+  async toggleNoteFavorite(noteId) {
+    return httpPost(`/learning/notes/${noteId}/toggle_favorite/`, {}, true);
+  },
+  
+  async createNoteTag(tagData) {
+    return httpPost('/learning/notes/create_tag/', tagData, true);
+  },
+  
+  async addNoteTag(noteId, tagId) {
+    return httpPost(`/learning/notes/${noteId}/add_tag/`, { tag_id: tagId }, true);
+  },
+  
+  async removeNoteTag(noteId, tagId) {
+    return httpPost(`/learning/notes/${noteId}/remove_tag/`, { tag_id: tagId }, true);
+  },
+  
+  async getNoteVersions(noteId) {
+    return httpGet(`/learning/notes/${noteId}/versions/`, true);
+  },
+  
+  async restoreNoteVersion(noteId, versionId) {
+    return httpPost(`/learning/notes/${noteId}/restore_version/`, { version_id: versionId }, true);
+  },
+  
+  async addNoteAttachment(noteId, file) {
+    const formData = new FormData();
+    formData.append('files', file);
+    return httpPostForm(`/learning/notes/${noteId}/add_attachment/`, formData, true);
   }
 };

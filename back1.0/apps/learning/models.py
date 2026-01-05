@@ -259,16 +259,121 @@ class Note(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notes', verbose_name='用户')
     title = models.CharField(max_length=255, verbose_name='笔记标题')
     content = models.TextField(verbose_name='笔记内容')
+    
+    # 关联字段
+    book = models.ForeignKey('books.Book', on_delete=models.SET_NULL, null=True, blank=True, related_name='notes', verbose_name='关联教材')
+    chapter = models.ForeignKey('books.Chapter', on_delete=models.SET_NULL, null=True, blank=True, related_name='notes', verbose_name='关联章节')
+    position = models.TextField(blank=True, null=True, verbose_name='位置信息（JSON格式）')
+    
+    # 状态字段
+    is_favorite = models.BooleanField(default=False, verbose_name='是否收藏')
+    is_public = models.BooleanField(default=False, verbose_name='是否公开')
+    view_count = models.IntegerField(default=0, verbose_name='查看次数')
+    
+    # 时间字段
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
     updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
+    last_reviewed_at = models.DateTimeField(null=True, blank=True, verbose_name='最后复习时间')
     
     class Meta:
         verbose_name = '笔记'
         verbose_name_plural = '笔记'
         ordering = ['-updated_at']
+        indexes = [
+            models.Index(fields=['user', '-updated_at']),
+            models.Index(fields=['book', 'chapter']),
+            models.Index(fields=['is_favorite']),
+        ]
     
     def __str__(self):
         return f"{self.user.username} - {self.title}"
+
+
+class NoteTag(models.Model):
+    """笔记标签"""
+    id = models.AutoField(primary_key=True)
+    name = models.CharField(max_length=50, verbose_name='标签名称')
+    color = models.CharField(max_length=7, default='#409EFF', verbose_name='标签颜色')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='note_tags', verbose_name='创建用户')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
+    
+    class Meta:
+        verbose_name = '笔记标签'
+        verbose_name_plural = '笔记标签'
+        unique_together = ('user', 'name')
+    
+    def __str__(self):
+        return f"{self.user.username} - {self.name}"
+
+
+class NoteTagRelation(models.Model):
+    """笔记标签关联"""
+    note = models.ForeignKey(Note, on_delete=models.CASCADE, related_name='tag_relations')
+    tag = models.ForeignKey(NoteTag, on_delete=models.CASCADE, related_name='note_relations')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
+    
+    class Meta:
+        verbose_name = '笔记标签关联'
+        verbose_name_plural = '笔记标签关联'
+        unique_together = ('note', 'tag')
+    
+    def __str__(self):
+        return f"{self.note.title} - {self.tag.name}"
+
+
+class NoteAttachment(models.Model):
+    """笔记附件"""
+    id = models.AutoField(primary_key=True)
+    note = models.ForeignKey(Note, on_delete=models.CASCADE, related_name='attachments', verbose_name='笔记')
+    file = models.FileField(upload_to='note_attachments/%Y/%m/', verbose_name='附件文件')
+    file_name = models.CharField(max_length=255, verbose_name='文件名')
+    file_size = models.IntegerField(verbose_name='文件大小（字节）')
+    file_type = models.CharField(max_length=50, verbose_name='文件类型')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='上传时间')
+    
+    class Meta:
+        verbose_name = '笔记附件'
+        verbose_name_plural = '笔记附件'
+    
+    def __str__(self):
+        return f"{self.note.title} - {self.file_name}"
+
+
+class NoteVersion(models.Model):
+    """笔记版本历史"""
+    id = models.AutoField(primary_key=True)
+    note = models.ForeignKey(Note, on_delete=models.CASCADE, related_name='versions', verbose_name='笔记')
+    title = models.CharField(max_length=255, verbose_name='标题')
+    content = models.TextField(verbose_name='内容')
+    version_number = models.IntegerField(verbose_name='版本号')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
+    
+    class Meta:
+        verbose_name = '笔记版本历史'
+        verbose_name_plural = '笔记版本历史'
+        ordering = ['-version_number']
+    
+    def __str__(self):
+        return f"{self.note.title} - v{self.version_number}"
+
+
+class NoteShare(models.Model):
+    """笔记分享"""
+    id = models.AutoField(primary_key=True)
+    note = models.ForeignKey(Note, on_delete=models.CASCADE, related_name='shares', verbose_name='笔记')
+    share_code = models.CharField(max_length=32, unique=True, verbose_name='分享码')
+    shared_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='shared_notes', verbose_name='分享者')
+    shared_to = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True, related_name='received_notes', verbose_name='接收者')
+    expires_at = models.DateTimeField(null=True, blank=True, verbose_name='过期时间')
+    view_count = models.IntegerField(default=0, verbose_name='查看次数')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
+    
+    class Meta:
+        verbose_name = '笔记分享'
+        verbose_name_plural = '笔记分享'
+    
+    def __str__(self):
+        return f"{self.note.title} - {self.share_code}"
 
 
 class JupyterDocument(models.Model):

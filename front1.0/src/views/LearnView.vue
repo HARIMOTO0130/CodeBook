@@ -79,7 +79,7 @@
           </div>
           
           <!-- 章节内容显示 -->
-          <div v-else class="content-preview">
+          <div v-else class="content-preview" ref="contentRef">
             <!-- 移除重复的标题，只保留描述 -->
             <p class="section-description">{{ currentChapterContent?.description || currentSection.description || '本章内容' }}</p>
             
@@ -95,6 +95,7 @@
                   :language="codeLanguage"
                   :bookId="bookId?.toString()"
                   :chapterId="currentSection?.id?.toString()"
+                  @text-selected="handleJupyterTextSelection"
                 ></JupyterNotebook>
               </div>
               <!-- 如果都没有内容，显示提示信息 -->
@@ -109,6 +110,26 @@
               <div class="loading-content">
                 <p>正在加载章节内容...</p>
               </div>
+            </div>
+          </div>
+          
+          <!-- 右键菜单 -->
+          <div 
+            v-if="showContextMenu" 
+            class="context-menu" 
+            :style="{
+              left: `${contextMenuPos.x}px`,
+              top: `${contextMenuPos.y}px`
+            }"
+          >
+            <div class="menu-item" @click="handleAddHighlight" v-if="!isHighlighted">
+              💡 添加高亮
+            </div>
+            <div class="menu-item" @click="handleRemoveHighlight" v-else>
+              ❌ 取消高亮
+            </div>
+            <div class="menu-item" @click="handleCreateNote">
+              📝 创建笔记
             </div>
           </div>
             
@@ -137,27 +158,85 @@
           <button class="close-btn" @click="showPractice = false">×</button>
         </div>
         <div class="practice-content">
-          <div class="question-content">
-            <h4>{{ currentSection?.title }} - 练习题</h4>
-            <p v-if="currentChapterContent?.practice_questions">{{ currentChapterContent.practice_questions }}</p>
-            <p v-else>以下哪个不是JavaScript的基本数据类型？</p>
-            <div class="options">
-              <label class="option-item">
-                <input type="radio" name="question1" value="A"> A. String
-              </label>
-              <label class="option-item">
-                <input type="radio" name="question1" value="B"> B. Number
-              </label>
-              <label class="option-item">
-                <input type="radio" name="question1" value="C"> C. Object
-              </label>
-              <label class="option-item">
-                <input type="radio" name="question1" value="D"> D. Boolean
+          <div v-if="loadingPractice" class="loading-content">
+            <p>正在加载练习题...</p>
+          </div>
+          <div v-else-if="practiceData" class="question-content">
+            <div class="practice-info">
+              <span class="practice-type">{{ getQuestionTypeText(practiceData.question_type) }}</span>
+              <span class="practice-difficulty">{{ getDifficultyText(practiceData.difficulty) }}</span>
+            </div>
+            <h4>{{ practiceData.title }}</h4>
+            <p v-if="practiceData.description" class="practice-description">{{ practiceData.description }}</p>
+            <p class="practice-question">{{ practiceData.question }}</p>
+            
+            <!-- 选择题 -->
+            <div v-if="practiceData.question_type === 'choice'" class="options">
+              <label v-for="option in practiceData.choice_options" :key="option.id" class="option-item">
+                <input type="radio" name="practice_option" :value="option.id" v-model="selectedOption">
+                <span class="option-content">{{ option.content }}</span>
               </label>
             </div>
+            
+            <!-- 填空题 -->
+            <div v-else-if="practiceData.question_type === 'fill'" class="fill-blanks">
+              <div v-for="blank in practiceData.fill_blanks" :key="blank.id" class="blank-item">
+                <label class="blank-label">{{ blank.prompt }}</label>
+                <input 
+                  type="text" 
+                  class="blank-input" 
+                  :placeholder="blank.placeholder || '请输入答案'" 
+                  v-model="blankAnswers[blank.id]"
+                >
+              </div>
+            </div>
+            
+            <!-- 代码补全题 -->
+            <div v-else-if="practiceData.question_type === 'code_completion'" class="code-completion">
+              <div class="code-template">
+                <pre><code>{{ practiceData.code_template }}</code></pre>
+              </div>
+              <textarea 
+                class="code-input" 
+                v-model="userCode" 
+                :placeholder="'请补全代码...'"
+                rows="10"
+              ></textarea>
+            </div>
+            
+            <!-- 编程题 -->
+            <div v-else-if="practiceData.question_type === 'programming'" class="programming">
+              <div v-if="practiceData.code_template" class="code-template">
+                <pre><code>{{ practiceData.code_template }}</code></pre>
+              </div>
+              <textarea 
+                class="code-input" 
+                v-model="userCode" 
+                :placeholder="'请编写代码...'"
+                rows="15"
+              ></textarea>
+              <div v-if="practiceData.test_cases && practiceData.test_cases.length > 0" class="test-cases">
+                <h5>测试用例</h5>
+                <div v-for="(testCase, index) in practiceData.test_cases" :key="testCase.id" class="test-case">
+                  <span class="test-case-label">用例 {{ index + 1 }}:</span>
+                  <span class="test-case-input">输入: {{ JSON.stringify(testCase.input_data) }}</span>
+                  <span class="test-case-output">期望输出: {{ JSON.stringify(testCase.expected_output) }}</span>
+                </div>
+              </div>
+            </div>
+            
+            <div v-if="submitResult" class="submit-result" :class="{ success: submitResult.success, error: !submitResult.success }">
+              <p>{{ submitResult.message }}</p>
+              <div v-if="submitResult.details" class="result-details">
+                <pre>{{ JSON.stringify(submitResult.details, null, 2) }}</pre>
+              </div>
+            </div>
+          </div>
+          <div v-else class="no-practice">
+            <p>该章节暂无练习题</p>
           </div>
           <div class="practice-actions">
-            <button class="btn" @click="submitAnswer">提交答案</button>
+            <button class="btn" @click="submitAnswer" :disabled="!canSubmit">提交答案</button>
           </div>
         </div>
       </div>
@@ -226,7 +305,7 @@
 </template>
 
 <script>
-import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, onUnmounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, API_BASE_URL } from '../api/api.js'
 import JupyterNotebook from '../components/JupyterNotebook.vue'
@@ -251,6 +330,15 @@ export default {
     const renderedContent = ref('') // 存储渲染后的HTML内容
     const showVideo = ref(false)
     const showPractice = ref(false)
+    
+    // 练习题相关数据
+    const practiceData = ref(null)
+    const loadingPractice = ref(false)
+    const selectedOption = ref(null)
+    const blankAnswers = ref({})
+    const userCode = ref('')
+    const submitResult = ref(null)
+    
     const videoSpeed = ref('1')
     const showSubtitles = ref(true)
     const codeLanguage = ref('JavaScript')
@@ -266,6 +354,15 @@ export default {
     const selectedTerm = ref(null)
     const termTooltipStyle = ref({})
     // AI助手相关功能已移至App.vue中
+    
+    // 笔记高亮功能相关数据
+    const selectedText = ref('')
+    const showContextMenu = ref(false)
+    const contextMenuPos = ref({ x: 0, y: 0 })
+    const highlights = ref([])
+    const contentRef = ref(null)
+    const selectionRange = ref(null)
+    const isHighlighted = ref(false)
     
     // 打开代码沙盒
     const openCodeSandbox = () => {
@@ -582,11 +679,260 @@ export default {
       router.push('/fullcode')
     }
     
-    // 提交答案
-    const submitAnswer = () => {
-      alert('答案已提交！')
-      showPractice.value = false
+    // 保存高亮
+    const saveHighlight = async () => {
+      if (!selectedText.value || !currentSection.value || !selectionRange.value) return
+      
+      try {
+        // 应用高亮到DOM
+        const highlightElement = document.createElement('span')
+        highlightElement.className = 'highlight'
+        highlightElement.dataset.highlightId = Date.now().toString()
+        highlightElement.style.backgroundColor = 'rgba(255, 255, 0, 0.3)'
+        
+        // 复制范围以避免修改原始选择
+        const range = selectionRange.value.cloneRange()
+        range.surroundContents(highlightElement)
+        
+        // 保存高亮数据
+        const highlight = {
+          id: highlightElement.dataset.highlightId,
+          text: selectedText.value,
+          book: bookId.value,
+          chapter: currentSection.value.id,
+          content_location: 'content',
+          created_at: new Date().toISOString(),
+          element: highlightElement
+        }
+        
+        // 添加到本地高亮列表
+        highlights.value.push(highlight)
+        
+        // 调用API保存高亮（需要实现）
+        // await api.saveHighlight(highlight)
+        
+        selectedText.value = ''
+        selectionRange.value = null
+      } catch (error) {
+        console.error('保存高亮失败:', error)
+      }
     }
+    
+    // 从高亮创建笔记
+    const createNoteFromHighlight = async () => {
+      if (!selectedText.value || !currentSection.value) return
+      
+      try {
+        const note = {
+          title: `来自《${book.value?.title || '未知书籍'}》的笔记`,
+          content: `<blockquote>${selectedText.value}</blockquote>\n\n在章节：${currentSection.value.title}`,
+          book: bookId.value,
+          chapter: currentSection.value.id
+        }
+        
+        console.log('从高亮创建笔记，发送数据:', note)
+        const response = await api.createNote(note)
+        console.log('从高亮创建笔记成功，返回数据:', response)
+        
+        selectedText.value = ''
+        showContextMenu.value = false
+        
+        const event = new CustomEvent('open-notes-drawer', { detail: { noteId: response.id } })
+        window.dispatchEvent(event)
+      } catch (error) {
+        console.error('创建笔记失败:', error)
+        console.error('错误详情:', error.response?.data || error.message)
+        alert(`创建笔记失败: ${error.response?.data?.detail || error.message || '未知错误，请重试'}`)
+      }
+    }
+    
+    // 处理来自JupyterNotebook组件的文本选中事件
+    const handleJupyterTextSelection = (eventData) => {
+      const { text, rect } = eventData
+      
+      if (text) {
+        selectedText.value = text
+      } else {
+        selectedText.value = ''
+        selectionRange.value = null
+      }
+    }
+    
+    // 提交答案
+    const submitAnswer = async () => {
+      if (!practiceData.value || !currentSection.value) return
+      
+      try {
+        submitResult.value = null
+        
+        let answerData = {}
+        
+        // 根据题型准备答案数据
+        switch (practiceData.value.question_type) {
+          case 'choice':
+            if (!selectedOption.value) {
+              submitResult.value = {
+                success: false,
+                message: '请选择一个选项'
+              }
+              return
+            }
+            answerData = {
+              option_id: selectedOption.value
+            }
+            break
+          
+          case 'fill':
+            if (Object.keys(blankAnswers.value).length === 0) {
+              submitResult.value = {
+                success: false,
+                message: '请填写所有空格'
+              }
+              return
+            }
+            answerData = {
+              answers: blankAnswers.value
+            }
+            break
+          
+          case 'code_completion':
+          case 'programming':
+            if (!userCode.value.trim()) {
+              submitResult.value = {
+                success: false,
+                message: '请编写代码'
+              }
+              return
+            }
+            answerData = {
+              code: userCode.value,
+              language: practiceData.value.language
+            }
+            break
+        }
+        
+        // 提交答案到后端
+        const response = await api.submitChapterPractice(currentSection.value.id, answerData)
+        
+        // 处理响应
+        if (response.is_correct !== undefined) {
+          // 选择题或填空题的直接结果
+          submitResult.value = {
+            success: response.is_correct,
+            message: response.is_correct ? '🎉 恭喜你，答案正确！' : '❌ 答案不正确，请再试一次',
+            details: response
+          }
+        } else if (response.test_results) {
+          // 编程题的测试结果
+          const passedCount = response.test_results.filter(t => t.passed).length
+          const totalCount = response.test_results.length
+          
+          submitResult.value = {
+            success: passedCount === totalCount,
+            message: passedCount === totalCount 
+              ? '🎉 所有测试用例都通过了！' 
+              : `⚠️ 通过了 ${passedCount}/${totalCount} 个测试用例`,
+            details: response
+          }
+        } else if (response.message) {
+          // 其他类型的响应
+          submitResult.value = {
+            success: true,
+            message: response.message,
+            details: response
+          }
+        } else {
+          submitResult.value = {
+            success: true,
+            message: '答案已提交',
+            details: response
+          }
+        }
+        
+      } catch (error) {
+        console.error('提交答案失败:', error)
+        submitResult.value = {
+          success: false,
+          message: '提交失败：' + (error.message || '未知错误'),
+          details: null
+        }
+      }
+    }
+    
+    // 加载练习题数据
+    const loadPractice = async () => {
+      if (!currentSection.value) return
+      
+      try {
+        loadingPractice.value = true
+        submitResult.value = null
+        selectedOption.value = null
+        blankAnswers.value = {}
+        userCode.value = ''
+        
+        const data = await api.getChapterPractice(currentSection.value.id)
+        practiceData.value = data
+        
+        // 如果是代码补全题或编程题，初始化用户代码为模板
+        if (data.code_template && (data.question_type === 'code_completion' || data.question_type === 'programming')) {
+          userCode.value = data.code_template
+        }
+        
+      } catch (error) {
+        console.error('加载练习题失败:', error)
+        practiceData.value = null
+      } finally {
+        loadingPractice.value = false
+      }
+    }
+    
+    // 获取题型文本
+    const getQuestionTypeText = (type) => {
+      const typeMap = {
+        'choice': '选择题',
+        'fill': '填空题',
+        'code_completion': '代码补全题',
+        'programming': '编程题'
+      }
+      return typeMap[type] || '未知题型'
+    }
+    
+    // 获取难度文本
+    const getDifficultyText = (difficulty) => {
+      const difficultyMap = {
+        1: '简单',
+        2: '中等',
+        3: '困难'
+      }
+      return difficultyMap[difficulty] || '未知难度'
+    }
+    
+    // 计算是否可以提交
+    const canSubmit = computed(() => {
+      if (!practiceData.value) return false
+      
+      switch (practiceData.value.question_type) {
+        case 'choice':
+          return selectedOption.value !== null
+        case 'fill':
+          return Object.keys(blankAnswers.value).length > 0
+        case 'code_completion':
+        case 'programming':
+          return userCode.value.trim().length > 0
+        default:
+          return false
+      }
+    })
+    
+    // 监听showPractice变化，自动加载练习题数据
+    watch(showPractice, (newVal) => {
+      if (newVal) {
+        loadPractice()
+      } else {
+        practiceData.value = null
+        submitResult.value = null
+      }
+    })
     
     // 获取输出样式类
     const getOutputClass = (line) => {
@@ -596,8 +942,115 @@ export default {
       return ''
     }
     
+    // 定义点击外部关闭菜单的事件处理函数
+    const handleClickOutside = (event) => {
+      if (showContextMenu.value && !event.target.closest('.context-menu')) {
+        showContextMenu.value = false
+      }
+    }
+    
+    // 处理右键菜单事件
+    const handleContextMenu = (event) => {
+      const selection = window.getSelection()
+      const text = selection.toString().trim()
+      
+      if (text && selection.rangeCount > 0) {
+        event.preventDefault()
+        selectedText.value = text
+        selectionRange.value = selection.getRangeAt(0).cloneRange()
+        
+        // 检查选中的文本是否已经高亮
+        const range = selection.getRangeAt(0)
+        const startContainer = range.startContainer
+        const endContainer = range.endContainer
+        
+        // 检查选区是否在高亮元素内
+        let parentElement = startContainer.nodeType === Node.TEXT_NODE ? startContainer.parentElement : startContainer
+        isHighlighted.value = parentElement.classList && parentElement.classList.contains('highlight')
+        
+        // 显示右键菜单
+        contextMenuPos.value = {
+          x: event.clientX,
+          y: event.clientY
+        }
+        showContextMenu.value = true
+      }
+    }
+    
+    // 处理添加高亮
+    const handleAddHighlight = async () => {
+      await saveHighlight()
+      showContextMenu.value = false
+    }
+    
+    // 处理创建笔记
+    const handleCreateNote = async () => {
+      await createNoteFromHighlight()
+      showContextMenu.value = false
+    }
+    
+    // 处理取消高亮
+    const handleRemoveHighlight = async () => {
+      if (!selectionRange.value) return
+      
+      try {
+        const range = selectionRange.value
+        const startContainer = range.startContainer
+        const endContainer = range.endContainer
+        
+        // 找到高亮元素
+        let highlightElement = startContainer.nodeType === Node.TEXT_NODE ? startContainer.parentElement : startContainer
+        
+        // 如果是高亮元素，移除高亮
+        if (highlightElement.classList && highlightElement.classList.contains('highlight')) {
+          // 创建文档片段来移除高亮元素但保留内容
+          const parent = highlightElement.parentNode
+          while (highlightElement.firstChild) {
+            parent.insertBefore(highlightElement.firstChild, highlightElement)
+          }
+          parent.removeChild(highlightElement)
+          
+          // 从高亮列表中移除
+          const highlightId = highlightElement.dataset.highlightId
+          if (highlightId) {
+            highlights.value = highlights.value.filter(h => h.id !== highlightId)
+          }
+        }
+        
+        showContextMenu.value = false
+        selectedText.value = ''
+        selectionRange.value = null
+        isHighlighted.value = false
+      } catch (error) {
+        console.error('取消高亮失败:', error)
+      }
+    }
+    
     onMounted(() => {
       loadContent()
+      
+      // 检查URL查询参数，如果存在openPractice参数，则自动打开练习题弹窗
+      if (route.query.openPractice === 'true') {
+        showPractice.value = true
+      }
+      
+      // 添加点击外部关闭菜单事件
+      document.addEventListener('click', handleClickOutside)
+      // 添加右键菜单事件监听
+      document.addEventListener('contextmenu', handleContextMenu)
+    })
+    
+    // 监听路由查询参数变化，当openPractice参数为true时打开练习题弹窗
+    watch(() => route.query.openPractice, (newVal) => {
+      if (newVal === 'true') {
+        showPractice.value = true
+      }
+    })
+    
+    onBeforeUnmount(() => {
+      // 移除事件监听
+      document.removeEventListener('click', handleClickOutside)
+      document.removeEventListener('contextmenu', handleContextMenu)
     })
     
     // 获取Jupyter内容的辅助函数
@@ -1141,7 +1594,30 @@ export default {
       getJupyterContent,
       submitAnswer,
       openCodeSandbox,
-      getAllSections
+      getAllSections,
+      // 练习题相关变量和函数
+      practiceData,
+      loadingPractice,
+      selectedOption,
+      blankAnswers,
+      userCode,
+      submitResult,
+      loadPractice,
+      getQuestionTypeText,
+      getDifficultyText,
+      canSubmit,
+      // 笔记高亮功能相关变量和函数
+      selectedText,
+      showContextMenu,
+      contextMenuPos,
+      isHighlighted,
+      saveHighlight,
+      createNoteFromHighlight,
+      handleAddHighlight,
+      handleCreateNote,
+      handleRemoveHighlight,
+      contentRef,
+      handleJupyterTextSelection
       // AI助手相关变量已移至App.vue中
     }
   }
@@ -1379,6 +1855,49 @@ export default {
     border-color: #409eff;
   }
   
+  /* 菜单项样式 */
+  .menu-item {
+    padding: 10px 15px;
+    cursor: pointer;
+    font-size: 14px;
+    color: #606266;
+    transition: all 0.3s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  
+  .menu-item:hover {
+    background-color: #ecf5ff;
+    color: #409eff;
+  }
+  
+  /* 高亮样式 */
+  .highlight {
+    background-color: rgba(255, 255, 0, 0.3);
+    border-radius: 2px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+  }
+  
+  .highlight:hover {
+    background-color: rgba(255, 255, 0, 0.5);
+  }
+  
+  /* 右键菜单样式 */
+  .context-menu {
+    position: fixed;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 10000;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid #e4e7ed;
+    min-width: 150px;
+  }
+  
   .btn.btn-primary:hover {
     background-color: #66b1ff;
     border-color: #66b1ff;
@@ -1478,6 +1997,210 @@ video {
     margin-top: 30px;
     display: flex;
     justify-content: center;
+  }
+  
+  /* 练习题样式 */
+  .practice-info {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+  }
+  
+  .practice-type,
+  .practice-difficulty {
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+  }
+  
+  .practice-type {
+    background: #ecf5ff;
+    color: #409EFF;
+  }
+  
+  .practice-difficulty {
+    background: #f0f9ff;
+    color: #67c23a;
+  }
+  
+  .practice-description {
+    color: #666;
+    margin-bottom: 15px;
+    line-height: 1.6;
+  }
+  
+  .practice-question {
+    color: #333;
+    font-size: 15px;
+    line-height: 1.8;
+    margin-bottom: 20px;
+  }
+  
+  .fill-blanks {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    margin-top: 20px;
+  }
+  
+  .blank-item {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .blank-label {
+    font-size: 14px;
+    color: #666;
+    font-weight: 500;
+  }
+  
+  .blank-input {
+    padding: 10px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+    transition: all 0.3s;
+  }
+  
+  .blank-input:focus {
+    outline: none;
+    border-color: #409EFF;
+    box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.1);
+  }
+  
+  .code-completion,
+  .programming {
+    margin-top: 20px;
+  }
+  
+  .code-template {
+    background: #f8f8f8;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    padding: 15px;
+    margin-bottom: 15px;
+  }
+  
+  .code-template pre {
+    margin: 0;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    color: #333;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+  
+  .code-input {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    resize: vertical;
+    transition: all 0.3s;
+  }
+  
+  .code-input:focus {
+    outline: none;
+    border-color: #409EFF;
+    box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.1);
+  }
+  
+  .test-cases {
+    margin-top: 20px;
+    padding: 15px;
+    background: #f9f9f9;
+    border-radius: 4px;
+    border: 1px solid #e0e0e0;
+  }
+  
+  .test-cases h5 {
+    margin: 0 0 15px 0;
+    font-size: 14px;
+    color: #333;
+    font-weight: 600;
+  }
+  
+  .test-case {
+    padding: 10px;
+    background: white;
+    border-radius: 4px;
+    margin-bottom: 10px;
+    border: 1px solid #e0e0e0;
+  }
+  
+  .test-case:last-child {
+    margin-bottom: 0;
+  }
+  
+  .test-case-label {
+    display: inline-block;
+    font-weight: 600;
+    color: #409EFF;
+    margin-right: 10px;
+  }
+  
+  .test-case-input,
+  .test-case-output {
+    display: block;
+    font-size: 13px;
+    color: #666;
+    margin: 5px 0;
+  }
+  
+  .submit-result {
+    margin-top: 20px;
+    padding: 15px;
+    border-radius: 4px;
+    animation: slideDown 0.3s ease;
+  }
+  
+  .submit-result.success {
+    background: #f0f9ff;
+    border: 1px solid #c2e7b0;
+    color: #67c23a;
+  }
+  
+  .submit-result.error {
+    background: #fef0f0;
+    border: 1px solid #fbc4c4;
+    color: #f56c6c;
+  }
+  
+  .submit-result p {
+    margin: 0 0 10px 0;
+    font-weight: 500;
+  }
+  
+  .result-details {
+    background: white;
+    padding: 10px;
+    border-radius: 4px;
+    border: 1px solid #e0e0e0;
+  }
+  
+  .result-details pre {
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+  
+  @keyframes slideDown {
+    from {
+      opacity: 0;
+      transform: translateY(-10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
   
   /* AI报错翻译抽屉 */

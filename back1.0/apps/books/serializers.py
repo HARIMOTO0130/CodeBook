@@ -1,27 +1,59 @@
 """书籍序列化器"""
 from rest_framework import serializers
-from .models import Book, Chapter, Practice, TestCase
+from .models import Book, Chapter, Practice, TestCase, PracticeChoiceOption, PracticeFillBlank
+
+
+class PracticeChoiceOptionSerializer(serializers.ModelSerializer):
+    """选择题选项序列化器"""
+    class Meta:
+        model = PracticeChoiceOption
+        fields = ('id', 'content', 'is_correct', 'order')
+
+
+class PracticeFillBlankSerializer(serializers.ModelSerializer):
+    """填空题空位序列化器"""
+    class Meta:
+        model = PracticeFillBlank
+        fields = ('id', 'prompt', 'placeholder', 'correct_answer', 'order')
 
 
 class TestCaseSerializer(serializers.ModelSerializer):
     """测试用例序列化器"""
     class Meta:
         model = TestCase
-        fields = ('input_data', 'expected_output')
+        fields = ('id', 'input_data', 'expected_output', 'order')
 
 
 class PracticeSerializer(serializers.ModelSerializer):
     """练习题序列化器"""
     test_cases = TestCaseSerializer(many=True, read_only=True)
+    choice_options = PracticeChoiceOptionSerializer(many=True, read_only=True)
+    fill_blanks = PracticeFillBlankSerializer(many=True, read_only=True)
     
     class Meta:
         model = Practice
-        fields = ('question', 'code_template', 'test_cases')
+        fields = ('id', 'chapter', 'title', 'description', 'questions', 'language', 'difficulty', 
+                  'order', 'created_at', 'updated_at', 'test_cases', 'choice_options', 'fill_blanks')
+        read_only_fields = ('created_at', 'updated_at')
+
+
+class PracticeDetailSerializer(serializers.ModelSerializer):
+    """练习题详情序列化器（用于单独获取练习题详情）"""
+    test_cases = TestCaseSerializer(many=True, read_only=True)
+    choice_options = PracticeChoiceOptionSerializer(many=True, read_only=True)
+    fill_blanks = PracticeFillBlankSerializer(many=True, read_only=True)
+    
+    class Meta:
+        model = Practice
+        fields = ('id', 'chapter', 'title', 'description', 'questions', 'language', 'difficulty', 
+                  'order', 'created_at', 'updated_at', 'test_cases', 'choice_options', 'fill_blanks')
+        read_only_fields = ('created_at', 'updated_at')
 
 
 class ChapterSerializer(serializers.ModelSerializer):
     """章节序列化器（兼容性保留）"""
     practice = PracticeSerializer(read_only=True)
+    has_practice = serializers.SerializerMethodField()
     # 添加merged_content字段
     merged_content = serializers.JSONField(default=dict, allow_null=True)
     # 添加层级关系字段
@@ -31,7 +63,10 @@ class ChapterSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Chapter
-        fields = ('id', 'title', 'type', 'duration', 'description', 'content', 'code', 'language', 'video_url', 'practice', 'merged_content', 'is_main_chapter', 'parent_chapter', 'sub_chapters')
+        fields = ('id', 'title', 'type', 'duration', 'description', 'content', 'code', 'language', 'video_url', 'practice', 'has_practice', 'merged_content', 'is_main_chapter', 'parent_chapter', 'sub_chapters')
+    
+    def get_has_practice(self, obj):
+        return hasattr(obj, 'practice') and obj.practice is not None
 
 
 class ChapterSummarySerializer(serializers.ModelSerializer):

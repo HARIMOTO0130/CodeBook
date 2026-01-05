@@ -383,14 +383,79 @@ export default {
     
     const nextQuestion = () => {
       if (currentIndex.value < totalQuestions.value - 1) {
+        // 保存当前题目的答案
+        saveCurrentAnswer()
         resetQuestionState()
         currentIndex.value++
         loadQuestionState()
       } else {
+        // 保存最后一题的答案
+        saveCurrentAnswer()
         // 完成所有题目
+        const result = {
+          score: calculateScore(),
+          answers: getAllAnswers()
+        }
         close()
-        emit('complete')
+        emit('complete', result)
       }
+    }
+    
+    // 保存当前题目的答案
+    const saveCurrentAnswer = () => {
+      const question = currentQuestion.value
+      const questionId = question.id || question.order || currentIndex.value + 1
+      
+      if (question.type === 'choice') {
+        question.selectedOption = selectedOptions.value.length > 0 ? selectedOptions.value[0] : null
+      } else if (question.type === 'fill') {
+        question.userAnswers = [...userAnswers.value]
+      } else if (question.type === 'codeCompletion') {
+        question.userCode = codeCompletionAnswer.value
+      } else if (question.type === 'programming') {
+        question.userCode = programmingAnswer.value
+      }
+    }
+    
+    // 计算得分
+    const calculateScore = () => {
+      let correctCount = 0
+      questions.value.forEach(q => {
+        if (q.type === 'choice') {
+          const correctAnswer = q.correctAnswer
+          const userAnswer = q.selectedOption
+          if (correctAnswer === userAnswer) {
+            correctCount++
+          }
+        } else if (q.type === 'fill') {
+          const blanks = q.blanks || []
+          const userAnswers = q.userAnswers || []
+          let allCorrect = true
+          blanks.forEach((blank, idx) => {
+            const userAnswer = userAnswers[idx] || ''
+            const correctAnswer = blank.correctAnswer || ''
+            if (userAnswer.toLowerCase() !== correctAnswer.toLowerCase()) {
+              allCorrect = false
+            }
+          })
+          if (allCorrect) {
+            correctCount++
+          }
+        }
+        // 代码题暂时不计分
+      })
+      return Math.round((correctCount / questions.value.length) * 100)
+    }
+    
+    // 获取所有答案
+    const getAllAnswers = () => {
+      return questions.value.map(q => ({
+        id: q.id || q.order,
+        type: q.type,
+        selectedOption: q.selectedOption,
+        userAnswers: q.userAnswers,
+        userCode: q.userCode
+      }))
     }
     
     // 重置当前题目的状态

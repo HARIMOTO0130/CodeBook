@@ -18,7 +18,7 @@ import sys
 from bs4 import BeautifulSoup
 from django.utils import timezone
 from apps.books.models import Book, Chapter
-from .models import LearningRecord, PracticeRecord, HeatmapData, WrongQuestion, RoadmapTemplate, RoadmapStage, UserLearningPath, UserPathStage, Note, Exercise, JupyterDocument, LearningStyle, KnowledgeMastery, LearningRecommendation, LearningPreference
+from .models import LearningRecord, PracticeRecord, HeatmapData, WrongQuestion, RoadmapTemplate, RoadmapStage, UserLearningPath, UserPathStage, Note, NoteTag, Exercise, JupyterDocument, LearningStyle, KnowledgeMastery, LearningRecommendation, LearningPreference
 from .serializers import (
     LearningRecordSerializer, 
     SaveProgressSerializer,
@@ -31,6 +31,12 @@ from .serializers import (
     CreateUserPathSerializer,
     UpdatePathProgressSerializer,
     NoteSerializer,
+    NoteListSerializer,
+    NoteCreateSerializer,
+    NoteUpdateSerializer,
+    NoteDetailSerializer,
+    NoteVersionSerializer,
+    NoteTagSerializer,
     JupyterDocumentSerializer,
     CreateJupyterDocumentSerializer,
     UpdateJupyterDocumentSerializer,
@@ -933,16 +939,48 @@ class UserLearningPathViewSet(viewsets.GenericViewSet, viewsets.mixins.ListModel
 class NoteViewSet(viewsets.ModelViewSet):
     """笔记视图集"""
     queryset = Note.objects.all()
-    serializer_class = NoteSerializer
     permission_classes = [IsAuthenticated]
+    filterset_fields = ['book', 'chapter', 'is_favorite', 'is_public']
+    search_fields = ['title', 'content']
+    ordering_fields = ['created_at', 'updated_at', 'view_count']
+    
+    def get_serializer_class(self):
+        if self.action == 'list':
+            return NoteListSerializer
+        elif self.action == 'create':
+            return NoteCreateSerializer
+        elif self.action == 'update' or self.action == 'partial_update':
+            return NoteUpdateSerializer
+        return NoteDetailSerializer
     
     def get_queryset(self):
-        # 用户只能查看自己的笔记
-        return Note.objects.filter(user=self.request.user).order_by('-updated_at')
+        queryset = Note.objects.filter(user=self.request.user)
+        
+        # 支持按标签筛选
+        tag_id = self.request.query_params.get('tag')
+        if tag_id:
+            queryset = queryset.filter(tag_relations__tag_id=tag_id)
+        
+        return queryset.select_related('book', 'chapter').prefetch_related('tag_relations__tag')
     
     def perform_create(self, serializer):
         # 创建时自动关联当前用户
+        print(f"创建笔记 - 请求数据: {self.request.data}")
+        print(f"创建笔记 - 验证后的数据: {serializer.validated_data}")
         serializer.save(user=self.request.user)
+    
+    def create(self, request, *args, **kwargs):
+        try:
+            print(f"收到创建笔记请求 - 数据: {request.data}")
+            response = super().create(request, *args, **kwargs)
+            print(f"创建笔记成功 - 响应: {response.data}")
+            return response
+        except Exception as e:
+            print(f"创建笔记失败 - 错误: {str(e)}")
+            print(f"创建笔记失败 - 错误类型: {type(e).__name__}")
+            if hasattr(e, 'detail'):
+                print(f"创建笔记失败 - 详细信息: {e.detail}")
+            raise
     
     def perform_update(self, serializer):
         # 更新时确保只能修改自己的笔记
@@ -958,6 +996,194 @@ class NoteViewSet(viewsets.ModelViewSet):
             from rest_framework import status
             raise status.HTTP_403_FORBIDDEN
         instance.delete()
+    
+    @action(detail=False, methods=['get'])
+    def search(self, request):
+        """全文搜索笔记"""
+        query = request.query_params.get('q', '')
+        if not query:
+            return Response({'error': '搜索关键词不能为空'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        results = self.get_queryset().filter(
+            models.Q(title__icontains=query) | models.Q(content__icontains=query)
+        )
+        
+        page = self.paginate_queryset(results)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        
+        serializer = self.get_serializer(results, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'])
+    def toggle_favorite(self, request, pk=None):
+        """切换收藏状态"""
+        note = self.get_object()
+        note.is_favorite = not note.is_favorite
+        note.save()
+        return Response({'is_favorite': note.is_favorite})
+    
+    @action(detail=True, methods=['get'])
+    def versions(self, request, pk=None):
+        """获取笔记版本历史"""
+        print(f"获取版本历史 - 笔记ID: {pk}")
+        print(f"获取版本历史 - 用户: {request.user}")
+        note = self.get_object()
+        print(f"获取版本历史 - 笔记对象: {note}")
+        print(f"获取版本历史 - 笔记用户: {note.user}")
+        versions = note.versions.all()[:10]  # 只返回最近10个版本
+        print(f"获取版本历史 - 版本数量: {len(versions)}")
+        serializer = NoteVersionSerializer(versions, many=True)
+        print(f"获取版本历史 - 序列化数据: {serializer.data}")
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'])
+    def restore_version(self, request, pk=None):
+        """恢复到指定版本"""
+        note = self.get_object()
+        version_id = request.data.get('version_id')
+        
+        try:
+            version = note.versions.get(id=version_id)
+            # 创建当前版本的备份
+            NoteVersion.objects.create(
+                note=note,
+                title=note.title,
+                content=note.content,
+                version_number=note.versions.count() + 1
+            )
+            # 恢复到指定版本
+            note.title = version.title
+            note.content = version.content
+            note.save()
+            
+            return Response({'message': '版本恢复成功'})
+        except NoteVersion.DoesNotExist:
+            return Response({'error': '版本不存在'}, status=status.HTTP_404_NOT_FOUND)
+    
+    @action(detail=True, methods=['post'])
+    def share(self, request, pk=None):
+        """分享笔记"""
+        note = self.get_object()
+        
+        # 生成分享码
+        import hashlib
+        import time
+        share_code = hashlib.md5(f"{note.id}-{time.time()}".encode()).hexdigest()
+        expires_at = request.data.get('expires_at')
+        
+        share = NoteShare.objects.create(
+            note=note,
+            share_code=share_code,
+            shared_by=request.user,
+            expires_at=expires_at
+        )
+        
+        return Response({
+            'share_code': share_code,
+            'share_url': f'/notes/shared/{share_code}',
+            'expires_at': expires_at
+        })
+    
+    @action(detail=False, methods=['get'])
+    def review_reminders(self, request):
+        """获取复习提醒"""
+        from datetime import timedelta
+        from django.utils import timezone
+        
+        # 根据艾宾浩斯遗忘曲线计算需要复习的笔记
+        notes = self.get_queryset().filter(
+            last_reviewed_at__lt=timezone.now() - timedelta(days=7)
+        ).order_by('last_reviewed_at')
+        
+        serializer = NoteListSerializer(notes, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'])
+    def mark_as_reviewed(self, request, pk=None):
+        """标记为已复习"""
+        note = self.get_object()
+        note.last_reviewed_at = timezone.now()
+        note.save()
+        return Response({'message': '已标记为已复习'})
+    
+    @action(detail=True, methods=['post'])
+    def add_attachment(self, request, pk=None):
+        """添加附件"""
+        note = self.get_object()
+        files = request.FILES.getlist('files')
+        
+        attachments = []
+        for file in files:
+            attachment = NoteAttachment.objects.create(
+                note=note,
+                file=file,
+                file_name=file.name,
+                file_size=file.size,
+                file_type=file.content_type
+            )
+            attachments.append(attachment)
+        
+        serializer = NoteAttachmentSerializer(attachments, many=True)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    
+    @action(detail=True, methods=['delete'])
+    def remove_attachment(self, request, pk=None):
+        """删除附件"""
+        note = self.get_object()
+        attachment_id = request.data.get('attachment_id')
+        
+        try:
+            attachment = note.attachments.get(id=attachment_id)
+            attachment.delete()
+            return Response({'message': '附件已删除'})
+        except NoteAttachment.DoesNotExist:
+            return Response({'error': '附件不存在'}, status=status.HTTP_404_NOT_FOUND)
+    
+    @action(detail=False, methods=['get'])
+    def tags(self, request):
+        """获取用户的所有标签"""
+        tags = NoteTag.objects.filter(user=request.user)
+        serializer = NoteTagSerializer(tags, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['post'])
+    def create_tag(self, request):
+        """创建标签"""
+        name = request.data.get('name')
+        color = request.data.get('color', '#409EFF')
+        
+        tag, created = NoteTag.objects.get_or_create(
+            user=request.user,
+            name=name,
+            defaults={'color': color}
+        )
+        
+        serializer = NoteTagSerializer(tag)
+        return Response(serializer.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+    
+    @action(detail=True, methods=['post'])
+    def add_tag(self, request, pk=None):
+        """为笔记添加标签"""
+        note = self.get_object()
+        tag_id = request.data.get('tag_id')
+        
+        try:
+            tag = NoteTag.objects.get(id=tag_id, user=request.user)
+            NoteTagRelation.objects.get_or_create(note=note, tag=tag)
+            return Response({'message': '标签已添加'})
+        except NoteTag.DoesNotExist:
+            return Response({'error': '标签不存在'}, status=status.HTTP_404_NOT_FOUND)
+    
+    @action(detail=True, methods=['post'])
+    def remove_tag(self, request, pk=None):
+        """移除笔记的标签"""
+        note = self.get_object()
+        tag_id = request.data.get('tag_id')
+        
+        NoteTagRelation.objects.filter(note=note, tag_id=tag_id).delete()
+        return Response({'message': '标签已移除'})
 
 
 class LearningRecommendationViewSet(viewsets.ModelViewSet):

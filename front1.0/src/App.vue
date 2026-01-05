@@ -62,7 +62,7 @@
       </div>
       <div class="drawer-content">
         <div v-if="activeTab === 'notes'" class="notes-content">
-          <NotesComponent />
+          <NotesComponent :note-id="targetNoteId" />
         </div>
         <div v-else class="wrong-questions-content">
           <WrongQuestionsComponent @review-question="handleReviewQuestion" />
@@ -160,6 +160,7 @@ export default {
   setup() {
     const notesOpen = ref(false)
     const activeTab = ref('notes')
+    const targetNoteId = ref(null)
     // 使用ref替代computed，避免频繁检查localStorage导致的页面抖动
     const isAuthed = ref(false)
     
@@ -180,6 +181,15 @@ export default {
 
     const toggleNotes = () => {
       notesOpen.value = !notesOpen.value
+    }
+
+    const handleOpenNotesDrawer = (event) => {
+      const noteId = event.detail?.noteId
+      if (noteId) {
+        targetNoteId.value = noteId
+      }
+      activeTab.value = 'notes'
+      notesOpen.value = true
     }
 
     const handleKeydown = (e) => {
@@ -613,12 +623,16 @@ export default {
       
       // 添加AI助手问题事件监听
       window.addEventListener('open-ai-assistant', handleOpenAIAssistant)
+      
+      // 添加打开笔记抽屉事件监听
+      window.addEventListener('open-notes-drawer', handleOpenNotesDrawer)
     })
 
     onUnmounted(() => {
       document.removeEventListener('keydown', handleKeydown)
       // 清理事件监听器
       window.removeEventListener('open-ai-assistant', handleOpenAIAssistant)
+      window.removeEventListener('open-notes-drawer', handleOpenNotesDrawer)
       window.removeEventListener('mousemove', handleDragMove)
       window.removeEventListener('mouseup', handleDragEnd)
       document.removeEventListener('mouseup', handleTextSelection)
@@ -629,6 +643,7 @@ export default {
     return {
       notesOpen,
       activeTab,
+      targetNoteId,
       toggleNotes,
       isAuthed,
       onLogout,

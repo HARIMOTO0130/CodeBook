@@ -116,10 +116,12 @@ CORS_ALLOWED_ORIGINS = [
     'http://localhost:5173',  # Vite default port
     'http://localhost:5174',  # 实际运行的端口
     'http://localhost:5175',  # 当前运行的端口
+    'http://localhost:5176',  # 新运行的端口
     'http://127.0.0.1:3000',
     'http://127.0.0.1:5173',
     'http://127.0.0.1:5174',
     'http://127.0.0.1:5175',
+    'http://127.0.0.1:5176',  # 新运行的端口
 ]
 CORS_ALLOW_CREDENTIALS = True
 

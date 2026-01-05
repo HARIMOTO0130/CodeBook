@@ -1,6 +1,6 @@
 """学习记录序列化器"""
 from rest_framework import serializers
-from .models import LearningRecord, PracticeRecord, HeatmapData, WrongQuestion, UserLearningPath, RoadmapTemplate, RoadmapStage, RoadmapBook, UserPathStage, Note, JupyterDocument, LearningStyle, KnowledgeMastery, LearningRecommendation, LearningPreference
+from .models import LearningRecord, PracticeRecord, HeatmapData, WrongQuestion, UserLearningPath, RoadmapTemplate, RoadmapStage, RoadmapBook, UserPathStage, Note, NoteTag, NoteAttachment, NoteVersion, NoteShare, JupyterDocument, LearningStyle, KnowledgeMastery, LearningRecommendation, LearningPreference
 
 
 class LearningRecordSerializer(serializers.ModelSerializer):
@@ -147,14 +147,209 @@ class WrongQuestionSerializer(serializers.ModelSerializer):
             return ''
 
 
+class NoteTagSerializer(serializers.ModelSerializer):
+    """笔记标签序列化器"""
+    created_at = serializers.DateTimeField(format='%Y-%m-%d %H:%M:%S')
+
+    class Meta:
+        model = NoteTag
+        fields = ('id', 'name', 'color', 'created_at')
+        read_only_fields = ('id', 'user', 'created_at')
+
+
+class NoteAttachmentSerializer(serializers.ModelSerializer):
+    """笔记附件序列化器"""
+    created_at = serializers.DateTimeField(format='%Y-%m-%d %H:%M:%S')
+
+    class Meta:
+        model = NoteAttachment
+        fields = ('id', 'file', 'file_name', 'file_size', 'file_type', 'created_at')
+        read_only_fields = ('id', 'note', 'created_at')
+
+
+class NoteVersionSerializer(serializers.ModelSerializer):
+    """笔记版本序列化器"""
+    created_at = serializers.DateTimeField(format='%Y-%m-%d %H:%M:%S')
+
+    class Meta:
+        model = NoteVersion
+        fields = ('id', 'title', 'content', 'version_number', 'created_at')
+        read_only_fields = ('id', 'note', 'created_at')
+
+
+class NoteShareSerializer(serializers.ModelSerializer):
+    """笔记分享序列化器"""
+    created_at = serializers.DateTimeField(format='%Y-%m-%d %H:%M:%S')
+    note_title = serializers.SerializerMethodField()
+
+    class Meta:
+        model = NoteShare
+        fields = ('id', 'share_code', 'note_title', 'expires_at', 'view_count', 'created_at')
+        read_only_fields = ('id', 'note', 'shared_by', 'created_at')
+
+    def get_note_title(self, obj):
+        return obj.note.title
+
+
+class NoteListSerializer(serializers.ModelSerializer):
+    """笔记列表序列化器"""
+    created_at = serializers.DateTimeField(format='%Y-%m-%d %H:%M:%S')
+    updated_at = serializers.DateTimeField(format='%Y-%m-%d %H:%M:%S')
+    tags = NoteTagSerializer(many=True, source='tag_relations__tag', read_only=True)
+    book_title = serializers.SerializerMethodField()
+    chapter_title = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Note
+        fields = ('id', 'title', 'content', 'is_favorite', 'is_public', 'view_count', 
+                  'created_at', 'updated_at', 'tags', 'book_title', 'chapter_title')
+        read_only_fields = ('id', 'user', 'created_at', 'updated_at')
+
+    def get_book_title(self, obj):
+        return obj.book.title if obj.book else ''
+
+    def get_chapter_title(self, obj):
+        return obj.chapter.title if obj.chapter else ''
+
+
+class NoteDetailSerializer(serializers.ModelSerializer):
+    """笔记详情序列化器"""
+    created_at = serializers.DateTimeField(format='%Y-%m-%d %H:%M:%S')
+    updated_at = serializers.DateTimeField(format='%Y-%m-%d %H:%M:%S')
+    tags = serializers.SerializerMethodField()
+    attachments = NoteAttachmentSerializer(many=True, read_only=True)
+    book_title = serializers.SerializerMethodField()
+    chapter_title = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Note
+        fields = ('id', 'title', 'content', 'is_favorite', 'is_public', 'view_count', 
+                  'created_at', 'updated_at', 'last_reviewed_at', 'book', 'chapter', 
+                  'position', 'tags', 'attachments', 'book_title', 'chapter_title')
+        read_only_fields = ('id', 'user', 'created_at', 'updated_at')
+
+    def get_book_title(self, obj):
+        return obj.book.title if obj.book else ''
+
+    def get_chapter_title(self, obj):
+        return obj.chapter.title if obj.chapter else ''
+
+    def get_tags(self, obj):
+        tag_relations = obj.tag_relations.select_related('tag').all()
+        return NoteTagSerializer([relation.tag for relation in tag_relations], many=True).data
+
+
+class NoteCreateSerializer(serializers.ModelSerializer):
+    """笔记创建序列化器"""
+    tags = serializers.ListField(child=serializers.CharField(max_length=50), write_only=True, required=False)
+    created_at = serializers.DateTimeField(format='%Y-%m-%d %H:%M:%S', read_only=True)
+    updated_at = serializers.DateTimeField(format='%Y-%m-%d %H:%M:%S', read_only=True)
+    tags_data = NoteTagSerializer(many=True, source='tag_relations__tag', read_only=True)
+
+    class Meta:
+        model = Note
+        fields = ('id', 'title', 'content', 'book', 'chapter', 'position', 'tags', 
+                  'is_favorite', 'is_public', 'view_count', 'created_at', 'updated_at', 'tags_data')
+        extra_kwargs = {
+            'content': {'allow_blank': True, 'default': ''}
+        }
+
+    def create(self, validated_data):
+        tags = validated_data.pop('tags', [])
+        note = Note.objects.create(**validated_data)
+        
+        # 创建版本历史
+        NoteVersion.objects.create(
+            note=note,
+            title=note.title,
+            content=note.content,
+            version_number=1
+        )
+        
+        # 处理标签
+        self._process_tags(note, tags)
+        
+        # 重新加载note以获取关联的标签数据
+        note.refresh_from_db()
+        
+        return note
+
+    def _process_tags(self, note, tag_names):
+        for tag_name in tag_names:
+            tag, created = NoteTag.objects.get_or_create(
+                user=note.user,
+                name=tag_name.strip()
+            )
+            NoteTagRelation.objects.get_or_create(
+                note=note,
+                tag=tag
+            )
+
+
+class NoteUpdateSerializer(serializers.ModelSerializer):
+    """笔记更新序列化器"""
+    tags = serializers.ListField(child=serializers.CharField(max_length=50), write_only=True, required=False)
+
+    class Meta:
+        model = Note
+        fields = ('title', 'content', 'is_favorite', 'is_public', 'tags')
+
+    def update(self, instance, validated_data):
+        tags = validated_data.pop('tags', None)
+        
+        # 检查内容是否真的发生了变化
+        content_changed = 'content' in validated_data and validated_data['content'] != instance.content
+        title_changed = 'title' in validated_data and validated_data['title'] != instance.title
+        
+        # 只在内容或标题发生变化时创建版本历史
+        if content_changed or title_changed:
+            current_version = instance.versions.count()
+            # 限制版本数量，最多保留最近20个版本
+            if current_version >= 20:
+                # 删除最旧的版本
+                oldest_version = instance.versions.order_by('version_number').first()
+                if oldest_version:
+                    oldest_version.delete()
+            
+            NoteVersion.objects.create(
+                note=instance,
+                title=instance.title,
+                content=instance.content,
+                version_number=current_version + 1
+            )
+        
+        # 更新笔记
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        
+        # 处理标签
+        if tags is not None:
+            # 清除现有标签关联
+            instance.tag_relations.all().delete()
+            # 添加新标签
+            for tag_name in tags:
+                tag, created = NoteTag.objects.get_or_create(
+                    user=instance.user,
+                    name=tag_name.strip()
+                )
+                NoteTagRelation.objects.get_or_create(
+                    note=instance,
+                    tag=tag
+                )
+        
+        return instance
+
+
 class NoteSerializer(serializers.ModelSerializer):
-    """笔记序列化器"""
+    """笔记默认序列化器"""
     created_at = serializers.DateTimeField(format='%Y-%m-%d %H:%M:%S')
     updated_at = serializers.DateTimeField(format='%Y-%m-%d %H:%M:%S')
 
     class Meta:
         model = Note
-        fields = ('id', 'title', 'content', 'created_at', 'updated_at')
+        fields = ('id', 'title', 'content', 'is_favorite', 'is_public', 'view_count', 
+                  'created_at', 'updated_at', 'book', 'chapter', 'position')
         read_only_fields = ('id', 'user', 'created_at', 'updated_at')
 
 
