@@ -9,6 +9,7 @@ const RecordsView = () => import('../views/RecordsView.vue')
 const SettingsView = () => import('../views/SettingsView.vue')
 const ToolKitView = () => import('../views/ToolKitView.vue')
 const LoginView = () => import('../views/LoginView.vue')
+const RegisterView = () => import('../views/RegisterView.vue')
 const LearningPathView = () => import('../views/LearningPathView.vue')
 const PracticeView = () => import('../views/PracticeView.vue')
 const JupyterNotebookView = () => import('../views/JupyterNotebookView.vue')
@@ -68,6 +69,12 @@ const routes = [
     name: 'Login',
     component: LoginView,
     meta: { title: '登录' }
+  },
+  {
+    path: '/register',
+    name: 'Register',
+    component: RegisterView,
+    meta: { title: '注册' }
   },
   {
     path: '/learning-paths',

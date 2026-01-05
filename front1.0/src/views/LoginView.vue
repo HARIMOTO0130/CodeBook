@@ -14,6 +14,9 @@
         <button type="submit" :disabled="loading">{{ loading ? '登录中...' : '登录' }}</button>
         <p v-if="error" style="color:red;">{{ error }}</p>
       </form>
+      <div class="register-link">
+        还没有账号？<router-link to="/register">立即注册</router-link>
+      </div>
     </div>
   </div>
 </template>
@@ -129,6 +132,19 @@ export default {
 .login-card button:disabled {
   background: #a0cfff;
   cursor: not-allowed;
+}
+.register-link {
+  margin-top: 1.5rem;
+  text-align: center;
+  font-size: 14px;
+  color: #666;
+}
+.register-link a {
+  color: #409EFF;
+  text-decoration: none;
+}
+.register-link a:hover {
+  text-decoration: underline;
 }
 </style>
 
