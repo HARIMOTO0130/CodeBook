@@ -131,6 +131,56 @@
               </div>
             </div>
             
+            <!-- 判断题 -->
+            <div v-else-if="currentQuestion.type === 'Judgment'" class="question-choice">
+              <div class="question-stem">
+                <h4>{{ currentQuestion.question }}</h4>
+                <div v-if="currentQuestion.description" class="question-description">
+                  {{ currentQuestion.description }}
+                </div>
+              </div>
+              
+              <div class="question-options">
+                <label
+                  v-for="(option, index) in currentQuestion.options"
+                  :key="index"
+                  class="option-item"
+                  :class="{
+                    'selected': selectedOptions.includes(index),
+                    'correct': showFeedback && isOptionCorrect(index),
+                    'incorrect': showFeedback && isOptionSelected(index) && !isOptionCorrect(index)
+                  }"
+                  @click="selectOption(index)"
+                >
+                  <div class="option-label">
+                    {{ index === 0 ? 'T' : 'F' }}.
+                  </div>
+                  <div class="option-content">
+                    {{ option.content }}
+                  </div>
+                  <div class="option-feedback" v-if="showFeedback">
+                    <span v-if="isOptionCorrect(index)" class="correct-icon">✅</span>
+                    <span v-else-if="isOptionSelected(index)" class="incorrect-icon">❌</span>
+                  </div>
+                </label>
+              </div>
+              
+              <!-- 即时反馈 -->
+              <div v-if="showFeedback" class="question-feedback">
+                <div v-if="isAnswerCorrect" class="feedback-correct">
+                  <div class="feedback-icon">🎉</div>
+                  <div class="feedback-text">回答正确！</div>
+                </div>
+                <div v-else class="feedback-incorrect">
+                  <div class="feedback-icon">😢</div>
+                  <div class="feedback-text">回答错误，请再试一次！</div>
+                </div>
+                <div v-if="currentQuestion.explanation" class="feedback-explanation">
+                  <strong>解析：</strong>{{ currentQuestion.explanation }}
+                </div>
+              </div>
+            </div>
+            
             <!-- 填空题 -->
             <div v-else-if="currentQuestion.type === 'fill'" class="question-fill">
               <div class="question-stem">

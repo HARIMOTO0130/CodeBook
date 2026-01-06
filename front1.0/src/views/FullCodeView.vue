@@ -109,7 +109,7 @@
     
     <!-- 轻量化工具包入口 -->
     <div class="toolkit-entry">
-      <router-link to="/toolkit" class="toolkit-btn">
+      <router-link to="/student/toolkit" class="toolkit-btn">
         🛠️ 前往轻量化工具包
       </router-link>
       <p class="toolkit-desc">无需编程基础，使用现成工具解决问题</p>

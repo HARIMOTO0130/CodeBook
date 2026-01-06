@@ -42,9 +42,9 @@ export async function httpGet(path, requireAuth = false) {
     try { localStorage.removeItem('token') } catch {};
     
     // 避免在登录页面上形成重定向循环
-    if (!window.location.pathname.startsWith('/login')) {
+    if (window.location.pathname !== '/') {
       const redirectUrl = encodeURIComponent(window.location.pathname + window.location.search);
-      window.location.href = `/login?redirect=${redirectUrl}`;
+      window.location.href = `/?redirect=${redirectUrl}`;
     }
     
     throw new Error(`AUTH ${res.status}`);
@@ -85,9 +85,9 @@ async function httpPost(path, body, requireAuth = false, method = 'POST') {
     try { localStorage.removeItem('token') } catch {};
     
     // 避免在登录页面上形成重定向循环
-    if (!window.location.pathname.startsWith('/login')) {
+    if (window.location.pathname !== '/') {
       const redirect = encodeURIComponent(window.location.pathname + window.location.search);
-      window.location.href = `/login?redirect=${redirect}`;
+      window.location.href = `/?redirect=${redirect}`;
     }
     
     throw new Error(`AUTH ${res.status}`);
@@ -138,12 +138,14 @@ async function httpPostForm(path, formData, requireAuth = false) {
     
     console.log(`[HTTP POST_FORM] 响应状态: ${res.status} ${res.statusText}`);
     
-    if (res.status === 401 || res.status === 403) {
-      try { localStorage.removeItem('token') } catch {}
-      const redirect = encodeURIComponent(window.location.pathname + window.location.search)
-      window.location.href = `/login?redirect=${redirect}`
-      throw new Error(`AUTH ${res.status}`)
-    }
+      if (res.status === 401 || res.status === 403) {
+        try { localStorage.removeItem('token') } catch {}
+        const redirect = encodeURIComponent(window.location.pathname + window.location.search)
+        if (window.location.pathname !== '/') {
+          window.location.href = `/?redirect=${redirect}`
+        }
+        throw new Error(`AUTH ${res.status}`)
+      }
     
     if (!res.ok) {
       // 尝试获取详细错误信息
@@ -622,9 +624,9 @@ export const api = {
         console.warn('[HTTP] 认证失败，清除token');
         try { localStorage.removeItem('token') } catch {}
         // 仅在非登录页面时重定向，避免无限循环
-        if (window.location.pathname !== '/login') {
+        if (window.location.pathname !== '/') {
           const redirect = encodeURIComponent(window.location.pathname + window.location.search)
-          window.location.href = `/login?redirect=${redirect}`
+          window.location.href = `/?redirect=${redirect}`
         }
         throw new Error(`AUTH ${res.status}`)
       }

@@ -12,6 +12,11 @@ const allRoutes = [
     name: 'Auth',
     component: () => import('../views/AuthView.vue'),
     meta: { title: '登录/注册' }
+  },
+  // 兼容旧的轻量化工具包入口，统一跳转学生端路由
+  {
+    path: '/toolkit',
+    redirect: '/student/toolkit'
   }
 ]
 

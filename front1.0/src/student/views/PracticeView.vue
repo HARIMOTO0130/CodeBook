@@ -291,21 +291,76 @@ export default {
       
       // 构建问题列表
       if (practice.questions && Array.isArray(practice.questions)) {
-        // 如果已经是问题数组格式
-        currentQuestions.value = practice.questions.map((q, index) => ({
-          id: q.id || index + 1,
-          type: q.type.replace(/_([a-z])/g, g => g[1].toUpperCase()),
-          title: q.title,
-          description: q.description,
-          question: q.question,
-          code_template: q.code_template,
-          language: q.language || practice.language,
-          difficulty: q.difficulty || practice.difficulty,
-          options: q.options,
-          blanks: q.blanks,
-          testCases: q.testCases || [],
-          order: q.order || index + 1
-        }))
+        // 如果已经是问题数组格式，对后端数据做一层标准化，适配前端展示/判题逻辑
+        currentQuestions.value = practice.questions.map((rawQ, index) => {
+          const q = { ...rawQ }
+          const id = q.id || index + 1
+
+          // 统一题型命名：后端使用 snake_case，如 true_false / code_completion
+          let backendType = q.type || 'choice'
+          if (backendType === 'true_false') {
+            backendType = 'judgment'
+          }
+          const displayType = backendType.replace(/_([a-z])/g, (m, p1) => p1.toUpperCase())
+
+          // 统一选项与正确答案
+          let options = Array.isArray(q.options) ? q.options : []
+          let correctAnswer = q.correctAnswer
+
+          // 选择题：从 is_correct 推导正确选项索引
+          if (backendType === 'choice' && options.length > 0 && correctAnswer === undefined) {
+            const correctIndexes = options
+              .map((opt, optIdx) => (opt.is_correct ? optIdx : null))
+              .filter(v => v !== null)
+            if (correctIndexes.length === 1) {
+              correctAnswer = correctIndexes[0]
+            } else if (correctIndexes.length > 1) {
+              correctAnswer = correctIndexes
+            }
+          }
+
+          // 判断题：如果后端只给了 boolean 正误，则构造“正确/错误”两个选项
+          if (backendType === 'judgment') {
+            const boolAnswer = q.correct_answer ?? q.correctAnswer ?? true
+            options = [
+              { content: '正确' },
+              { content: '错误' }
+            ]
+            correctAnswer = boolAnswer ? 0 : 1
+          }
+
+          // 填空题：后端使用 correct_answer，前端使用 correctAnswer
+          let blanks = Array.isArray(q.blanks) ? q.blanks.map(b => ({
+            ...b,
+            correctAnswer: b.correctAnswer ?? b.correct_answer
+          })) : []
+
+          // 测试用例：兼容 testCases / test_cases，字段名 input / input_data, expected_output / expectedOutput
+          const rawTestCases = q.testCases || q.test_cases || []
+          const testCases = Array.isArray(rawTestCases)
+            ? rawTestCases.map(tc => ({
+                id: tc.id,
+                input: tc.input ?? tc.input_data ?? {},
+                expectedOutput: tc.expectedOutput ?? tc.expected_output
+              }))
+            : []
+
+          return {
+            id,
+            type: displayType,
+            title: q.title,
+            description: q.description,
+            question: q.question,
+            code_template: q.code_template,
+            language: q.language || practice.language,
+            difficulty: q.difficulty || practice.difficulty,
+            options,
+            blanks,
+            testCases,
+            correctAnswer,
+            order: q.order || index + 1
+          }
+        })
       } else {
         // 兼容旧格式
         currentQuestions.value = buildQuestionsFromPractice(practice.practice)

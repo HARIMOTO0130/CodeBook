@@ -135,7 +135,7 @@
             </div>
             <div class="book-actions">
               <router-link 
-                :to="`/books/${book.id}`" 
+                :to="`/student/books/${book.id}`" 
                 class="btn btn-primary"
               >
                 继续学习
@@ -319,8 +319,11 @@ export default {
     // 开始练习
     const startPractice = (practiceId) => {
       console.log(`开始练习: ${practiceId}`)
-      // 跳转到练习题页面
-      router.push('/practice')
+      // 跳转到练习题页面（学生端路由）
+      router.push({ 
+        name: 'StudentPractice',
+        query: { category: practiceId } 
+      })
     }
 
     // 获取所有书籍
@@ -474,7 +477,7 @@ export default {
 
     // 跳转到书籍详情
     const goToBook = (bookId) => {
-      router.push(`/books/${bookId}`)
+      router.push(`/student/books/${bookId}`)
     }
 
     // 过滤标签
@@ -540,7 +543,7 @@ export default {
     // 跳转到轻量化工具包中的对应工具
     const goToTool = (toolId) => {
       router.push({
-        path: '/toolkit',
+        path: '/student/toolkit',
         query: { toolId }
       })
     }

@@ -2,10 +2,10 @@
   <div class="book-outline-container">
     <!-- 顶部面包屑 -->
     <div class="breadcrumb">
-      <router-link to="/books" class="breadcrumb-item">书架</router-link>
-      <span class="breadcrumb-separator">/</span>
-      <span class="breadcrumb-item current">{{ book?.title || '教材大纲' }}</span>
-    </div>
+        <router-link to="/student/books" class="breadcrumb-item">书架</router-link>
+        <span class="breadcrumb-separator">/</span>
+        <span class="breadcrumb-item current">{{ book?.title || '教材大纲' }}</span>
+      </div>
 
     <!-- 教材信息和统计数据区域 -->
     <div v-if="book" class="book-info-section">
@@ -95,7 +95,7 @@
                 <span class="chapter-title">{{ chapter.title }}</span>
                 <span class="chapter-status">{{ getChapterStatus(chapter) }}</span>
                 <router-link 
-                  :to="`/practice?bookId=${bookId}&chapterId=${chapter.id}`" 
+                  :to="{ name: 'StudentPractice', query: { bookId, chapterId: chapter.id } }" 
                   class="practice-button"
                   @click.stop
                 >
@@ -163,7 +163,7 @@
 
           <div v-if="selectedSection.type !== 'quiz'" class="section-actions">
             <router-link 
-              :to="`/books/${bookId}/chapter/${selectedSection.id}`" 
+              :to="`/student/books/${bookId}/chapter/${selectedSection.id}`" 
               class="btn btn-primary large"
             >
               开始学习
@@ -171,7 +171,7 @@
           </div>
           <div v-else class="section-actions">
             <router-link 
-              :to="`/books/${bookId}/chapter/${selectedSection.id}`" 
+              :to="`/student/books/${bookId}/chapter/${selectedSection.id}`" 
               class="btn btn-primary large"
             >
               开始练习
@@ -198,7 +198,7 @@
         </div>
       </div>
       <router-link 
-        :to="`/books/${bookId}/chapter/${lastLearnedSection.id}`" 
+        :to="`/student/books/${bookId}/chapter/${lastLearnedSection.id}`" 
         class="btn btn-primary large"
       >
         继续上次进度

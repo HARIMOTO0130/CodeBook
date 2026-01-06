@@ -73,7 +73,13 @@ const studentRoutes = [
     path: '/student/practice',
     name: 'StudentPractice',
     component: PracticeView,
-    meta: { title: '练习题', role: 'student' }
+    meta: { title: '练习题', role: 'student' },
+    // 兼容从章节页或书籍页进入练习的多种路径，避免因路径不同触发404
+    alias: [
+      '/student/practice/',
+      '/student/books/:bookId/practice',
+      '/student/books/:bookId/chapter/:chapterId/practice'
+    ]
   },
   {
     path: '/student/jupyter',
