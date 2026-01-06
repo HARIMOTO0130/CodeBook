@@ -1,7 +1,10 @@
 <template>
   <div class="records-container">
     <div class="page-header">
-      <h1>学习记录</h1>
+      <div class="page-title-wrap">
+        <h1>学习记录</h1>
+        <p class="page-subtitle">回顾你的学习足迹，了解进度与习惯，持续优化学习方式</p>
+      </div>
       <div class="header-actions">
         <div class="filter-row">
           <select v-model="filters.type" class="input filter-select">
@@ -21,13 +24,17 @@
             <option value="year">最近一年</option>
           </select>
           <input type="date" v-model="filters.startDate" class="input date-input" />
+          <span class="date-separator">至</span>
           <input type="date" v-model="filters.endDate" class="input date-input" />
           <button class="btn btn-primary" @click="applyFilters">筛选</button>
-          <button class="btn btn-default" @click="resetFilters">重置</button>
+          <button class="btn btn-outline" @click="resetFilters">重置</button>
         </div>
         <div class="goal-settings">
-          <span>每日目标: {{ dailyGoalHours }}小时</span>
-          <button class="btn btn-link" @click="showGoalModal = true">设置</button>
+          <div class="goal-text">
+            <span class="goal-label">每日学习目标</span>
+            <span class="goal-value">{{ dailyGoalHours }} 小时 / {{ dailyGoalChapters }} 章节</span>
+          </div>
+          <button class="btn-link" @click="showGoalModal = true">调整目标</button>
         </div>
       </div>
     </div>
@@ -63,21 +70,24 @@
     </div>
     
     <!-- 每日学习目标进度 -->
-    <div class="goal-progress-section">
+    <div class="goal-progress-section card">
       <div class="goal-progress-header">
-        <h3>今日学习目标</h3>
+        <div>
+          <h3>今日学习目标</h3>
+          <p class="goal-subtitle">坚持每天一点点，让进步变成习惯</p>
+        </div>
         <span class="today-date">{{ formatTodayDate() }}</span>
       </div>
       <div class="today-goal-progress">
-        <div class="goal-progress-bar">
+        <div class="progress-bar">
           <div 
-            class="goal-progress-fill" 
+            class="progress-bar-fill" 
             :style="{ width: todayProgressPercentage + '%' }"
           ></div>
         </div>
         <div class="goal-progress-text">
           <span>{{ todayHours }} / {{ dailyGoalHours }} 小时</span>
-          <span>{{ todayProgressPercentage }}%</span>
+          <span class="goal-percent">{{ todayProgressPercentage }}%</span>
         </div>
       </div>
     </div>
@@ -555,13 +565,42 @@ export default {
     const calcStats = (activities) => {
       const dates = new Set()
       let minutes = 0
+      const typeCounter = {
+        reading: 0,
+        video: 0,
+        practice: 0
+      }
+
       activities.forEach(a => {
         const dateStr = (a.timestamp || '').slice(0, 10)
         if (dateStr) dates.add(dateStr)
         minutes += a.duration || 30
+        // 统计不同类型学习次数
+        if (a.type && typeCounter.hasOwnProperty(a.type)) {
+          typeCounter[a.type] += 1
+        }
       })
       totalLearningDays.value = dates.size
       totalHours.value = Math.round((minutes / 60) * 10) / 10
+
+      // 更新学习类型分布百分比
+      const totalCount = Object.values(typeCounter).reduce((sum, val) => sum + val, 0)
+      if (totalCount > 0) {
+        const readingPercent = Math.round((typeCounter.reading / totalCount) * 100)
+        const practicePercent = Math.round((typeCounter.practice / totalCount) * 100)
+        const videoPercent = 100 - readingPercent - practicePercent
+        learningTypes.value = [
+          { name: '阅读', percentage: readingPercent, color: '#409EFF' },
+          { name: '视频', percentage: Math.max(0, videoPercent), color: '#E6A23C' },
+          { name: '练习', percentage: practicePercent, color: '#67C23A' }
+        ]
+      } else {
+        learningTypes.value = [
+          { name: '阅读', percentage: 0, color: '#409EFF' },
+          { name: '视频', percentage: 0, color: '#E6A23C' },
+          { name: '练习', percentage: 0, color: '#67C23A' }
+        ]
+      }
       
       // 简单连续天数计算
       const sortedDates = Array.from(dates).sort().reverse()
@@ -685,6 +724,7 @@ export default {
     
     return {
       timeRange,
+      filters,
       totalLearningDays,
       totalHours,
       completedChapters,
@@ -705,6 +745,8 @@ export default {
       learningRecords,
       timeSlots,
       learningTypes,
+      applyFilters,
+      resetFilters,
       getHeatColor,
       getProgressOffset,
       formatTime,
@@ -722,16 +764,65 @@ export default {
 
 <style scoped>
 .records-container {
-  padding: 20px 0;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
 }
 
 .page-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 30px;
+  margin-bottom: 18px;
   flex-wrap: wrap;
-  gap: 20px;
+  gap: 15px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #eee;
+}
+
+.page-title-wrap h1 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 600;
+  color: #333;
+  line-height: 1.3;
+}
+
+.page-subtitle {
+  margin-top: 8px;
+  font-size: 14px;
+  color: #666;
+  line-height: 1.5;
+}
+
+.header-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.filter-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 8px;
+  justify-content: flex-end;
+  overflow-x: auto;
+  padding: 4px 0;
+}
+
+.filter-row::-webkit-scrollbar {
+  height: 4px;
+}
+
+.filter-row::-webkit-scrollbar-thumb {
+  background-color: #ddd;
+  border-radius: 2px;
+}
+
+.filter-row::-webkit-scrollbar-track {
+  background-color: #f5f5f5;
 }
 
 .goal-settings {
@@ -742,13 +833,34 @@ export default {
   color: #666;
 }
 
-.goal-settings .btn-link {
+.goal-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.goal-label {
+  font-size: 12px;
+  color: #999;
+}
+
+.goal-value {
+  font-size: 14px;
+  color: #333;
+  font-weight: 500;
+}
+
+.btn-link {
   padding: 0;
   font-size: 14px;
   color: #409EFF;
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: color 0.3s ease;
 }
 
-.goal-settings .btn-link:hover {
+.btn-link:hover {
   color: #66b1ff;
   text-decoration: underline;
 }
@@ -759,39 +871,57 @@ export default {
 }
 
 .filter-select {
-  min-width: 150px;
+  min-width: 130px;
+}
+
+.date-input {
+  min-width: 140px;
+}
+
+.date-separator {
+  color: #999;
+  font-size: 14px;
+  margin: 0 5px;
 }
 
 .overview-section {
-  margin-bottom: 30px;
+  margin-bottom: 20px;
 }
 
 .stat-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+  gap: 8px;
 }
 
 /* 目标进度区域样式 */
 .goal-progress-section {
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-  padding: 25px;
-  margin-bottom: 30px;
+  margin-bottom: 15px;
 }
 
 .goal-progress-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
+  margin-bottom: 15px;
 }
+
+/* 响应式布局 */
+
 
 .goal-progress-header h3 {
   margin: 0;
   font-size: 18px;
+  font-weight: 600;
   color: #333;
+  line-height: 1.4;
+}
+
+.goal-subtitle {
+  margin-top: 6px;
+  font-size: 14px;
+  color: #666;
+  line-height: 1.5;
 }
 
 .today-date {
@@ -803,20 +933,13 @@ export default {
   width: 100%;
 }
 
-.goal-progress-bar {
-  width: 100%;
-  height: 20px;
-  background-color: #e9ecef;
-  border-radius: 10px;
-  overflow: hidden;
+.today-goal-progress .progress-bar {
+  height: 12px;
   margin-bottom: 10px;
 }
 
-.goal-progress-fill {
-  height: 100%;
+.today-goal-progress .progress-bar-fill {
   background: linear-gradient(90deg, #409EFF 0%, #67C23A 100%);
-  border-radius: 10px;
-  transition: width 0.5s ease;
 }
 
 .goal-progress-text {
@@ -824,46 +947,67 @@ export default {
   justify-content: space-between;
   font-size: 14px;
   color: #666;
+  line-height: 1.5;
+}
+
+.goal-percent {
+  font-weight: 500;
+  color: #409EFF;
 }
 
 .stat-card {
   background: white;
-  padding: 25px;
+  padding: 16px;
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);
   text-align: center;
+  transition: box-shadow 0.3s ease;
+}
+
+.stat-card:hover {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
 }
 
 .stat-value {
   font-size: 32px;
-  font-weight: bold;
+  font-weight: 700;
   color: #409EFF;
   margin-bottom: 8px;
+  line-height: 1.2;
 }
 
 .stat-label {
   font-size: 14px;
   color: #666;
+  line-height: 1.5;
 }
 
 .main-content {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 30px;
+  grid-template-columns: 1.2fr 0.8fr;
+  gap: 12px;
+  margin-top: 12px;
 }
 
 .chart-section {
   background: white;
-  padding: 25px;
+  padding: 12px;
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-  margin-bottom: 30px;
+  margin-bottom: 10px;
+  transition: box-shadow 0.3s ease;
+}
+
+.chart-section:hover {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
 }
 
 .chart-section h2 {
-  margin: 0 0 20px 0;
-  font-size: 20px;
+  margin: 0 0 15px 0;
+  font-size: 18px;
+  font-weight: 600;
   color: #333;
+  line-height: 1.4;
 }
 
 /* 简化热力图样式 */
@@ -1008,13 +1152,13 @@ export default {
 .book-progress {
   display: flex;
   flex-direction: column;
-  gap: 30px;
+  gap: 15px;
 }
 
 .book-progress-item {
   display: flex;
   align-items: center;
-  gap: 30px;
+  gap: 20px;
 }
 
 .book-info {
@@ -1076,10 +1220,10 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 15px;
+  padding: 10px;
   border: 1px solid #f0f0f0;
   border-radius: 6px;
-  margin-bottom: 10px;
+  margin-bottom: 6px;
 }
 
 .question-info {
@@ -1113,10 +1257,10 @@ export default {
 .learning-record-item {
   display: flex;
   align-items: center;
-  padding: 15px;
+  padding: 10px;
   border: 1px solid #f0f0f0;
   border-radius: 6px;
-  margin-bottom: 10px;
+  margin-bottom: 6px;
   transition: background-color 0.3s;
 }
 
@@ -1181,7 +1325,19 @@ export default {
 .habit-analysis {
   display: flex;
   flex-direction: column;
-  gap: 30px;
+  gap: 15px;
+}
+
+.habit-item {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.habit-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: #666;
 }
 
 .habit-item {
@@ -1279,8 +1435,8 @@ export default {
 .modal-content {
   background: white;
   border-radius: 8px;
-  width: 90%;
-  max-width: 500px;
+  width: 92%;
+  max-width: 460px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
 }
 
@@ -1288,7 +1444,7 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 20px;
+  padding: 18px 20px;
   border-bottom: 1px solid #f0f0f0;
 }
 
@@ -1354,31 +1510,88 @@ export default {
 @media (max-width: 1200px) {
   .main-content {
     grid-template-columns: 1fr;
+    gap: 20px;
   }
 }
 
 @media (max-width: 768px) {
+  .records-container {
+    padding: 15px;
+  }
+
   .page-header {
     flex-direction: column;
     align-items: flex-start;
     gap: 15px;
   }
-  
+
+  .header-actions {
+    width: 100%;
+    align-items: stretch;
+  }
+
+  .filter-row {
+    flex-direction: column;
+    justify-content: flex-start;
+  }
+
+  .filter-select,
+  .date-input {
+    width: 100%;
+  }
+
   .stat-cards {
     grid-template-columns: 1fr;
+    gap: 12px;
   }
-  
+
+  .stat-card {
+    padding: 16px;
+  }
+
+  .stat-value {
+    font-size: 28px;
+  }
+
+  .main-content {
+    grid-template-columns: 1fr;
+    gap: 15px;
+  }
+
+  .chart-section {
+    padding: 15px;
+    margin-bottom: 15px;
+  }
+
+  .chart-section h2 {
+    font-size: 18px;
+  }
+
+  .goal-progress-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .today-goal-progress .progress-bar {
+    height: 10px;
+  }
+
+  .page-title-wrap h1 {
+    font-size: 24px;
+  }
+
   .book-progress-item {
     flex-direction: column;
     text-align: center;
   }
-  
+
   .wrong-question-item {
     flex-direction: column;
     align-items: stretch;
     gap: 15px;
   }
-  
+
   .question-actions {
     margin-left: 0;
   }

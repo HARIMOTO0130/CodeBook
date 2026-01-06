@@ -2,7 +2,19 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from rest_framework.permissions import AllowAny
-from .views import LearningRecordViewSet, PracticeRecordViewSet, WrongQuestionViewSet, RoadmapTemplateViewSet, UserLearningPathViewSet, NoteViewSet, execute_code, JupyterDocumentViewSet, create_jupyter_document, update_jupyter_document, LearningRecommendationViewSet
+from .views import (
+    LearningRecordViewSet,
+    PracticeRecordViewSet,
+    WrongQuestionViewSet,
+    RoadmapTemplateViewSet,
+    UserLearningPathViewSet,
+    NoteViewSet,
+    execute_code,
+    JupyterDocumentViewSet,
+    create_jupyter_document,
+    update_jupyter_document,
+    LearningRecommendationViewSet,
+)
 from .views_ai_assistant import AIAssistantView, CodeCompletionView
 from .views_code_sandbox import get_languages, get_code_template, validate_language
 
@@ -36,4 +48,10 @@ urlpatterns = [
     path('code-sandbox/languages/', get_languages, name='get-supported-languages'),
     path('code-sandbox/template/<str:language>/', get_code_template, name='get-code-template'),
     path('code-sandbox/validate/', validate_language, name='validate-language'),
+    # 为错题本提供显式路由，确保学生端 /api/student/learning/wrong-questions/add_from_exercise/ 可正常访问
+    path(
+        'wrong-questions/add_from_exercise/',
+        WrongQuestionViewSet.as_view({'post': 'add_from_exercise'}),
+        name='wrong-question-add-from-exercise',
+    ),
 ]

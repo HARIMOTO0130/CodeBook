@@ -25,19 +25,19 @@
       </button>
     </div>
 
-
-
     <!-- 练习题列表 - 按章节分组 -->
     <div class="practice-list">
       <div v-if="loading" class="loading-state">
+        <div class="loading-spinner"></div>
         <p>正在加载练习题...</p>
       </div>
       
       <div v-else-if="currentBookChapters.length === 0" class="empty-state">
+        <div class="empty-icon">📚</div>
         <p>该书籍暂无练习题</p>
       </div>
       
-      <div v-else>
+      <div v-else class="chapters-container">
         <div 
           v-for="chapter in currentBookChapters" 
           :key="chapter.chapter_id" 
@@ -60,22 +60,27 @@
               @click="startPractice(practice)"
             >
               <div class="practice-header">
-                <div class="practice-icon">{{ getLanguageIcon(practice.language) }}</div>
+                <div class="practice-icon">{{ helpers.getLanguageIcon(practice.language) }}</div>
                 <div class="practice-info">
                   <h3 class="practice-title">{{ practice.title.replace(/- 练习题$/, '') }}</h3>
-                  <p class="practice-type">{{ getQuestionTypesText(practice) }}</p>
+                  <p class="practice-meta">
+                    <span class="practice-type">{{ helpers.getQuestionTypesText(practice) }}</span>
+                    <span class="practice-language">{{ practice.language?.toUpperCase() }}</span>
+                </p>
                 </div>
               </div>
               
               <div class="practice-content">
-                <p class="practice-description">{{ truncateText(practice.description, 150) }}</p>
+                <p class="practice-description">{{ helpers.truncateText(practice.description, 120) }}</p>
               </div>
               
               <div class="practice-footer">
-                <span class="question-count-badge">{{ getQuestionCount(practice) }} 道题</span>
-                <span class="difficulty-badge" :class="getDifficultyClass(practice.difficulty)">
-                  {{ getDifficultyText(practice.difficulty) }}
-                </span>
+                <div class="practice-stats">
+                  <span class="question-count-badge">{{ helpers.getQuestionCount(practice) }} 道题</span>
+                    <span class="difficulty-badge" :class="helpers.getDifficultyClass(practice.difficulty)">
+                        {{ helpers.getDifficultyText(practice.difficulty) }}
+                    </span>
+                </div>
                 <button class="start-button">开始练习</button>
               </div>
             </div>
@@ -91,18 +96,22 @@
       </div>
       <div class="stats-cards">
         <div class="stat-card">
+          <div class="stat-icon">📊</div>
           <div class="stat-value">{{ totalPractices }}</div>
           <div class="stat-label">总练习次数</div>
         </div>
         <div class="stat-card">
+          <div class="stat-icon">✅</div>
           <div class="stat-value">{{ completedPractices }}</div>
           <div class="stat-label">已完成练习</div>
         </div>
         <div class="stat-card">
+          <div class="stat-icon">🎯</div>
           <div class="stat-value">{{ averageScore }}%</div>
           <div class="stat-label">平均得分</div>
         </div>
         <div class="stat-card">
+          <div class="stat-icon">🔥</div>
           <div class="stat-value">{{ streakDays }}</div>
           <div class="stat-label">连续练习天数</div>
         </div>
@@ -422,8 +431,20 @@ export default {
           }
         })
       } else {
-        // 兼容旧格式
-        currentQuestions.value = buildQuestionsFromPractice(practice.practice)
+        // 兼容旧格式 - 直接构建编程题
+        currentQuestions.value = []
+        
+        if (practice.practice) {
+          currentQuestions.value.push({
+            id: 1,
+            type: 'programming',
+            title: '编程练习',
+            stem: practice.question,
+            code_template: practice.code_template || '',
+            language: 'python', // 应该从chapter获取
+            testCases: practice.test_cases || []
+          })
+        }
       }
       console.log('练习题问题:', currentQuestions.value)
       showPracticeModal.value = true
@@ -469,43 +490,6 @@ export default {
       submitMultiQuestionPractice(questionAnswers, result)
     }
 
-    // 判断错误类型
-    const determineErrorType = (userAnswer, correctAnswer) => {
-      if (!userAnswer) return '未作答'
-      if (typeof userAnswer === 'string' && typeof correctAnswer === 'string') {
-        if (userAnswer.trim() === correctAnswer.trim()) return '正确'
-        if (userAnswer.length !== correctAnswer.length) return '长度不匹配'
-        return '内容不匹配'
-      }
-      if (typeof userAnswer !== typeof correctAnswer) return '类型错误'
-      return '答案错误'
-    }
-    
-    // 判断题目类型
-    const determineQuestionType = (question) => {
-      if (!question) return '未知'
-      
-      // 根据题目内容推断类型
-      const title = (question.title || '').toLowerCase()
-      const content = (question.content || '').toLowerCase()
-      
-      if (question.type) return question.type
-      if (title.includes('选择') || title.includes('单选') || title.includes('多选') || 
-          content.includes('选择') || content.includes('单选') || content.includes('多选')) {
-        return 'mcq'
-      }
-      if (title.includes('填空') || title.includes('补全') || 
-          content.includes('填空') || content.includes('补全')) {
-        return 'fill'
-      }
-      if (title.includes('编程') || title.includes('code') || title.includes('函数') || 
-          title.includes('算法') || content.includes('代码') || content.includes('编程') ||
-          question.expectedOutput || question.codeTemplate) {
-        return 'code'
-      }
-      return 'unknown'
-    }
-
     // 提交练习结果
     // 提交多问题练习结果
     const submitMultiQuestionPractice = async (questionAnswers, result) => {
@@ -540,122 +524,43 @@ export default {
         console.error('提交多问题练习结果失败:', error)
       }
     }
-
-    const submitPracticeResult = async (result) => {
-      try {
-        // 使用新的API参数格式
-        await api.submitPractice(
-          currentPracticeId.value,
-          result.score,
-          result.userCode || ''
-        )
-        
-        // 记录具体错题详情
-        if (result.wrongQuestions && result.wrongQuestions.length > 0) {
-          try {
-            await api.addWrongQuestions(result.wrongQuestions.map(q => ({
-              exerciseId: q.id,
-              title: q.title,
-              difficulty: q.difficulty,
-              type: q.type,
-              practiceId: currentPracticeId.value,
-              userAnswer: q.userAnswer,
-              correctAnswer: q.correctAnswer,
-              errorType: q.errorType
-            })))
-            console.log('错题记录成功:', result.wrongQuestions.length, '道错题')
-          } catch (err) {
-            console.warn('错题记录失败，但不影响练习结果提交:', err)
-            // 备份方案：如果API调用失败，可以在本地存储错题
-            saveLocalWrongQuestions(result.wrongQuestions)
-          }
+    
+    // 辅助函数对象
+    const helpers = {
+      // 获取语言图标
+      getLanguageIcon: (language) => {
+        const icons = {
+          python: '🐍',
+          javascript: '🟨',
+          java: '☕',
+          c: '⚙️',
+          cpp: '➕'
         }
-        
-        // 重新获取练习记录
-        fetchPracticeRecords()
-      } catch (error) {
-        console.error('提交练习结果失败:', error)
-      }
-    }
-    
-    // 保存错题到本地存储（备用方案）
-    const saveLocalWrongQuestions = (questions) => {
-      try {
-        const existing = localStorage.getItem('localWrongQuestions')
-        const wrongQuestions = existing ? JSON.parse(existing) : []
-        
-        // 添加新的错题，避免重复
-        questions.forEach(q => {
-          if (!wrongQuestions.some(item => item.exerciseId === q.id && item.practiceId === currentPracticeId.value)) {
-            wrongQuestions.push({
-              ...q,
-              savedAt: new Date().toISOString()
-            })
-          }
-        })
-        
-        localStorage.setItem('localWrongQuestions', JSON.stringify(wrongQuestions))
-        console.log('错题已保存到本地存储')
-      } catch (error) {
-        console.error('保存本地错题失败:', error)
-      }
-    }
-    
-    // 辅助函数
-    const getLanguageIcon = (language) => {
-      const icons = {
-        python: '🐍',
-        javascript: '🟨',
-        java: '☕',
-        c: '⚙️',
-        cpp: '➕'
-      }
-      return icons[language?.toLowerCase()] || '📝'
-    }
-    
-    const getDifficultyClass = (difficulty) => {
-      switch (difficulty) {
-        case 1: return 'easy'
-        case 2: return 'medium'
-        case 3: return 'hard'
-        default: return 'medium'
-      }
-    }
-    
-    const getDifficultyText = (difficulty) => {
-      switch (difficulty) {
-        case 1: return '简单'
-        case 2: return '中等'
-        case 3: return '困难'
-        default: return '中等'
-      }
-    }
-    
-    const getQuestionTypeText = (questionType) => {
-      const typeMap = {
-        'choice': '选择题',
-        'true_false': '判断题',
-        'fill': '填空题',
-        'code_completion': '代码补全',
-        'programming': '编程题'
-      }
-      return typeMap[questionType] || '未知类型'
-    }
-    
-    const getQuestionCount = (practice) => {
-      // 根据练习类型计算题目数量
-      if (practice.questions && Array.isArray(practice.questions)) {
-        return practice.questions.length
-      }
-      return practice.practice?.test_cases?.length || 1
-    }
-    
-    const getQuestionTypesText = (practice) => {
-      if (!practice.questions || !Array.isArray(practice.questions)) {
-        return '未知类型'
-      }
+        return icons[language?.toLowerCase()] || '📝'
+      },
       
-      const types = practice.questions.map(q => {
+      // 获取难度类名
+      getDifficultyClass: (difficulty) => {
+        const classMap = {
+          1: 'easy',
+          2: 'medium',
+          3: 'hard'
+        }
+        return classMap[difficulty] || 'medium'
+      },
+      
+      // 获取难度文本
+      getDifficultyText: (difficulty) => {
+        const textMap = {
+          1: '简单',
+          2: '中等',
+          3: '困难'
+        }
+        return textMap[difficulty] || '中等'
+      },
+      
+      // 获取单个题目类型文本
+      getQuestionTypeText: (questionType) => {
         const typeMap = {
           'choice': '选择题',
           'true_false': '判断题',
@@ -663,36 +568,40 @@ export default {
           'code_completion': '代码补全',
           'programming': '编程题'
         }
-        return typeMap[q.type] || '未知'
-      })
+        return typeMap[questionType] || '未知类型'
+      },
       
-      const uniqueTypes = [...new Set(types)]
-      return uniqueTypes.join('、')
-    }
-    
-    const truncateText = (text, maxLength) => {
-      if (!text) return ''
-      return text.length > maxLength ? text.substring(0, maxLength) + '...' : text
-    }
-    
-    const buildQuestionsFromPractice = (practice) => {
-      if (!practice) return []
+      // 获取题目数量
+      getQuestionCount: (practice) => {
+        if (practice.questions && Array.isArray(practice.questions)) {
+          return practice.questions.length
+        }
+        return practice.practice?.test_cases?.length || 1
+      },
       
-      // 根据练习内容构建问题
-      const questions = []
+      // 获取练习包含的所有题目类型文本
+      getQuestionTypesText: (practice) => {
+        if (!practice.questions || !Array.isArray(practice.questions)) {
+          return '未知类型'
+        }
+        
+        const typeMap = {
+          'choice': '选择题',
+          'true_false': '判断题',
+          'fill': '填空题',
+          'code_completion': '代码补全',
+          'programming': '编程题'
+        }
+        
+        const types = new Set(practice.questions.map(q => typeMap[q.type] || '未知'))
+        return Array.from(types).join('、')
+      },
       
-      // 添加编程题
-      questions.push({
-        id: 1,
-        type: 'programming',
-        title: '编程练习',
-        stem: practice.question,
-        code_template: practice.code_template || '',
-        language: 'python', // 应该从chapter获取
-        testCases: practice.test_cases || []
-      })
-      
-      return questions
+      // 截断文本
+      truncateText: (text, maxLength) => {
+        if (!text) return ''
+        return text.length > maxLength ? text.substring(0, maxLength) + '...' : text
+      }
     }
 
     // 生命周期钩子
@@ -729,25 +638,24 @@ export default {
       startPractice,
       closePractice,
       handlePracticeComplete,
-      getLanguageIcon,
-      getDifficultyText,
-      getDifficultyClass,
-      truncateText,
-      getQuestionTypesText,
-      getQuestionCount
+      helpers
     }
   }
 }
 </script>
 
 <style scoped>
+/* 全局样式 */
 .practice-view {
   max-width: 1200px;
   margin: 0 auto;
   padding: 20px;
-  font-family: 'Microsoft YaHei', sans-serif;
+  font-family: 'Microsoft YaHei', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: #f8f9fa;
+  min-height: 100vh;
 }
 
+/* 面包屑导航 */
 .breadcrumb {
   display: flex;
   align-items: center;
@@ -759,6 +667,11 @@ export default {
 .breadcrumb-item {
   color: #666;
   text-decoration: none;
+  transition: color 0.3s ease;
+}
+
+.breadcrumb-item:hover {
+  color: #4CAF50;
 }
 
 .breadcrumb-item.current {
@@ -770,28 +683,45 @@ export default {
   margin: 0 8px;
 }
 
+/* 页面头部 */
 .page-header {
   margin-bottom: 30px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid #e9ecef;
 }
 
 .page-header h1 {
   font-size: 28px;
   margin-bottom: 10px;
   color: #333;
+  font-weight: 700;
 }
 
 .page-description {
   font-size: 16px;
   color: #666;
   margin: 0;
+  line-height: 1.5;
 }
 
+/* 书籍标签 */
 .book-tabs {
   display: flex;
   gap: 10px;
   margin-bottom: 30px;
   overflow-x: auto;
   padding-bottom: 10px;
+  scrollbar-width: thin;
+  scrollbar-color: #ddd transparent;
+}
+
+.book-tabs::-webkit-scrollbar {
+  height: 4px;
+}
+
+.book-tabs::-webkit-scrollbar-thumb {
+  background-color: #ddd;
+  border-radius: 2px;
 }
 
 .book-tab {
@@ -802,38 +732,207 @@ export default {
   cursor: pointer;
   font-size: 16px;
   white-space: nowrap;
-  transition: all 0.3s ease;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  opacity: 0.8;
+  transform: translateY(0);
 }
 
 .book-tab:hover {
   border-color: #4CAF50;
   color: #4CAF50;
+  box-shadow: 0 4px 12px rgba(76, 175, 80, 0.2);
+  opacity: 1;
+  transform: translateY(-2px);
 }
 
 .book-tab.active {
   background-color: #4CAF50;
   color: white;
   border-color: #4CAF50;
+  box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
+  opacity: 1;
+  transform: translateY(-2px);
 }
 
+/* 练习卡片 */
+.practice-card {
+  background-color: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 12px;
+  padding: 20px;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  display: flex;
+  flex-direction: column;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.practice-card:hover {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  transform: translateY(-4px);
+  border-color: #4CAF50;
+}
+
+/* 章节部分 */
+.chapter-section {
+  background-color: #fff;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  padding: 25px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.chapter-section:hover {
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+  transform: translateY(-2px);
+}
+
+/* 统计卡片 */
+.stat-card {
+  text-align: center;
+  padding: 25px;
+  background-color: #f8f9fa;
+  border-radius: 12px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid transparent;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.stat-card:hover {
+  background-color: #e9ecef;
+  border-color: #dee2e6;
+  transform: translateY(-4px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* 进入动画 */
+.chapters-container > .chapter-section {
+  animation: fadeInUp 0.6s ease-out forwards;
+}
+
+.chapters-container > .chapter-section:nth-child(1) { animation-delay: 0.1s; }
+.chapters-container > .chapter-section:nth-child(2) { animation-delay: 0.2s; }
+.chapters-container > .chapter-section:nth-child(3) { animation-delay: 0.3s; }
+.chapters-container > .chapter-section:nth-child(4) { animation-delay: 0.4s; }
+.chapters-container > .chapter-section:nth-child(5) { animation-delay: 0.5s; }
+.chapters-container > .chapter-section:nth-child(n+6) { animation-delay: 0.6s; }
+
+.practice-grid > .practice-card {
+  animation: fadeInUp 0.4s ease-out forwards;
+}
+
+.practice-grid > .practice-card:nth-child(1) { animation-delay: 0.05s; }
+.practice-grid > .practice-card:nth-child(2) { animation-delay: 0.1s; }
+.practice-grid > .practice-card:nth-child(3) { animation-delay: 0.15s; }
+.practice-grid > .practice-card:nth-child(4) { animation-delay: 0.2s; }
+.practice-grid > .practice-card:nth-child(5) { animation-delay: 0.25s; }
+.practice-grid > .practice-card:nth-child(6) { animation-delay: 0.3s; }
+.practice-grid > .practice-card:nth-child(n+7) { animation-delay: 0.35s; }
+
+/* 动画关键帧 */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* 过渡组 */
+.transition-group {
+  transition: all 0.5s ease;
+}
+
+/* 练习题列表容器 */
 .practice-list {
   margin-bottom: 40px;
 }
 
-.loading-state,
-.empty-state {
+/* 加载状态 */
+.loading-state {
   text-align: center;
-  padding: 60px 20px;
+  padding: 80px 20px;
   color: #666;
   font-size: 16px;
+  animation: fadeIn 0.5s ease-out;
 }
 
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  margin: 0 auto 15px;
+  border: 3px solid #f3f3f3;
+  border-top: 3px solid #4CAF50;
+  border-radius: 50%;
+  animation: spin 1s linear infinite, pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* 空状态 */
+.empty-state {
+  text-align: center;
+  padding: 80px 20px;
+  color: #999;
+  font-size: 16px;
+  animation: fadeIn 0.5s ease-out;
+}
+
+.empty-icon {
+  font-size: 64px;
+  margin-bottom: 15px;
+  opacity: 0.5;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+/* 章节容器 */
+.chapters-container {
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+}
+
+/* 章节部分 */
 .chapter-section {
-  margin-bottom: 40px;
   background-color: #fff;
-  border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  padding: 20px;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  padding: 25px;
+  transition: box-shadow 0.3s ease;
+}
+
+.chapter-section:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
 }
 
 .chapter-section-header {
@@ -841,7 +940,7 @@ export default {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
-  padding-bottom: 10px;
+  padding-bottom: 15px;
   border-bottom: 2px solid #f0f0f0;
 }
 
@@ -849,14 +948,16 @@ export default {
   font-size: 20px;
   color: #333;
   margin: 0;
+  font-weight: 600;
 }
 
 .chapter-section-count {
   font-size: 14px;
   color: #999;
   background-color: #f5f5f5;
-  padding: 4px 12px;
-  border-radius: 12px;
+  padding: 5px 15px;
+  border-radius: 15px;
+  font-weight: 500;
 }
 
 .chapter-empty {
@@ -866,43 +967,38 @@ export default {
   font-size: 14px;
 }
 
+/* 练习网格 */
 .practice-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: 20px;
 }
 
-.practice-card {
-  background-color: #fff;
-  border: 1px solid #e0e0e0;
-  border-radius: 8px;
-  padding: 20px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-}
 
-.practice-card:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  transform: translateY(-2px);
-}
 
+/* 练习卡片头部 */
 .practice-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   margin-bottom: 15px;
 }
 
 .practice-icon {
   font-size: 24px;
   margin-right: 15px;
-  width: 40px;
-  height: 40px;
+  width: 48px;
+  height: 48px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
+  border-radius: 12px;
   background-color: #f5f5f5;
+  flex-shrink: 0;
+  transition: background-color 0.3s ease;
+}
+
+.practice-card:hover .practice-icon {
+  background-color: rgba(76, 175, 80, 0.1);
 }
 
 .practice-info {
@@ -913,18 +1009,44 @@ export default {
   font-size: 16px;
   font-weight: 600;
   color: #333;
-  margin: 0 0 5px 0;
+  margin: 0 0 8px 0;
   line-height: 1.4;
+  transition: color 0.3s ease;
+}
+
+.practice-card:hover .practice-title {
+  color: #4CAF50;
+}
+
+.practice-meta {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin: 0;
 }
 
 .practice-type {
   font-size: 12px;
-  color: #999;
-  margin: 0;
+  color: #6c757d;
+  background-color: #f8f9fa;
+  padding: 3px 8px;
+  border-radius: 10px;
 }
 
+.practice-language {
+  font-size: 10px;
+  color: #fff;
+  background-color: #495057;
+  padding: 3px 8px;
+  border-radius: 10px;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+/* 练习内容 */
 .practice-content {
-  margin-bottom: 15px;
+  margin-bottom: 20px;
+  flex: 1;
 }
 
 .practice-description {
@@ -932,26 +1054,39 @@ export default {
   color: #666;
   line-height: 1.6;
   margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
+/* 练习底部 */
 .practice-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  padding-top: 15px;
+  border-top: 1px solid #f8f9fa;
+}
+
+.practice-stats {
+  display: flex;
+  gap: 10px;
+  align-items: center;
 }
 
 .question-count-badge {
   font-size: 12px;
   color: #666;
   background-color: #f5f5f5;
-  padding: 2px 8px;
-  border-radius: 10px;
+  padding: 4px 10px;
+  border-radius: 12px;
 }
 
 .difficulty-badge {
   font-size: 12px;
-  padding: 2px 8px;
-  border-radius: 10px;
+  padding: 4px 10px;
+  border-radius: 12px;
   font-weight: 500;
 }
 
@@ -971,35 +1106,45 @@ export default {
 }
 
 .start-button {
-  padding: 8px 16px;
+  padding: 8px 20px;
   background-color: #4CAF50;
   color: white;
   border: none;
-  border-radius: 4px;
+  border-radius: 8px;
   font-size: 14px;
   cursor: pointer;
-  transition: background-color 0.3s ease;
+  transition: all 0.3s ease;
+  font-weight: 500;
+  box-shadow: 0 2px 4px rgba(76, 175, 80, 0.2);
 }
 
 .start-button:hover {
   background-color: #45a049;
+  box-shadow: 0 4px 8px rgba(76, 175, 80, 0.3);
+  transform: translateY(-1px);
 }
 
+.start-button:active {
+  transform: translateY(0);
+}
+
+/* 统计部分 */
 .stats-section {
   background-color: #fff;
-  border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  padding: 20px;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  padding: 25px;
 }
 
 .stats-header {
-  margin-bottom: 20px;
+  margin-bottom: 25px;
 }
 
 .stats-header h2 {
   font-size: 20px;
   color: #333;
   margin: 0;
+  font-weight: 600;
 }
 
 .stats-cards {
@@ -1010,9 +1155,23 @@ export default {
 
 .stat-card {
   text-align: center;
-  padding: 20px;
-  background-color: #f5f5f5;
-  border-radius: 8px;
+  padding: 25px;
+  background-color: #f8f9fa;
+  border-radius: 12px;
+  transition: all 0.3s ease;
+  border: 1px solid transparent;
+}
+
+.stat-card:hover {
+  background-color: #e9ecef;
+  border-color: #dee2e6;
+  transform: translateY(-2px);
+}
+
+.stat-icon {
+  font-size: 32px;
+  margin-bottom: 15px;
+  display: block;
 }
 
 .stat-value {
@@ -1020,10 +1179,174 @@ export default {
   font-weight: bold;
   color: #333;
   margin-bottom: 5px;
+  line-height: 1;
 }
 
 .stat-label {
   font-size: 14px;
   color: #666;
+}
+
+/* 响应式设计 */
+/* 大屏幕桌面 (1200px+) */
+@media (min-width: 1200px) {
+  .practice-grid {
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  }
+}
+
+/* 中等屏幕桌面 (992px-1199px) */
+@media (max-width: 1199px) {
+  .practice-grid {
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  }
+}
+
+/* 平板设备 (768px-991px) */
+@media (max-width: 991px) {
+  .practice-grid {
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  }
+  
+  .stats-cards {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* 小屏平板/手机横屏 (576px-767px) */
+@media (max-width: 767px) {
+  .practice-view {
+    padding: 15px;
+  }
+  
+  .page-header h1 {
+    font-size: 24px;
+  }
+  
+  .page-description {
+    font-size: 14px;
+  }
+  
+  .chapter-section {
+    padding: 20px;
+  }
+  
+  .chapter-section-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  
+  .practice-grid {
+    grid-template-columns: 1fr;
+    gap: 15px;
+  }
+  
+  .practice-card {
+    padding: 18px;
+  }
+  
+  .practice-footer {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  
+  .practice-stats {
+    justify-content: center;
+  }
+  
+  .start-button {
+    width: 100%;
+    padding: 10px;
+  }
+  
+  .stats-cards {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .stat-card {
+    padding: 20px;
+  }
+  
+  .stat-value {
+    font-size: 24px;
+  }
+  
+  /* 触摸设备优化 */
+  .practice-card {
+    touch-action: manipulation;
+  }
+  
+  .book-tab {
+    touch-action: manipulation;
+  }
+}
+
+/* 手机设备 (小于576px) */
+@media (max-width: 575px) {
+  .page-header h1 {
+    font-size: 20px;
+  }
+  
+  .book-tab {
+    padding: 8px 15px;
+    font-size: 14px;
+  }
+  
+  .chapter-section {
+    padding: 15px;
+  }
+  
+  .chapter-section-title {
+    font-size: 18px;
+  }
+  
+  .practice-card {
+    padding: 15px;
+  }
+  
+  .practice-icon {
+    width: 40px;
+    height: 40px;
+    font-size: 20px;
+  }
+  
+  .stats-cards {
+    grid-template-columns: 1fr;
+  }
+  
+  /* 字体大小优化 */
+  .practice-title {
+    font-size: 15px;
+  }
+  
+  .practice-description {
+    font-size: 13px;
+  }
+  
+  .chapter-section-count {
+    font-size: 13px;
+  }
+}
+
+/* 超小屏幕设备 (小于375px) */
+@media (max-width: 374px) {
+  .practice-view {
+    padding: 10px;
+  }
+  
+  .chapter-section {
+    padding: 12px;
+  }
+  
+  .practice-card {
+    padding: 12px;
+  }
+  
+  .book-tab {
+    padding: 6px 12px;
+    font-size: 13px;
+  }
 }
 </style>

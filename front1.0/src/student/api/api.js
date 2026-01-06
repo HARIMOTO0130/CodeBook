@@ -514,8 +514,15 @@ export const api = {
     return httpGet(url, true);
   },
   async getPracticeRecords() {
-    // 修改为学习模块下的练习记录API路径
-    return httpGet('/learning/practice-records/', true);
+    // 学习模块下的练习记录API，适配分页结构，统一返回数组
+    const res = await httpGet('/learning/practice-records/', true);
+    if (Array.isArray(res)) {
+      return res;
+    }
+    if (res && Array.isArray(res.results)) {
+      return res.results;
+    }
+    return [];
   },
   
   // 获取练习题列表 - 直接从学习模块获取

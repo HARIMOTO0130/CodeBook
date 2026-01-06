@@ -772,6 +772,54 @@ class WrongQuestionViewSet(viewsets.ModelViewSet):
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
     
+    @action(detail=False, methods=['post'])
+    def add_from_exercise(self, request):
+        """从练习题添加错题"""
+        try:
+            data = request.data
+            user = request.user
+            
+            # 获取练习题或练习记录
+            practice_id = data.get('practice_id')
+            exercise_id = data.get('exercise_id')
+            
+            if not practice_id and not exercise_id:
+                return Response({"error": "必须提供practice_id或exercise_id"}, status=status.HTTP_400_BAD_REQUEST)
+            
+            practice = None
+            if practice_id:
+                try:
+                    practice = Exercise.objects.get(id=practice_id)
+                except Exercise.DoesNotExist:
+                    return Response({"error": "练习题不存在"}, status=status.HTTP_404_NOT_FOUND)
+            elif exercise_id:
+                try:
+                    practice = Exercise.objects.get(id=exercise_id)
+                except Exercise.DoesNotExist:
+                    return Response({"error": "练习题不存在"}, status=status.HTTP_404_NOT_FOUND)
+            
+            # 创建或更新错题记录
+            wrong_question, created = WrongQuestion.objects.update_or_create(
+                user=user,
+                practice=practice,
+                defaults={
+                    'title': practice.title,
+                    'difficulty': practice.difficulty,
+                    'question_type': data.get('question_type', 'unknown'),
+                    'book': practice.book if hasattr(practice, 'book') else None,
+                    'chapter': practice.chapter if hasattr(practice, 'chapter') else None,
+                    'attempt_time': timezone.now()
+                }
+            )
+            
+            return Response({
+                "success": True,
+                "id": wrong_question.id,
+                "created": created
+            }, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    
     @action(detail=True, methods=['put'])
     def status(self, request, pk=None):
         """更新错题状态"""

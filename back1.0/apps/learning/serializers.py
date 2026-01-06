@@ -38,10 +38,20 @@ class SaveProgressSerializer(serializers.Serializer):
 
 class PracticeRecordSerializer(serializers.ModelSerializer):
     """练习记录序列化器"""
+    bookTitle = serializers.SerializerMethodField()
+    chapterTitle = serializers.SerializerMethodField()
+    timestamp = serializers.DateTimeField(source='completed_time')
+    
     class Meta:
         model = PracticeRecord
-        fields = ('id', 'book', 'chapter', 'score', 'completed', 'user_code', 'completed_time')
+        fields = ('id', 'book', 'chapter', 'bookTitle', 'chapterTitle', 'score', 'completed', 'user_code', 'completed_time', 'timestamp')
         read_only_fields = ('id', 'user', 'completed_time')
+    
+    def get_bookTitle(self, obj):
+        return obj.book.title if obj.book else ''
+    
+    def get_chapterTitle(self, obj):
+        return obj.chapter.title if obj.chapter else ''
 
 
 class HeatmapDataSerializer(serializers.ModelSerializer):
