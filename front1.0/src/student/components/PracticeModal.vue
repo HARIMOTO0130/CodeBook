@@ -335,8 +335,8 @@
             </div>
             
             <div class="footer-center">
-              <!-- 选择题/填空题按钮 -->
-              <template v-if="['choice', 'fill'].includes(currentQuestion.type)">
+              <!-- 选择题/填空题/判断题按钮 -->
+              <template v-if="['choice', 'fill', 'Judgment'].includes(currentQuestion.type)">
                 <button 
                   v-if="!showFeedback"
                   class="btn-primary"
@@ -503,14 +503,14 @@ export default {
     const isAnswerCorrect = computed(() => {
       if (!showFeedback.value) return false
       
-      if (currentQuestion.value.type === 'choice') {
+      if (currentQuestion.value.type === 'choice' || currentQuestion.value.type === 'Judgment') {
         if (currentQuestion.value.multiple) {
           // 多选题：所有选项必须匹配
           const correctOptions = currentQuestion.value.correctAnswer || []
           if (selectedOptions.value.length !== correctOptions.length) return false
           return correctOptions.every(opt => selectedOptions.value.includes(opt))
         } else {
-          // 单选题：必须选中正确选项
+          // 单选题/判断题：必须选中正确选项
           return selectedOptions.value[0] === currentQuestion.value.correctAnswer
         }
       } else if (currentQuestion.value.type === 'fill') {
@@ -674,10 +674,12 @@ export default {
     
     // 填空题相关方法
     const isFillAnswerCorrect = (index) => {
-      return userAnswers.value[index] === currentQuestion.value.blanks[index].correctAnswer
+      const blanks = currentQuestion.value.blanks || []
+      const blank = blanks[index]
+      return blank && userAnswers.value[index] === blank.correctAnswer
     }
     
-    // 提交答案（选择题/填空题）
+    // 提交答案（选择题/填空题/判断题）
     const submitAnswer = () => {
       showFeedback.value = true
     }
