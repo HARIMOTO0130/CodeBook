@@ -8,17 +8,17 @@ urlpatterns = [
     # Django管理后台
     path('admin/', admin.site.urls),
     
-    # 学生端API
-    path('api/student/books/', include('apps.books.urls')),  # 学生端书籍浏览
+    # 学生端API（包含工具箱）
+    path('api/student/books/', include('apps.books.urls')),      # 学生端书籍浏览
     path('api/student/learning/', include('apps.learning.urls')),  # 学习记录、练习等
-    path('api/student/users/', include('apps.users.urls')),  # 用户相关（登录、注册等）
+    path('api/student/users/', include('apps.users.urls')),      # 用户相关（登录、注册等）
+    path('api/student/toolkit/', include('toolkit.urls')),       # 学生端工具箱
     
     # 教师端API
     path('api/teacher/', include('apps.teacher.urls')),  # 班级、作业、学生管理等
     
-    # 教材提供者端API
-    path('api/provider/books/', include('apps.books.urls')),  # 书籍管理（创建、编辑等）
-    path('api/provider/toolkit/', include('toolkit.urls')),  # 工具箱管理
+    # 教材提供者端API（仅教材相关的核心功能）
+    path('api/provider/books/', include('apps.books.urls')),  # 书籍 / 章节 / 版本 / 状态等管理
     
     # 兼容旧版API路径（保持向后兼容）
     path('api/books/', include('apps.books.urls')),

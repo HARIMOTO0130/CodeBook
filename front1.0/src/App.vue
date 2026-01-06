@@ -3,27 +3,27 @@
     <!-- 全局导航栏 -->
     <nav class="global-nav">
       <div class="nav-left">
-        <router-link to="/books" class="logo">
+        <router-link to="/student/books" class="logo">
           📚 CodeBook+——交互式非计算机专业计算机教育数字教材平台
         </router-link>
       </div>
       <div class="nav-right">
-        <router-link to="/profile/records" class="nav-item">
+        <router-link to="/student/profile/records" class="nav-item">
             📊 学习记录
           </router-link>
-        <router-link to="/practice" class="nav-item">
+        <router-link to="/student/practice" class="nav-item">
             📝 练习题
           </router-link>
-        <router-link to="/learning-paths" class="nav-item">
+        <router-link to="/student/learning-paths" class="nav-item">
             🗺️ 学习路线图
           </router-link>
-        <router-link to="/fullcode" class="nav-item">
+        <router-link to="/student/fullcode" class="nav-item">
           💻 代码沙盒
         </router-link>
-        <router-link to="/profile/settings" class="nav-item">
+        <router-link to="/student/profile/settings" class="nav-item">
           ⚙️ 设置
         </router-link>
-        <router-link to="/login" class="nav-item" v-if="!isAuthed">
+        <router-link to="/" class="nav-item" v-if="!isAuthed">
           ️🔑 登录
         </router-link>
         <button class="nav-item" v-else @click="onLogout">退出</button>
@@ -146,10 +146,11 @@
 </template>
 
 <script>
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { api } from './api/api.js'
-import NotesComponent from './components/NotesComponent.vue'
-import WrongQuestionsComponent from './components/WrongQuestionsComponent.vue'
+import NotesComponent from './student/components/NotesComponent.vue'
+import WrongQuestionsComponent from './student/components/WrongQuestionsComponent.vue'
 
 export default {
   name: 'App',
@@ -158,6 +159,7 @@ export default {
     WrongQuestionsComponent
   },
   setup() {
+    const router = useRouter()
     const notesOpen = ref(false)
     const activeTab = ref('notes')
     const targetNoteId = ref(null)
@@ -178,6 +180,11 @@ export default {
     
     // 添加window事件监听器，在登录成功后可以手动触发更新
     window.__updateAuthStatus = checkAuthStatus
+    
+    // 监听路由变化，更新认证状态（作为额外保障）
+    watch(() => router.currentRoute.value.path, () => {
+      checkAuthStatus()
+    })
 
     const toggleNotes = () => {
       notesOpen.value = !notesOpen.value
@@ -212,8 +219,17 @@ export default {
         await api.logout() 
       } catch {}
       finally {
+        // 清除本地存储的认证信息
+        try {
+          localStorage.removeItem('token')
+          localStorage.removeItem('userRole')
+        } catch {}
+        
         // 登出后立即更新认证状态
         checkAuthStatus()
+        
+        // 跳转到登录注册页面
+        router.push('/')
       }
     }
 

@@ -13,11 +13,12 @@ class UserPreferencesSerializer(serializers.ModelSerializer):
 class UserSerializer(serializers.ModelSerializer):
     """用户序列化器"""
     preferences = UserPreferencesSerializer(required=False)
+    role = serializers.CharField(read_only=True)
     
     class Meta:
         model = User
-        fields = ('id', 'username', 'email', 'avatar', 'preferences')
-        read_only_fields = ('id',)
+        fields = ('id', 'username', 'email', 'avatar', 'role', 'preferences')
+        read_only_fields = ('id', 'role')
     
     def update(self, instance, validated_data):
         preferences_data = validated_data.pop('preferences', None)
@@ -37,17 +38,38 @@ class UserSerializer(serializers.ModelSerializer):
 
 class RegisterSerializer(serializers.ModelSerializer):
     """用户注册序列化器"""
-    password = serializers.CharField(write_only=True)
+    password = serializers.CharField(write_only=True, min_length=6, style={'input_type': 'password'})
+    email = serializers.EmailField(required=True)
+    username = serializers.CharField(required=True, min_length=3, max_length=150)
+    role = serializers.ChoiceField(
+        choices=[('student', '学生'), ('teacher', '教师'), ('provider', '教材提供者'), ('admin', '管理员')],
+        default='student',
+        required=False,
+        allow_blank=False
+    )
     
     class Meta:
         model = User
-        fields = ('username', 'email', 'password')
+        fields = ('username', 'email', 'password', 'role')
+        extra_kwargs = {
+            'username': {
+                'required': True,
+                'min_length': 3,
+                'max_length': 150,
+                'validators': []
+            },
+            'email': {
+                'required': True
+            }
+        }
     
     def create(self, validated_data):
+        role = validated_data.pop('role', 'student')
         user = User.objects.create_user(
             username=validated_data['username'],
             email=validated_data['email'],
-            password=validated_data['password']
+            password=validated_data['password'],
+            role=role
         )
         # 创建默认偏好设置
         UserPreferences.objects.create(user=user)

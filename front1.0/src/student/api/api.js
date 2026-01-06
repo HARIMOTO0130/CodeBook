@@ -96,16 +96,21 @@ async function httpPost(path, body, requireAuth = false, method = 'POST') {
   
   if (!res.ok) {
     // 尝试获取响应体中的错误信息
+    let errorData = {};
     try {
-      const errorData = await res.json().catch(() => ({}));
-      // 创建一个包含更多信息的错误对象
-      const error = new Error(`${method} ${path} ${res.status}`);
-      error.response = { status: res.status, data: errorData };
-      throw error;
+      const text = await res.text();
+      if (text) {
+        errorData = JSON.parse(text);
+      }
     } catch (parseError) {
-      // 如果解析失败，抛出原始错误
-      throw new Error(`${method} ${path} ${res.status}`);
+      console.warn('无法解析错误响应:', parseError);
     }
+    
+    // 创建一个包含更多信息的错误对象
+    const error = new Error(`${method} ${path} ${res.status}`);
+    error.response = { status: res.status, data: errorData };
+    console.error(`[API错误] ${method} ${path}:`, errorData);
+    throw error;
   }
   
   return res.json().catch(() => ({}));
@@ -247,8 +252,8 @@ export const api = {
   },
   
   // 认证
-  async register({ username, email, password }) {
-    return httpPost('/users/register/', { username, email, password }, false);
+  async register({ username, email, password, role = 'student' }) {
+    return httpPost('/users/register/', { username, email, password, role }, false);
   },
   async login({ username, password }) {
     try {

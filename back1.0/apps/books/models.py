@@ -12,50 +12,124 @@ logger = logging.getLogger(__name__)
 from .jupyter_models import JupyterNotebook, JupyterCell, JupyterOutput
 
 
+class BookCategory(models.Model):
+    """教材分类（支持层级结构）"""
+    name = models.CharField(max_length=100, verbose_name='分类名称')
+    slug = models.SlugField(max_length=100, unique=True, verbose_name='分类标识')
+    parent = models.ForeignKey(
+        'self',
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name='children',
+        verbose_name='父分类'
+    )
+    description = models.TextField(blank=True, verbose_name='分类描述')
+    order = models.IntegerField(default=0, verbose_name='排序')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
+
+    class Meta:
+        verbose_name = '书籍分类'
+        verbose_name_plural = '书籍分类'
+        ordering = ['order', 'name']
+
+    def __str__(self):
+        return self.name
+
+
+class BookTag(models.Model):
+    """教材标签（结构化管理）"""
+    name = models.CharField(max_length=50, unique=True, verbose_name='标签名')
+    description = models.TextField(blank=True, verbose_name='标签描述')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
+
+    class Meta:
+        verbose_name = '书籍标签'
+        verbose_name_plural = '书籍标签'
+
+    def __str__(self):
+        return self.name
+
+
 class Book(models.Model):
-    """教材书籍模型"""
+    """教材书籍模型（面向学生端 + 教材提供者端）"""
     id = models.AutoField(primary_key=True)
     title = models.CharField(max_length=200, verbose_name='书名')
     author = models.CharField(max_length=100, verbose_name='作者')
     cover = models.ImageField(upload_to='book_covers/', null=True, blank=True, verbose_name='封面')
     pdf_file = models.FileField(upload_to='book_pdfs/', null=True, blank=True, verbose_name='PDF文件')
     description = models.TextField(verbose_name='描述')
-    tags = models.TextField(blank=True, default='[]', verbose_name='标签')
-    owner = models.ForeignKey(getattr(settings, 'AUTH_USER_MODEL', 'auth.User'), on_delete=models.SET_NULL, null=True, blank=True, related_name='uploaded_books', verbose_name='上传者')
-    
+
+    # 旧版字符串标签（JSON数组），保留用于兼容
+    tags = models.TextField(blank=True, default='[]', verbose_name='标签(JSON)')
+
+    # 新版结构化分类 / 标签，多对多关系
+    categories = models.ManyToManyField(
+        BookCategory,
+        blank=True,
+        related_name='books',
+        verbose_name='所属分类'
+    )
+    tag_objects = models.ManyToManyField(
+        BookTag,
+        blank=True,
+        related_name='books',
+        verbose_name='标签对象'
+    )
+
+    owner = models.ForeignKey(
+        getattr(settings, 'AUTH_USER_MODEL', 'auth.User'),
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='uploaded_books',
+        verbose_name='上传者'
+    )
+
+    # 归档标记（代替物理删除，用于教材提供者端的“归档/下架”）
+    is_archived = models.BooleanField(default=False, verbose_name='是否归档')
+
+    chapter_count = models.IntegerField(default=0, verbose_name='章节数')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
+
     @property
     def tag_list(self):
-        """获取标签列表"""
+        """
+        兼容旧版的标签JSON字段，仍然对前端暴露为列表。
+        教材提供者端后续可以渐进迁移到 BookTag 多对多关系。
+        """
         try:
             return json.loads(self.tags) if self.tags else []
         except json.JSONDecodeError:
             return []
-    
+
     @tag_list.setter
     def tag_list(self, value):
-        """设置标签列表"""
+        """设置旧版标签JSON字段（保持兼容）"""
         self.tags = json.dumps(value) if isinstance(value, list) else '[]'
-    chapter_count = models.IntegerField(default=0, verbose_name='章节数')
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
-    updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
-    
+
     class Meta:
         verbose_name = '教材'
         verbose_name_plural = '教材'
-    
+
     def __str__(self):
         return self.title
-    
+
     def delete(self, *args, **kwargs):
-        """删除书籍时同时删除相关的PDF文件"""
+        """
+        删除书籍时同时删除相关的PDF文件。
+        教材提供者端一般不建议直接物理删除，可以通过 is_archived 做软删除。
+        """
         # 先保存文件路径以便后续删除
         pdf_path = None
         if self.pdf_file and hasattr(self.pdf_file, 'path'):
             pdf_path = self.pdf_file.path
-        
+
         # 调用父类的delete方法删除数据库记录
         super().delete(*args, **kwargs)
-        
+
         # 如果文件存在，则删除物理文件
         if pdf_path and os.path.exists(pdf_path):
             try:
@@ -63,7 +137,7 @@ class Book(models.Model):
                 logger.info(f"成功删除PDF文件: {pdf_path}")
             except Exception as e:
                 logger.error(f"删除PDF文件失败 {pdf_path}: {str(e)}")
-    
+
     def save(self, *args, **kwargs):
         # 计算章节数
         if self.pk:
@@ -72,9 +146,56 @@ class Book(models.Model):
         else:
             # 新建记录时，章节数默认为0
             self.chapter_count = 0
-        
+
         # 保存实例
         super().save(*args, **kwargs)
+
+
+class BookVersion(models.Model):
+    """教材版本信息（支持版本历史与回滚）"""
+    book = models.ForeignKey(
+        Book,
+        on_delete=models.CASCADE,
+        related_name='versions',
+        verbose_name='原始书籍'
+    )
+    version_number = models.IntegerField(verbose_name='版本号')
+    title = models.CharField(max_length=200, verbose_name='标题')
+    author = models.CharField(max_length=100, verbose_name='作者')
+    description = models.TextField(verbose_name='描述')
+    pdf_file = models.FileField(
+        upload_to='book_versions/',
+        null=True,
+        blank=True,
+        verbose_name='版本PDF文件'
+    )
+    tags = models.TextField(blank=True, default='[]', verbose_name='标签(JSON)')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
+    created_by = models.ForeignKey(
+        getattr(settings, 'AUTH_USER_MODEL', 'auth.User'),
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name='版本创建人'
+    )
+    comment = models.TextField(blank=True, verbose_name='版本说明')
+    is_branch = models.BooleanField(default=False, verbose_name='是否分支版本')
+    parent_version = models.ForeignKey(
+        'self',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='child_versions',
+        verbose_name='父版本'
+    )
+
+    class Meta:
+        verbose_name = '教材版本'
+        verbose_name_plural = '教材版本'
+        ordering = ['book_id', '-version_number']
+
+    def __str__(self):
+        return f"{self.book.title} - v{self.version_number}"
 
 
 class Chapter(models.Model):
@@ -204,7 +325,7 @@ class Chapter(models.Model):
         self.merged_content = json.dumps(merged_jupyter)
         
         super().save(*args, **kwargs)
-    
+
     class Meta:
         verbose_name = '章节'
         verbose_name_plural = '章节'
@@ -212,6 +333,113 @@ class Chapter(models.Model):
     
     def __str__(self):
         return f"{self.book.title} - {self.title}"
+
+
+class ChapterVersion(models.Model):
+    """章节版本信息"""
+    chapter = models.ForeignKey(
+        Chapter,
+        on_delete=models.CASCADE,
+        related_name='versions',
+        verbose_name='原始章节'
+    )
+    version_number = models.IntegerField(verbose_name='版本号')
+    title = models.CharField(max_length=200, verbose_name='标题')
+    description = models.TextField(verbose_name='描述')
+    content = models.TextField(blank=True, null=True, verbose_name='章节内容')
+    code = models.TextField(blank=True, null=True, verbose_name='示例代码')
+    jupyter_content = models.TextField(blank=True, null=True, verbose_name='Jupyter文档内容')
+    merged_content = models.TextField(blank=True, null=True, verbose_name='合并内容')
+    language = models.CharField(max_length=50, default='python', verbose_name='编程语言')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
+    created_by = models.ForeignKey(
+        getattr(settings, 'AUTH_USER_MODEL', 'auth.User'),
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name='版本创建人'
+    )
+    comment = models.TextField(blank=True, verbose_name='版本说明')
+
+    class Meta:
+        verbose_name = '章节版本'
+        verbose_name_plural = '章节版本'
+        ordering = ['chapter_id', '-version_number']
+
+    def __str__(self):
+        return f"{self.chapter.title} - v{self.version_number}"
+
+
+class ChapterMedia(models.Model):
+    """章节多媒体资源（视频/图片/音频/附件）"""
+    MEDIA_TYPES = [
+        ('video', '视频'),
+        ('image', '图片'),
+        ('audio', '音频'),
+        ('attachment', '附件'),
+    ]
+
+    chapter = models.ForeignKey(
+        Chapter,
+        on_delete=models.CASCADE,
+        related_name='media',
+        verbose_name='所属章节'
+    )
+    media_type = models.CharField(max_length=20, choices=MEDIA_TYPES, verbose_name='资源类型')
+    url = models.URLField(blank=True, null=True, verbose_name='资源URL')
+    file = models.FileField(
+        upload_to='chapter_media/%Y/%m/',
+        blank=True,
+        null=True,
+        verbose_name='资源文件'
+    )
+    title = models.CharField(max_length=200, blank=True, verbose_name='标题')
+    description = models.TextField(blank=True, verbose_name='描述')
+    order = models.IntegerField(default=0, verbose_name='排序')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
+
+    class Meta:
+        verbose_name = '章节多媒体资源'
+        verbose_name_plural = '章节多媒体资源'
+        ordering = ['chapter_id', 'order']
+
+    def __str__(self):
+        return f"{self.chapter.title} - {self.title or self.get_media_type_display()}"
+
+
+class BookReview(models.Model):
+    """教材审核记录（用于教材提供者端审核流程）"""
+    REVIEW_STATUS = [
+        ('pending', '待审核'),
+        ('approved', '通过'),
+        ('rejected', '驳回'),
+    ]
+
+    book = models.ForeignKey(
+        Book,
+        on_delete=models.CASCADE,
+        related_name='reviews',
+        verbose_name='教材'
+    )
+    reviewer = models.ForeignKey(
+        getattr(settings, 'AUTH_USER_MODEL', 'auth.User'),
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='book_reviews',
+        verbose_name='审核人'
+    )
+    status = models.CharField(max_length=20, choices=REVIEW_STATUS, verbose_name='审核结果')
+    comment = models.TextField(blank=True, verbose_name='审核意见')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='审核时间')
+
+    class Meta:
+        verbose_name = '教材审核记录'
+        verbose_name_plural = '教材审核记录'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.book.title} - {self.get_status_display()}"
 
 
 class Practice(models.Model):

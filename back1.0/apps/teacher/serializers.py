@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from .models import Class, Assignment, AssignmentSubmission, Notification, TeachingResource, TeacherProfile, StudentProfile
 from django.contrib.auth import get_user_model
-from apps.books.serializers import BookSerializer, ChapterSerializer
+from apps.books.serializers import BookListSerializer as BookSerializer, ChapterSerializer
 
 User = get_user_model()
 

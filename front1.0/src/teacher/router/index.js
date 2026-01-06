@@ -1,5 +1,3 @@
-import { createRouter, createWebHistory } from 'vue-router'
-
 const DashboardView = () => import('../views/DashboardView.vue')
 const StudentListView = () => import('../views/StudentListView.vue')
 const StudentDetailView = () => import('../views/StudentDetailView.vue')
@@ -14,7 +12,7 @@ const ResourceListView = () => import('../views/ResourceListView.vue')
 const NotificationListView = () => import('../views/NotificationListView.vue')
 const SettingsView = () => import('../views/SettingsView.vue')
 
-const routes = [
+const teacherRoutes = [
   {
     path: '/teacher/dashboard',
     name: 'TeacherDashboard',
@@ -99,9 +97,4 @@ const routes = [
   }
 ]
 
-const router = createRouter({
-  history: createWebHistory(),
-  routes
-})
-
-export default router
+export default teacherRoutes

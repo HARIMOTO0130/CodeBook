@@ -15,7 +15,7 @@
         <p v-if="error" style="color:red;">{{ error }}</p>
       </form>
       <div class="register-link">
-        还没有账号？<router-link to="/register">立即注册</router-link>
+        还没有账号？<router-link to="/student/register">立即注册</router-link>
       </div>
     </div>
   </div>
@@ -61,7 +61,19 @@ export default {
         if (window.__updateAuthStatus) {
           window.__updateAuthStatus()
         }
-        const redirect = route.query.redirect || '/books'
+        // 保存用户角色（从后端返回或从localStorage获取）
+        let userRole = result.role || localStorage.getItem('userRole') || 'student'
+        localStorage.setItem('userRole', userRole)
+        
+        // 根据角色确定默认跳转路径
+        let defaultRedirect = '/student/books'
+        if (userRole === 'teacher') {
+          defaultRedirect = '/teacher/dashboard'
+        } else if (userRole === 'provider') {
+          defaultRedirect = '/provider/books'
+        }
+        
+        const redirect = route.query.redirect || defaultRedirect
         router.push(redirect)
       } catch (e) {
         console.error('登录请求错误:', e);

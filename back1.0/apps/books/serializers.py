@@ -1,6 +1,19 @@
 """书籍序列化器"""
 from rest_framework import serializers
-from .models import Book, Chapter, Practice, TestCase, PracticeChoiceOption, PracticeFillBlank
+from .models import (
+    Book,
+    Chapter,
+    Practice,
+    TestCase,
+    PracticeChoiceOption,
+    PracticeFillBlank,
+    BookCategory,
+    BookTag,
+    BookVersion,
+    ChapterVersion,
+    ChapterMedia,
+    BookReview,
+)
 
 
 class PracticeChoiceOptionSerializer(serializers.ModelSerializer):
@@ -129,9 +142,127 @@ class BookDetailSerializer(serializers.ModelSerializer):
     chapters = ChapterSummarySerializer(many=True, read_only=True)
     owner = serializers.SerializerMethodField()
     
+    categories = serializers.SlugRelatedField(
+        slug_field='name',
+        many=True,
+        read_only=True
+    )
+    tag_objects = serializers.SlugRelatedField(
+        slug_field='name',
+        many=True,
+        read_only=True
+    )
+
     class Meta:
         model = Book
-        fields = ('id', 'title', 'author', 'cover', 'pdf_file', 'description', 'tag_list', 'chapter_count', 'chapters', 'owner')
+        fields = (
+            'id',
+            'title',
+            'author',
+            'cover',
+            'pdf_file',
+            'description',
+            'tag_list',
+            'categories',
+            'tag_objects',
+            'chapter_count',
+            'chapters',
+            'owner',
+            'is_archived',
+        )
 
     def get_owner(self, obj):
         return getattr(obj.owner, 'id', None)
+
+
+# ===== 教材提供者端相关序列化器 =====
+
+
+class BookCategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BookCategory
+        fields = ('id', 'name', 'slug', 'parent', 'description', 'order', 'created_at', 'updated_at')
+
+
+class BookTagSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BookTag
+        fields = ('id', 'name', 'description', 'created_at')
+
+
+class BookVersionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BookVersion
+        fields = (
+            'id',
+            'book',
+            'version_number',
+            'title',
+            'author',
+            'description',
+            'pdf_file',
+            'tags',
+            'created_at',
+            'created_by',
+            'comment',
+            'is_branch',
+            'parent_version',
+        )
+        read_only_fields = ('created_at', 'created_by')
+
+
+class ChapterVersionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ChapterVersion
+        fields = (
+            'id',
+            'chapter',
+            'version_number',
+            'title',
+            'description',
+            'content',
+            'code',
+            'jupyter_content',
+            'merged_content',
+            'language',
+            'created_at',
+            'created_by',
+            'comment',
+        )
+        read_only_fields = ('created_at', 'created_by')
+
+
+class ChapterMediaSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ChapterMedia
+        fields = (
+            'id',
+            'chapter',
+            'media_type',
+            'url',
+            'file',
+            'title',
+            'description',
+            'order',
+            'created_at',
+        )
+        read_only_fields = ('created_at',)
+
+
+class BookReviewSerializer(serializers.ModelSerializer):
+    book_title = serializers.ReadOnlyField(source='book.title')
+    reviewer_name = serializers.ReadOnlyField(source='reviewer.username')
+
+    class Meta:
+        model = BookReview
+        fields = (
+            'id',
+            'book',
+            'book_title',
+            'reviewer',
+            'reviewer_name',
+            'status',
+            'comment',
+            'created_at',
+        )
+        read_only_fields = ('created_at',)

@@ -4,6 +4,23 @@
       <h2>注册</h2>
       <form @submit.prevent="register">
         <div>
+          <label>选择身份</label>
+          <div class="role-selection">
+            <label class="role-option" :class="{ active: form.role === 'student' }">
+              <input type="radio" v-model="form.role" value="student" required>
+              <span>👨‍🎓 学生端</span>
+            </label>
+            <label class="role-option" :class="{ active: form.role === 'teacher' }">
+              <input type="radio" v-model="form.role" value="teacher" required>
+              <span>👨‍🏫 教师端</span>
+            </label>
+            <label class="role-option" :class="{ active: form.role === 'provider' }">
+              <input type="radio" v-model="form.role" value="provider" required>
+              <span>📚 教材提供者端</span>
+            </label>
+          </div>
+        </div>
+        <div>
           <label>用户名</label>
           <input v-model="form.username" type="text" required placeholder="用户名" minlength="3">
         </div>
@@ -24,7 +41,7 @@
         <p v-if="success" class="success-message">{{ success }}</p>
       </form>
       <div class="login-link">
-        已有账号？<router-link to="/login">立即登录</router-link>
+        已有账号？<router-link to="/student/login">立即登录</router-link>
       </div>
     </div>
   </div>
@@ -42,11 +59,11 @@ export default {
     const loading = ref(false)
     const error = ref('')
     const success = ref('')
-    const form = reactive({ username: '', email: '', password: '', confirmPassword: '' })
+    const form = reactive({ role: 'student', username: '', email: '', password: '', confirmPassword: '' })
 
     const register = async () => {
-      if (!form.username || !form.email || !form.password || !form.confirmPassword) {
-        error.value = '请填写所有字段'
+      if (!form.role || !form.username || !form.email || !form.password || !form.confirmPassword) {
+        error.value = '请填写所有字段并选择身份'
         return
       }
 
@@ -70,20 +87,30 @@ export default {
       success.value = ''
 
       try {
-        console.log('注册表单数据:', { username: form.username, email: form.email });
+        console.log('注册表单数据:', { role: form.role, username: form.username, email: form.email });
         const result = await api.register({
           username: form.username,
           email: form.email,
-          password: form.password
+          password: form.password,
+          role: form.role
         });
         console.log('注册结果:', result);
         
         if (result && result.token) {
           localStorage.setItem('token', result.token);
+          // 保存用户角色
+          localStorage.setItem('userRole', form.role);
           success.value = '注册成功！正在跳转...';
           
+          // 根据角色跳转到相应路由
           setTimeout(() => {
-            router.push('/books');
+            let redirectPath = '/student/books';
+            if (form.role === 'teacher') {
+              redirectPath = '/teacher/dashboard';
+            } else if (form.role === 'provider') {
+              redirectPath = '/provider/books';
+            }
+            router.push(redirectPath);
           }, 1000);
         }
       } catch (e) {
@@ -201,5 +228,44 @@ export default {
 }
 .login-link a:hover {
   text-decoration: underline;
+}
+.role-selection {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+.role-option {
+  display: flex;
+  align-items: center;
+  padding: 0.75rem;
+  border: 2px solid #ddd;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.3s;
+  background: #fafafa;
+}
+.role-option:hover {
+  border-color: #409EFF;
+  background: #f0f7ff;
+}
+.role-option input[type="radio"] {
+  margin-right: 0.75rem;
+  cursor: pointer;
+}
+.role-option input[type="radio"]:checked + span {
+  color: #409EFF;
+  font-weight: 500;
+}
+.role-option input[type="radio"]:checked {
+  accent-color: #409EFF;
+}
+.role-option.active {
+  border-color: #409EFF;
+  background: #e6f4ff;
+}
+.role-option span {
+  font-size: 14px;
+  user-select: none;
 }
 </style>

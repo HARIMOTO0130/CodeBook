@@ -230,6 +230,15 @@ export default {
     
     // 获取笔记列表
     const fetchNotes = async () => {
+      // 检查是否已登录
+      const token = localStorage.getItem('token')
+      if (!token) {
+        // 未登录时静默处理，不显示错误
+        notes.value = []
+        filteredNotes.value = []
+        return
+      }
+      
       try {
         isLoading.value = true
         const response = await api.getNotes()
@@ -237,9 +246,15 @@ export default {
         notes.value = Array.isArray(response) ? response : []
         filteredNotes.value = [...notes.value]
       } catch (error) {
-        console.error('获取笔记失败:', error)
-        notes.value = []
-        filteredNotes.value = []
+        // 401错误表示未授权，静默处理
+        if (error.message && error.message.includes('AUTH 401')) {
+          notes.value = []
+          filteredNotes.value = []
+        } else {
+          console.error('获取笔记失败:', error)
+          notes.value = []
+          filteredNotes.value = []
+        }
       } finally {
         isLoading.value = false
       }
@@ -247,13 +262,26 @@ export default {
     
     // 获取标签列表
     const fetchTags = async () => {
+      // 检查是否已登录
+      const token = localStorage.getItem('token')
+      if (!token) {
+        // 未登录时静默处理，不显示错误
+        tags.value = []
+        return
+      }
+      
       try {
         const response = await api.getNoteTags()
         // 确保获取到的数据是数组格式
         tags.value = Array.isArray(response) ? response : []
       } catch (error) {
-        console.error('获取标签失败:', error)
-        tags.value = []
+        // 401错误表示未授权，静默处理
+        if (error.message && error.message.includes('AUTH 401')) {
+          tags.value = []
+        } else {
+          console.error('获取标签失败:', error)
+          tags.value = []
+        }
       }
     }
     

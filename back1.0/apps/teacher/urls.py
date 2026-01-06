@@ -8,7 +8,7 @@ router.register(r'assignments', AssignmentViewSet, basename='assignment')
 router.register(r'notifications', NotificationViewSet, basename='notification')
 router.register(r'resources', TeachingResourceViewSet, basename='resource')
 router.register(r'students', StudentViewSet, basename='student')
-router.register(r'analytics', AnalyticsViewSet, basename='analytics', basename='analytics')
+router.register(r'analytics', AnalyticsViewSet, basename='analytics')
 
 urlpatterns = [
     path('', include(router.urls)),

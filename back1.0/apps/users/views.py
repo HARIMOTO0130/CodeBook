@@ -53,58 +53,54 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'], permission_classes=[permissions.AllowAny])
     def register(self, request):
         """用户注册"""
+        # 打印接收到的数据用于调试
+        print(f"[注册] 接收到的数据: {request.data}")
+        
         serializer = RegisterSerializer(data=request.data)
         if serializer.is_valid():
-            user = serializer.save()
-            token, created = Token.objects.get_or_create(user=user)
-            return Response({
-                'user': UserSerializer(user).data,
-                'token': token.key
-            }, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            try:
+                user = serializer.save()
+                token, created = Token.objects.get_or_create(user=user)
+                return Response({
+                    'user': UserSerializer(user).data,
+                    'token': token.key,
+                    'role': user.role  # 返回用户角色
+                }, status=status.HTTP_201_CREATED)
+            except Exception as e:
+                print(f"[注册] 保存用户时出错: {str(e)}")
+                return Response({
+                    'error': f'创建用户失败: {str(e)}'
+                }, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            print(f"[注册] 验证失败: {serializer.errors}")
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
     @action(detail=False, methods=['post'], permission_classes=[permissions.AllowAny])
     def login(self, request):
         """用户登录"""
-        # 直接检查请求数据并返回更详细的信息
-        username = request.data.get('username', 'None')
-        password = request.data.get('password', 'None')
+        username = request.data.get('username')
+        password = request.data.get('password')
         
-        # 检查用户是否存在
-        try:
-            user_exists = User.objects.filter(username=username).exists()
-            
-            if user_exists:
-                user = User.objects.get(username=username)
-                # 使用Django的认证系统验证密码
-                from django.contrib.auth.hashers import check_password
-                password_valid = check_password(password, user.password)
-                
-                if password_valid:
-                    # 密码正确，生成token
-                    token, created = Token.objects.get_or_create(user=user)
-                    return Response({
-                        'user': UserSerializer(user).data,
-                        'token': token.key,
-                        'debug_info': '认证成功'
-                    })
-                else:
-                    return Response({
-                        'error': '用户名或密码错误',
-                        'debug_info': '用户存在但密码错误'
-                    }, status=status.HTTP_401_UNAUTHORIZED)
-            else:
-                return Response({
-                    'error': '用户名或密码错误',
-                    'debug_info': '用户不存在',
-                    'received_username': username
-                }, status=status.HTTP_401_UNAUTHORIZED)
-        except Exception as e:
+        if not username or not password:
             return Response({
-                'error': str(e),
-                'debug_info': '登录过程发生异常',
-                'received_data': request.data
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                'error': '请提供用户名和密码'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # 使用Django的authenticate函数进行认证
+        user = authenticate(request, username=username, password=password)
+        
+        if user is not None:
+            # 认证成功，生成token
+            token, created = Token.objects.get_or_create(user=user)
+            return Response({
+                'user': UserSerializer(user).data,
+                'token': token.key,
+                'role': user.role  # 返回用户角色
+            }, status=status.HTTP_200_OK)
+        else:
+            return Response({
+                'error': '用户名或密码错误'
+            }, status=status.HTTP_401_UNAUTHORIZED)
     
     @action(detail=False, methods=['post'])
     def logout(self, request):

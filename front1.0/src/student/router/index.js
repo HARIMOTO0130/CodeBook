@@ -4,12 +4,10 @@ import { createRouter, createWebHistory } from 'vue-router'
 const BooksView = () => import('../views/BooksView.vue')
 const BookOutlineView = () => import('../views/BookOutlineView.vue')
 const LearnView = () => import('../views/LearnView.vue')
-const FullCodeView = () => import('../views/FullCodeView.vue')
+const FullCodeView = () => import('../../views/FullCodeView.vue')
 const RecordsView = () => import('../views/RecordsView.vue')
 const SettingsView = () => import('../views/SettingsView.vue')
-const ToolKitView = () => import('../views/ToolKitView.vue')
-const LoginView = () => import('../views/LoginView.vue')
-const RegisterView = () => import('../views/RegisterView.vue')
+const ToolKitView = () => import('../../views/ToolKitView.vue')
 const LearningPathView = () => import('../views/LearningPathView.vue')
 const PracticeView = () => import('../views/PracticeView.vue')
 const JupyterNotebookView = () => import('../views/JupyterNotebookView.vue')
@@ -64,18 +62,6 @@ const studentRoutes = [
     name: 'StudentToolKit',
     component: ToolKitView,
     meta: { title: '轻量化工具包', role: 'student' }
-  },
-  {
-    path: '/student/login',
-    name: 'StudentLogin',
-    component: LoginView,
-    meta: { title: '登录', role: 'student' }
-  },
-  {
-    path: '/student/register',
-    name: 'StudentRegister',
-    component: RegisterView,
-    meta: { title: '注册', role: 'student' }
   },
   {
     path: '/student/learning-paths',

@@ -16,8 +16,34 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.db.models import Max, Avg
-from .models import Book, Chapter, Practice, TestCase, PracticeChoiceOption, PracticeFillBlank
-from .serializers import BookListSerializer, BookDetailSerializer, ChapterSerializer, ChapterDetailSerializer, PracticeSerializer, PracticeDetailSerializer
+from .models import (
+    Book,
+    Chapter,
+    Practice,
+    TestCase,
+    PracticeChoiceOption,
+    PracticeFillBlank,
+    BookCategory,
+    BookTag,
+    BookVersion,
+    ChapterVersion,
+    ChapterMedia,
+    BookReview,
+)
+from .serializers import (
+    BookListSerializer,
+    BookDetailSerializer,
+    ChapterSerializer,
+    ChapterDetailSerializer,
+    PracticeSerializer,
+    PracticeDetailSerializer,
+    BookCategorySerializer,
+    BookTagSerializer,
+    BookVersionSerializer,
+    ChapterVersionSerializer,
+    ChapterMediaSerializer,
+    BookReviewSerializer,
+)
 from apps.learning.models import LearningRecord
 from .advanced_processor import AdvancedPDFProcessor
 
@@ -44,8 +70,14 @@ class BookViewSet(viewsets.ModelViewSet):
         return Book.objects.all()
     
     def perform_destroy(self, instance):
+        """
+        默认行为仍然是物理删除，但教材提供者端可以选择使用 is_archived 做软删除。
+        这里保留原有所有者检查逻辑。
+        """
         # 确保只有书籍所有者可以删除
-        if instance.owner != self.request.user and not (self.request.user.is_staff or self.request.user.is_superuser):
+        if instance.owner != self.request.user and not (
+            self.request.user.is_staff or self.request.user.is_superuser
+        ):
             raise PermissionDenied("您没有权限删除这本教材")
         # 调用模型的delete方法，这将同时删除数据库记录和相关的PDF文件
         instance.delete()
@@ -1453,3 +1485,72 @@ class ChapterViewSet(viewsets.ReadOnlyModelViewSet):
             pass
         
         return Response(serializer.data)
+
+
+# ===== 教材提供者端相关视图集（预留接口） =====
+
+
+class BookCategoryViewSet(viewsets.ModelViewSet):
+    """
+    教材分类管理接口（教材提供者端）
+    - GET /api/provider/books/categories/
+    - POST /api/provider/books/categories/
+    """
+
+    queryset = BookCategory.objects.all().order_by('order', 'name')
+    serializer_class = BookCategorySerializer
+    permission_classes = [IsAuthenticated]
+
+
+class BookTagViewSet(viewsets.ModelViewSet):
+    """
+    教材标签管理接口（教材提供者端）
+    - GET /api/provider/books/tags/
+    - POST /api/provider/books/tags/
+    """
+
+    queryset = BookTag.objects.all().order_by('name')
+    serializer_class = BookTagSerializer
+    permission_classes = [IsAuthenticated]
+
+
+class BookVersionViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    教材版本查看接口（教材提供者端）
+    预留：后续可以扩展 POST 用于创建版本、回滚等。
+    """
+
+    queryset = BookVersion.objects.select_related('book', 'created_by').all()
+    serializer_class = BookVersionSerializer
+    permission_classes = [IsAuthenticated]
+
+
+class ChapterVersionViewSet(viewsets.ReadOnlyModelViewSet):
+    """章节版本查看接口（教材提供者端）"""
+
+    queryset = ChapterVersion.objects.select_related('chapter', 'created_by').all()
+    serializer_class = ChapterVersionSerializer
+    permission_classes = [IsAuthenticated]
+
+
+class ChapterMediaViewSet(viewsets.ModelViewSet):
+    """
+    章节多媒体资源管理接口（教材提供者端）
+    - 用于上传/管理 视频、图片、音频、附件 等资源
+    """
+
+    queryset = ChapterMedia.objects.select_related('chapter').all()
+    serializer_class = ChapterMediaSerializer
+    permission_classes = [IsAuthenticated]
+
+
+class BookReviewViewSet(viewsets.ModelViewSet):
+    """
+    教材审核记录接口（教材提供者端/管理员）
+    - 教材提供者可以查看审核结果
+    - 审核人员可以创建审核记录
+    """
+
+    queryset = BookReview.objects.select_related('book', 'reviewer').all()
+    serializer_class = BookReviewSerializer
+    permission_classes = [IsAuthenticated]
