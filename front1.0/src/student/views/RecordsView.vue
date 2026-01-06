@@ -3,12 +3,28 @@
     <div class="page-header">
       <h1>学习记录</h1>
       <div class="header-actions">
-        <select v-model="timeRange" class="input filter-select">
-          <option value="week">最近一周</option>
-          <option value="month">最近一月</option>
-          <option value="quarter">最近三月</option>
-          <option value="year">最近一年</option>
-        </select>
+        <div class="filter-row">
+          <select v-model="filters.type" class="input filter-select">
+            <option value="all">全部类型</option>
+            <option value="reading">阅读/学习</option>
+            <option value="practice">练习</option>
+          </select>
+          <select v-model="filters.status" class="input filter-select">
+            <option value="all">全部状态</option>
+            <option value="completed">已完成</option>
+            <option value="inProgress">学习中</option>
+          </select>
+          <select v-model="timeRange" class="input filter-select">
+            <option value="week">最近一周</option>
+            <option value="month">最近一月</option>
+            <option value="quarter">最近三月</option>
+            <option value="year">最近一年</option>
+          </select>
+          <input type="date" v-model="filters.startDate" class="input date-input" />
+          <input type="date" v-model="filters.endDate" class="input date-input" />
+          <button class="btn btn-primary" @click="applyFilters">筛选</button>
+          <button class="btn btn-default" @click="resetFilters">重置</button>
+        </div>
         <div class="goal-settings">
           <span>每日目标: {{ dailyGoalHours }}小时</span>
           <button class="btn btn-link" @click="showGoalModal = true">设置</button>
@@ -339,7 +355,7 @@
 </template>
 
 <script>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from '../api/api.js'
 
@@ -348,19 +364,28 @@ export default {
   setup() {
     const router = useRouter()
     const timeRange = ref('month')
+    const filters = reactive({
+      type: 'all',
+      status: 'all',
+      startDate: '',
+      endDate: '',
+      page: 1,
+      pageSize: 10,
+      orderBy: '-timestamp'
+    })
     
-    // 统计数据
-    const totalLearningDays = ref(15)
-    const totalHours = ref(42.5)
-    const completedChapters = ref(32)
-    const accuracyRate = ref(87)
-    const currentStreak = ref(7) // 连续学习天数
-    const goalCompletionRate = ref(85) // 目标达成率
+    // 统计数据（由真实数据计算）
+    const totalLearningDays = ref(0)
+    const totalHours = ref(0)
+    const completedChapters = ref(0)
+    const accuracyRate = ref(0)
+    const currentStreak = ref(0) // 连续学习天数
+    const goalCompletionRate = ref(0) // 目标达成率
     
     // 每日目标设置
-    const dailyGoalHours = ref(2) // 每日学习时长目标
-    const dailyGoalChapters = ref(2) // 每日章节目标
-    const todayHours = ref(1.5) // 今日已学习时长
+    const dailyGoalHours = ref(Number(localStorage.getItem('dailyGoalHours')) || 2)
+    const dailyGoalChapters = ref(Number(localStorage.getItem('dailyGoalChapters')) || 2)
+    const todayHours = ref(0) // 今日已学习时长
     const todayProgressPercentage = computed(() => {
       return Math.min(100, Math.round((todayHours.value / dailyGoalHours.value) * 100))
     })
@@ -382,8 +407,9 @@ export default {
     
     // 学习记录数据
     const learningRecords = ref([])
+    const totalRecords = ref(0)
     
-    // 学习习惯数据
+    // 学习习惯数据（可后续基于真实数据优化）
     const timeSlots = ref([
       { time: '08:00', intensity: 2, active: true },
       { time: '12:00', intensity: 1, active: false },
@@ -394,106 +420,189 @@ export default {
     ])
     
     const learningTypes = ref([
-      { name: '阅读', percentage: 45, color: '#409EFF' },
-      { name: '视频', percentage: 30, color: '#E6A23C' },
-      { name: '练习', percentage: 25, color: '#67C23A' }
+      { name: '阅读', percentage: 0, color: '#409EFF' },
+      { name: '视频', percentage: 0, color: '#E6A23C' },
+      { name: '练习', percentage: 0, color: '#67C23A' }
     ])
     
-    // 加载数据
-    const loadData = async () => {
+    const applyFilters = () => {
+      filters.page = 1
+      loadData()
+    }
+    
+    const resetFilters = () => {
+      filters.type = 'all'
+      filters.status = 'all'
+      filters.startDate = ''
+      filters.endDate = ''
+      filters.page = 1
+      filters.orderBy = '-timestamp'
+      loadData()
+    }
+    
+    const fetchActivities = async () => {
+      const res = await api.getLearningActivities({
+        startDate: filters.startDate,
+        endDate: filters.endDate,
+        type: filters.type,
+        status: filters.status,
+        orderBy: filters.orderBy,
+        page: filters.page,
+        pageSize: filters.pageSize
+      })
+      const results = Array.isArray(res?.results) ? res.results : []
+      totalRecords.value = res?.total || results.length
+      learningRecords.value = results.map(item => ({
+        id: item.id,
+        type: item.type,
+        title: `${item.bookTitle || ''} - ${item.chapterTitle || ''}`,
+        bookTitle: item.bookTitle,
+        duration: item.duration || 30,
+        status: item.status,
+        timestamp: item.timestamp
+      }))
+      calcStats(results)
+      buildTrendFromActivities(results)
+      updateTodayHours(results)
+    }
+    
+    const fetchHeatmap = async () => {
       try {
-        // 加载学习记录
-        const records = await api.getLearningRecords(timeRange.value)
-        // 确保records是数组类型，避免slice方法调用失败
-        const recordsArray = Array.isArray(records) ? records : []
-        learningRecords.value = recordsArray.slice(0, 10) // 只显示最近10条
-        
-        // 生成热力图数据
-        generateHeatmapData()
-        
-        // 生成趋势图数据
-        generateTrendData()
-        
-        // 加载教材进度
+        const data = await api.getHeatmapData()
+        heatmapData.value = (data || []).map(item => {
+          const minutes = item.minutes || 0
+          let intensity = 0
+          if (minutes > 180) intensity = 4
+          else if (minutes > 120) intensity = 3
+          else if (minutes > 60) intensity = 2
+          else if (minutes > 30) intensity = 1
+          return {
+            date: item.date,
+            hours: minutes / 60,
+            intensity
+          }
+        })
+      } catch (e) {
+        heatmapData.value = []
+      }
+    }
+    
+    const fetchPracticeStats = async () => {
+      try {
+        const records = await api.getPracticeRecords()
+        if (Array.isArray(records) && records.length > 0) {
+          const scores = records.map(r => r.score || 0)
+          accuracyRate.value = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
+          const completed = records.filter(r => r.completed)
+          completedChapters.value = completed.length
+        } else {
+          accuracyRate.value = 0
+          completedChapters.value = 0
+        }
+      } catch (e) {
+        accuracyRate.value = 0
+        completedChapters.value = 0
+      }
+    }
+    
+    const fetchBooksProgress = async () => {
+      try {
         const books = await api.getBooks()
         bookProgressData.value = books.map(book => ({
           id: book.id,
           title: book.title,
-          progress: book.progress,
-          completedSections: Math.floor((book.progress || 0) * ((book.totalSections || book.chapterCount || 0)) / 100),
-          totalSections: book.totalSections || book.chapterCount || Math.floor(Math.random() * 20) + 10,
-          totalHours: Math.floor(Math.random() * 10) + 5
+          progress: book.progress || 0,
+          completedSections: book.completedSections || 0,
+          totalSections: book.totalSections || book.chapterCount || 0,
+          totalHours: book.totalHours || 0
         }))
-        
-        // 错题本：优先使用后端数据，否则用本地模拟
-        try {
-          wrongQuestions.value = await api.getWrongQuestions()
-        } catch (e) {
-          // ignore
-        }
-        if (wrongQuestions.value.length === 0) {
-          wrongQuestions.value = [
-            {
-              id: 1,
-              title: '以下哪个不是Python的数据类型？',
-              practiceId: 1,
-              attemptTime: new Date(Date.now() - 86400000).toISOString(),
-              difficulty: 2
-            },
-            {
-              id: 2,
-              title: '关于JavaScript闭包，以下说法错误的是？',
-              practiceId: 2,
-              attemptTime: new Date(Date.now() - 172800000).toISOString(),
-              difficulty: 3
-            }
-          ]
-        }
-        
-        // 模拟学习记录数据（后端记录模型字段不完全匹配该视图展示）
-        if (learningRecords.value.length === 0) {
-          generateMockLearningRecords()
-        }
+      } catch (e) {
+        bookProgressData.value = []
+      }
+    }
+    
+    const fetchWrongQuestions = async () => {
+      try {
+        wrongQuestions.value = await api.getWrongQuestions()
+      } catch (e) {
+        wrongQuestions.value = []
+      }
+    }
+    
+    const loadData = async () => {
+      try {
+        await Promise.all([
+          fetchActivities(),
+          fetchHeatmap(),
+          fetchPracticeStats(),
+          fetchBooksProgress(),
+          fetchWrongQuestions()
+        ])
       } catch (error) {
         console.error('加载学习记录失败:', error)
-        // 生成模拟数据
-        generateMockLearningRecords()
-        // 确保在错误情况下也生成热力图和趋势图数据
-        generateHeatmapData()
-        generateTrendData()
       }
     }
     
-    // 生成模拟学习记录
-    const generateMockLearningRecords = () => {
-      const records = []
-      const types = ['reading', 'video', 'quiz']
-      const statuses = ['completed', 'inProgress']
-      const bookTitles = ['Python基础教程', 'JavaScript进阶', '数据结构与算法']
-      
-      for (let i = 0; i < 15; i++) {
-        const type = types[Math.floor(Math.random() * types.length)]
-        const title = type === 'reading' ? '章节阅读' : type === 'video' ? '视频学习' : '章节练习'
-        const duration = Math.floor(Math.random() * 60) + 15 // 15-75分钟
-        
-        records.push({
-          id: i + 1,
-          type,
-          title: `${bookTitles[Math.floor(Math.random() * bookTitles.length)]} - ${title} ${i + 1}`,
-          bookTitle: bookTitles[Math.floor(Math.random() * bookTitles.length)],
-          duration,
-          status: statuses[Math.floor(Math.random() * statuses.length)],
-          timestamp: new Date(Date.now() - i * 3600000 * (Math.random() * 3 + 1)).toISOString()
-        })
-      }
-      
-      learningRecords.value = records
+    const updateTodayHours = (activities) => {
+      const today = new Date().toISOString().slice(0, 10)
+      const minutes = activities
+        .filter(a => (a.timestamp || '').slice(0, 10) === today)
+        .reduce((sum, a) => sum + (a.duration || 30), 0)
+      todayHours.value = Math.round((minutes / 60) * 10) / 10
+      goalCompletionRate.value = Math.min(100, Math.round((todayHours.value / dailyGoalHours.value) * 100))
     }
     
-    // 加载更多记录
+    const calcStats = (activities) => {
+      const dates = new Set()
+      let minutes = 0
+      activities.forEach(a => {
+        const dateStr = (a.timestamp || '').slice(0, 10)
+        if (dateStr) dates.add(dateStr)
+        minutes += a.duration || 30
+      })
+      totalLearningDays.value = dates.size
+      totalHours.value = Math.round((minutes / 60) * 10) / 10
+      
+      // 简单连续天数计算
+      const sortedDates = Array.from(dates).sort().reverse()
+      let streak = 0
+      let cursor = new Date()
+      sortedDates.forEach(d => {
+        const day = new Date(d)
+        if (Math.abs((cursor - day) / (1000 * 60 * 60 * 24)) <= 1) {
+          streak += 1
+          cursor = day
+        }
+      })
+      currentStreak.value = streak
+    }
+    
+    const buildTrendFromActivities = (activities) => {
+      const daysCount = timeRange.value === 'week' ? 7 : 30
+      const map = new Map()
+      for (let i = daysCount - 1; i >= 0; i--) {
+        const d = new Date()
+        d.setDate(d.getDate() - i)
+        const key = d.toISOString().slice(0, 10)
+        map.set(key, 0)
+      }
+      activities.forEach(a => {
+        const key = (a.timestamp || '').slice(0, 10)
+        if (map.has(key)) {
+          map.set(key, map.get(key) + (a.duration || 30) / 60)
+        }
+      })
+      trendData.value = Array.from(map.entries()).map(([date, hours]) => ({
+        day: date.slice(5),
+        hours: Math.round(hours * 10) / 10
+      }))
+    }
+    
+    // 分页
     const loadMoreRecords = () => {
-      // 这里可以实现分页加载逻辑
-      console.log('加载更多记录...')
+      if (filters.page * filters.pageSize >= totalRecords.value) return
+      filters.page += 1
+      fetchActivities()
     }
     
     // 保存目标设置
@@ -536,47 +645,6 @@ export default {
     }
     
     // 生成热力图数据
-    const generateHeatmapData = () => {
-      const data = []
-      const daysCount = timeRange.value === 'week' ? 7 : 
-                        timeRange.value === 'month' ? 30 : 
-                        timeRange.value === 'quarter' ? 90 : 365
-      
-      for (let i = daysCount - 1; i >= 0; i--) {
-        const date = new Date()
-        date.setDate(date.getDate() - i)
-        
-        // 随机生成学习强度 (0-4)
-        const intensity = Math.floor(Math.random() * 5)
-        
-        data.push({
-          date: date.toISOString().split('T')[0],
-          intensity,
-          hours: intensity * (Math.random() * 2 + 0.5)
-        })
-      }
-      
-      heatmapData.value = data
-    }
-    
-    // 生成趋势图数据
-    const generateTrendData = () => {
-      const data = []
-      const daysCount = timeRange.value === 'week' ? 7 : 30
-      
-      for (let i = daysCount - 1; i >= 0; i--) {
-        const date = new Date()
-        date.setDate(date.getDate() - i)
-        
-        data.push({
-          day: date.getDate(),
-          hours: Math.random() * 6 + 0.5 // 0.5-6.5小时
-        })
-      }
-      
-      trendData.value = data
-    }
-    
     // 获取热力图颜色
     const getHeatColor = (intensity) => {
       const colors = ['#ebedf0', '#c6e48b', '#7bc96f', '#239a3b', '#196127']

@@ -1,5 +1,6 @@
 """学习记录视图函数"""
 from rest_framework import viewsets, status, decorators, generics
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.views import APIView
 from django.db import models
 
@@ -21,6 +22,7 @@ from apps.books.models import Book, Chapter
 from .models import LearningRecord, PracticeRecord, HeatmapData, WrongQuestion, RoadmapTemplate, RoadmapStage, UserLearningPath, UserPathStage, Note, NoteTag, Exercise, JupyterDocument, LearningStyle, KnowledgeMastery, LearningRecommendation, LearningPreference
 from .serializers import (
     LearningRecordSerializer, 
+    LearningActivitySerializer,
     SaveProgressSerializer,
     PracticeRecordSerializer,
     SubmitPracticeSerializer,
@@ -50,6 +52,8 @@ from .serializers import (
     UpdateLearningPreferenceSerializer
 )
 from .recommendation_engine import RecommendationEngine
+from datetime import datetime as dt_datetime
+from django.utils.dateparse import parse_date
 
 
 class LearningRecordViewSet(viewsets.ModelViewSet):
@@ -57,6 +61,7 @@ class LearningRecordViewSet(viewsets.ModelViewSet):
     queryset = LearningRecord.objects.all()
     serializer_class = LearningRecordSerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = PageNumberPagination
     
     def get_queryset(self):
         # 用户只能查看自己的学习记录
@@ -118,6 +123,119 @@ class LearningRecordViewSet(viewsets.ModelViewSet):
             return Response(serializer.data)
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['get'], url_path='activity')
+    def activity(self, request):
+        """
+        获取用户学习活动（阅读/练习）列表，支持过滤、排序、分页
+        查询参数：
+          - start_date / end_date: 日期范围（YYYY-MM-DD）
+          - type: reading / practice / all
+          - status: completed / inProgress / all
+          - order_by: timestamp / -timestamp / score / -score / progress / -progress
+          - page, page_size
+        """
+        user = request.user
+
+        # 解析查询参数
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        filter_type = request.query_params.get('type', 'all')
+        filter_status = request.query_params.get('status', 'all')
+        order_by = request.query_params.get('order_by', '-timestamp')
+        page_size = request.query_params.get('page_size') or request.query_params.get('pageSize') or 10
+        page_number = request.query_params.get('page') or 1
+
+        # 允许的排序字段，避免注入
+        allowed_order = {'timestamp', '-timestamp', 'score', '-score', 'progress', '-progress'}
+        if order_by not in allowed_order:
+            order_by = '-timestamp'
+
+        # 拉取学习记录（阅读类）
+        learning_qs = LearningRecord.objects.filter(user=user).select_related('book', 'chapter')
+        learning_items = []
+        for lr in learning_qs:
+            chapter_type = getattr(lr.chapter, 'type', 'reading') or 'reading'
+            item = {
+                'id': f'lr-{lr.id}',
+                'type': 'reading' if chapter_type == 'reading' else chapter_type or 'reading',
+                'bookId': lr.book.id,
+                'chapterId': lr.chapter.id,
+                'bookTitle': lr.book.title,
+                'chapterTitle': lr.chapter.title,
+                'duration': None,  # 当前模型无时长字段，保持真实数据而非模拟
+                'status': 'completed' if lr.progress >= 100 else 'inProgress',
+                'timestamp': lr.last_learn_time or lr.created_at if hasattr(lr, 'created_at') else lr.last_learn_time,
+                'progress': lr.progress,
+                'score': None,
+            }
+            learning_items.append(item)
+
+        # 拉取练习记录
+        practice_qs = PracticeRecord.objects.filter(user=user).select_related('book', 'chapter')
+        practice_items = []
+        for pr in practice_qs:
+            item = {
+                'id': f'pr-{pr.id}',
+                'type': 'practice',
+                'bookId': pr.book.id,
+                'chapterId': pr.chapter.id,
+                'bookTitle': pr.book.title,
+                'chapterTitle': pr.chapter.title,
+                'duration': None,  # 练习记录当前无时长字段
+                'status': 'completed' if pr.completed else 'inProgress',
+                'timestamp': pr.completed_time or pr.created_at if hasattr(pr, 'created_at') else pr.completed_time,
+                'progress': None,
+                'score': pr.score,
+            }
+            practice_items.append(item)
+
+        # 合并
+        activities = learning_items + practice_items
+
+        # 过滤类型
+        if filter_type in ['reading', 'practice']:
+            activities = [a for a in activities if a['type'] == filter_type]
+
+        # 过滤状态
+        if filter_status in ['completed', 'inProgress']:
+            activities = [a for a in activities if a['status'] == filter_status]
+
+        # 过滤日期
+        def in_range(ts):
+            if not ts:
+                return False
+            ts_date = ts.date()
+            if start_date:
+                try:
+                    sd = parse_date(start_date)
+                    if ts_date < sd:
+                        return False
+                except Exception:
+                    pass
+            if end_date:
+                try:
+                    ed = parse_date(end_date)
+                    if ts_date > ed:
+                        return False
+                except Exception:
+                    pass
+            return True
+
+        activities = [a for a in activities if in_range(a['timestamp'])]
+
+        # 排序
+        reverse = order_by.startswith('-')
+        key = order_by.lstrip('-')
+        activities.sort(key=lambda x: x.get(key) or dt_datetime.min, reverse=reverse)
+
+        # 分页
+        paginator = PageNumberPagination()
+        paginator.page_size = int(page_size)
+        paginated = paginator.paginate_queryset(activities, request)
+
+        serializer = LearningActivitySerializer(paginated, many=True)
+        return paginator.get_paginated_response(serializer.data)
 
     @action(detail=False, methods=['post'], permission_classes=[AllowAny], authentication_classes=[])
     def execute(self, request):
@@ -702,6 +820,106 @@ class RoadmapTemplateViewSet(viewsets.ReadOnlyModelViewSet):
         roadmaps = RoadmapTemplate.objects.filter(is_active=True)[:3]
         serializer = self.get_serializer(roadmaps, many=True)
         return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def activity(self, request):
+        """
+        获取当前用户的学习活动记录（阅读/练习），支持过滤、排序、分页。
+        Query params:
+        - start_date, end_date: YYYY-MM-DD
+        - type: all|reading|practice
+        - status: all|completed|inProgress
+        - order_by: timestamp|-timestamp (default -timestamp)
+        - page, page_size
+        """
+        user = request.user
+        params = request.query_params
+        start_date = parse_date(params.get('start_date')) if params.get('start_date') else None
+        end_date = parse_date(params.get('end_date')) if params.get('end_date') else None
+        record_type = params.get('type', 'all')
+        status_filter = params.get('status', 'all')
+        order_by = params.get('order_by', '-timestamp')
+        
+        activities = []
+        
+        # 阅读/进度类记录
+        if record_type in ['all', 'reading']:
+            lr_qs = LearningRecord.objects.filter(user=user).select_related('book', 'chapter')
+            if start_date:
+                lr_qs = lr_qs.filter(last_learn_time__date__gte=start_date)
+            if end_date:
+                lr_qs = lr_qs.filter(last_learn_time__date__lte=end_date)
+            for lr in lr_qs:
+                completed = lr.progress >= 100
+                if status_filter == 'completed' and not completed:
+                    continue
+                if status_filter == 'inProgress' and completed:
+                    continue
+                activities.append({
+                    'id': f'lr-{lr.id}',
+                    'source': 'learning_record',
+                    'type': 'reading',
+                    'bookId': lr.book.id,
+                    'bookTitle': lr.book.title,
+                    'chapterId': lr.chapter.id,
+                    'chapterTitle': lr.chapter.title,
+                    'progress': lr.progress,
+                    'status': 'completed' if completed else 'inProgress',
+                    'duration': 0,  # 暂无时长数据
+                    'timestamp': lr.last_learn_time.isoformat(),
+                })
+        
+        # 练习记录
+        if record_type in ['all', 'practice']:
+            pr_qs = PracticeRecord.objects.filter(user=user).select_related('book', 'chapter')
+            if start_date:
+                pr_qs = pr_qs.filter(completed_time__date__gte=start_date)
+            if end_date:
+                pr_qs = pr_qs.filter(completed_time__date__lte=end_date)
+            for pr in pr_qs:
+                completed = pr.completed
+                if status_filter == 'completed' and not completed:
+                    continue
+                if status_filter == 'inProgress' and completed:
+                    continue
+                activities.append({
+                    'id': f'pr-{pr.id}',
+                    'source': 'practice_record',
+                    'type': 'practice',
+                    'bookId': pr.book.id,
+                    'bookTitle': pr.book.title,
+                    'chapterId': pr.chapter.id,
+                    'chapterTitle': pr.chapter.title,
+                    'score': pr.score,
+                    'status': 'completed' if completed else 'inProgress',
+                    'duration': 0,
+                    'timestamp': pr.completed_time.isoformat(),
+                })
+        
+        # 排序
+        reverse = False
+        key = 'timestamp'
+        if order_by.startswith('-'):
+            reverse = True
+            key = order_by[1:]
+        elif order_by:
+            key = order_by
+        activities.sort(key=lambda x: x.get(key, ''), reverse=reverse)
+        
+        # 分页
+        page = int(params.get('page', 1))
+        page_size = int(params.get('page_size', 20))
+        start = (page - 1) * page_size
+        end = start + page_size
+        total = len(activities)
+        results = activities[start:end]
+        
+        return Response({
+            'results': results,
+            'page': page,
+            'page_size': page_size,
+            'total': total
+        })
 
 
 class UserLearningPathViewSet(viewsets.GenericViewSet, viewsets.mixins.ListModelMixin, viewsets.mixins.RetrieveModelMixin):

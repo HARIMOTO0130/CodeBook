@@ -82,7 +82,7 @@
             </div>
             
             <!-- 判断题 -->
-            <div v-else-if="currentQuestion.type === 'judgment'" class="question-judgment">
+            <div v-else-if="currentQuestion.type === 'judgment' || currentQuestion.type === 'Judgment'" class="question-judgment">
               <div class="question-stem">
                 <h4>{{ currentQuestion.question }}</h4>
                 <div v-if="currentQuestion.description" class="question-description">
@@ -489,7 +489,14 @@ export default {
           options: []
         }
       }
-      return props.questions[currentIndex.value] || props.questions[0]
+      const question = props.questions[currentIndex.value] || props.questions[0]
+      
+      // 确保填空题始终有blanks数组
+      if (question.type === 'fill' && !question.blanks) {
+        question.blanks = []
+      }
+      
+      return question
     })
     
     // 当前答案是否正确
@@ -573,7 +580,7 @@ export default {
     const calculateScore = () => {
       let correctCount = 0
       questions.value.forEach(q => {
-        if (q.type === 'choice' || q.type === 'judgment') {
+        if (q.type === 'choice' || q.type === 'judgment' || q.type === 'Judgment') {
           const correctAnswer = q.correctAnswer
           const userAnswer = q.selectedOption
           if (correctAnswer === userAnswer) {
@@ -621,10 +628,12 @@ export default {
     const loadQuestionState = () => {
       const question = currentQuestion.value
       
-      if (question.type === 'choice' || question.type === 'judgment') {
+      if (question.type === 'choice' || question.type === 'judgment' || question.type === 'Judgment') {
         selectedOptions.value = []
       } else if (question.type === 'fill') {
-        userAnswers.value = new Array(question.blanks.length).fill('')
+        // 确保blanks数组存在且不为空
+        const blanksCount = (question.blanks && question.blanks.length) || 0
+        userAnswers.value = new Array(blanksCount).fill('')
       } else if (question.type === 'codeCompletion') {
         // 用??替换需要补全的部分
         codeCompletionAnswer.value = question.code_template || ''

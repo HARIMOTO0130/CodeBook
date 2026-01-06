@@ -71,10 +71,14 @@ def add_practice_questions():
             # 3. 判断题
             true_false_question = {
                 "id": 3,
-                "type": "true_false",
+                "type": "Judgment",
                 "title": "判断题",
                 "question": get_true_false_question(book, chapter),
-                "correct_answer": get_true_false_answer(book, chapter),
+                "options": [
+                    {"id": 1, "content": "正确", "is_correct": get_true_false_answer(book, chapter)},
+                    {"id": 2, "content": "错误", "is_correct": not get_true_false_answer(book, chapter)}
+                ],
+                "correct_answer": 0 if get_true_false_answer(book, chapter) else 1,
                 "difficulty": 1,
                 "order": 3
             }

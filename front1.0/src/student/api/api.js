@@ -493,6 +493,19 @@ export const api = {
   async getLearningRecords() {
     return httpGet('/learning/records/', true);
   },
+  async getLearningActivities(params = {}) {
+    const search = new URLSearchParams();
+    if (params.startDate) search.append('start_date', params.startDate);
+    if (params.endDate) search.append('end_date', params.endDate);
+    if (params.type && params.type !== 'all') search.append('type', params.type);
+    if (params.status && params.status !== 'all') search.append('status', params.status);
+    if (params.orderBy) search.append('order_by', params.orderBy);
+    if (params.page) search.append('page', params.page);
+    if (params.pageSize) search.append('page_size', params.pageSize);
+    const qs = search.toString();
+    const url = qs ? `/learning/records/activity/?${qs}` : '/learning/records/activity/';
+    return httpGet(url, true);
+  },
   async getPracticeRecords() {
     // 修改为学习模块下的练习记录API路径
     return httpGet('/learning/practice-records/', true);

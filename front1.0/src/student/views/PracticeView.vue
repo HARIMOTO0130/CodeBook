@@ -146,6 +146,7 @@ export default {
     // 获取URL参数
     const urlBookId = computed(() => Number(route.query.bookId))
     const urlChapterId = computed(() => Number(route.query.chapterId))
+    const urlCategory = computed(() => route.query.category)
     
 
     // 模态框状态
@@ -204,9 +205,62 @@ export default {
       return Math.floor(Math.random() * 7) + 1
     })
 
+    // 监听URL参数变化
+    watch(urlCategory, (newCategory, oldCategory) => {
+      if (newCategory !== oldCategory) {
+        console.log(`练习类别变化: ${oldCategory} -> ${newCategory}`)
+        // 重置选中的书籍
+        selectedBookId.value = null
+        // 重新获取过滤后的练习数据
+        fetchPracticeChapters()
+      }
+    })
+
     const selectBook = (bookId) => {
       selectedBookId.value = bookId
       selectedChapterId.value = null
+    }
+    
+    // 根据category过滤练习
+    const filterPracticesByCategory = (booksData, category) => {
+      if (!category) return booksData
+      
+      console.log('过滤前的书籍数据:', booksData)
+      console.log('过滤类别:', category)
+      
+      // 复制原始数据以避免修改
+      const filteredBooks = JSON.parse(JSON.stringify(booksData))
+      
+      return filteredBooks.map(book => {
+        // 过滤每本书中的练习
+        const filteredPractices = book.practices.filter(practice => {
+          if (category === 'python') {
+            const result = practice.language === 'python'
+            console.log(`Python过滤 - 练习ID: ${practice.id}, 语言: ${practice.language}, 结果: ${result}`)
+            return result
+          } else if (category === 'javascript') {
+            const result = practice.language === 'javascript'
+            console.log(`JavaScript过滤 - 练习ID: ${practice.id}, 语言: ${practice.language}, 结果: ${result}`)
+            return result
+          } else if (category === 'algorithm') {
+            // 通过标题或内容判断是否为算法相关练习
+            const title = (practice.title || '').toLowerCase()
+            const description = (practice.description || '').toLowerCase()
+            const algorithmKeywords = ['算法', '数据结构', '排序', '搜索', '递归', '迭代']
+            const result = algorithmKeywords.some(keyword => title.includes(keyword) || description.includes(keyword))
+            console.log(`算法过滤 - 练习ID: ${practice.id}, 标题: ${title}, 描述: ${description}, 结果: ${result}`)
+            return result
+          }
+          return true
+        })
+        
+        const bookResult = {
+          ...book,
+          practices: filteredPractices
+        }
+        console.log(`书籍ID: ${bookResult.book_id}, 过滤后练习数量: ${bookResult.practices.length}`)
+        return bookResult
+      }).filter(book => book.practices.length > 0) // 过滤掉没有练习的书籍
     }
     
     // 获取练习题 - 直接从数据库获取
@@ -215,12 +269,18 @@ export default {
       try {
         // 使用新的API端点获取按书籍分组的练习题
         const booksData = await api.getPractices()
+        console.log('原始书籍数据:', booksData)
         
-        if (Array.isArray(booksData) && booksData.length > 0) {
-          books.value = booksData
+        // 根据URL参数过滤练习
+        const filteredBooksData = filterPracticesByCategory(booksData, urlCategory.value)
+        console.log('过滤后的书籍数据:', filteredBooksData)
+        console.log('当前URL类别:', urlCategory.value)
+        
+        if (Array.isArray(filteredBooksData) && filteredBooksData.length > 0) {
+          books.value = filteredBooksData
           // 默认选择第一本书
           if (!selectedBookId.value) {
-            selectedBookId.value = booksData[0].book_id
+            selectedBookId.value = filteredBooksData[0].book_id
           }
         } else {
           books.value = []
@@ -229,9 +289,12 @@ export default {
       } catch (error) {
         console.error('获取练习题失败:', error)
         // 使用模拟数据确保页面能正常显示
-        books.value = getMockBooks()
-        if (!selectedBookId.value && books.value.length > 0) {
-          selectedBookId.value = books.value[0].book_id
+        let mockBooks = getMockBooks()
+        // 过滤模拟数据
+        mockBooks = filterPracticesByCategory(mockBooks, urlCategory.value)
+        books.value = mockBooks
+        if (!selectedBookId.value && mockBooks.length > 0) {
+          selectedBookId.value = mockBooks[0].book_id
         }
       } finally {
         loading.value = false

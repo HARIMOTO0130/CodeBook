@@ -11,6 +11,24 @@ class LearningRecordSerializer(serializers.ModelSerializer):
         read_only_fields = ('id', 'user', 'last_learn_time')
 
 
+class LearningActivitySerializer(serializers.Serializer):
+    """
+    统一的学习活动序列化器
+    用于将阅读/练习记录转换为前端需要的扁平结构
+    """
+    id = serializers.CharField()
+    type = serializers.ChoiceField(choices=['reading', 'practice', 'video', 'quiz', 'unknown'])
+    bookId = serializers.IntegerField()
+    chapterId = serializers.IntegerField(required=False, allow_null=True)
+    bookTitle = serializers.CharField(allow_blank=True)
+    chapterTitle = serializers.CharField(allow_blank=True, required=False)
+    duration = serializers.FloatField(required=False, allow_null=True)
+    status = serializers.ChoiceField(choices=['completed', 'inProgress', 'unknown'])
+    timestamp = serializers.DateTimeField()
+    progress = serializers.IntegerField(required=False, allow_null=True)
+    score = serializers.IntegerField(required=False, allow_null=True)
+
+
 class SaveProgressSerializer(serializers.Serializer):
     """保存进度序列化器"""
     book_id = serializers.IntegerField(required=True)

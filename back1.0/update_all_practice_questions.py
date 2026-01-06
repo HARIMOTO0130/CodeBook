@@ -84,7 +84,11 @@ def update_all_practice_questions():
                 "type": "Judgment",
                 "title": "判断题",
                 "question": get_true_false_question(book, chapter_num),
-                "correct_answer": get_true_false_answer(book, chapter_num),
+                "options": [
+                    {"id": 1, "content": "正确", "is_correct": get_true_false_answer(book, chapter_num)},
+                    {"id": 2, "content": "错误", "is_correct": not get_true_false_answer(book, chapter_num)}
+                ],
+                "correct_answer": 0 if get_true_false_answer(book, chapter_num) else 1,
                 "difficulty": 1,
                 "order": 3
             }
@@ -150,7 +154,7 @@ def get_choice_question(book, chapter_num):
     
     return questions.get((book.id, chapter_num), f"在《{book.title}》中，关于第{chapter_num}章的选择题")
 
-def get_choice_option(book, chapter, option_num):
+def get_choice_option(book, chapter_num, option_num):
     """根据书籍、章节和选项编号生成选择题选项"""
     options = {
         # 大学计算机基础与应用 - 第1章 计算机基础知识
@@ -208,7 +212,7 @@ def get_choice_option(book, chapter, option_num):
         (3, 3, 4): "权重",
     }
     
-    return options.get((book.id, chapter.id, option_num), f"选项{chr(ord('A') + option_num - 1)}")
+    return options.get((book.id, chapter_num, option_num), f"选项{chr(ord('A') + option_num - 1)}")
 
 def get_fill_question(book, chapter_num):
     """根据书籍和章节生成填空题题目"""
@@ -343,7 +347,7 @@ def get_programming_question(book, chapter_num):
     
     return questions.get((book.id, chapter_num), f"关于第{chapter_num}章的编程题")
 
-def get_code_template(book, chapter, question_type):
+def get_code_template(book, chapter_num, question_type):
     """根据书籍、章节和题目类型生成代码模板"""
     templates = {
         # 大学计算机基础与应用
@@ -377,9 +381,9 @@ def get_code_template(book, chapter, question_type):
         (3, 3, "programming"): "# 使用TensorFlow定义一个简单的神经网络\nimport tensorflow as tf\n\n# 定义模型\nmodel = tf.keras.Sequential([\n    # 在这里编写你的代码\n])\n\n# 编译模型\nmodel.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])\n",
     }
     
-    return templates.get((book.id, chapter.id, question_type), "# 在这里编写你的代码")
+    return templates.get((book.id, chapter_num, question_type), "# 在这里编写你的代码")
 
-def get_test_cases(book, chapter, question_type):
+def get_test_cases(book, chapter_num, question_type):
     """根据书籍、章节和题目类型生成测试用例"""
     test_cases = {
         # 大学计算机基础与应用
@@ -460,7 +464,7 @@ def get_test_cases(book, chapter, question_type):
         ]
     }
     
-    return test_cases.get((book.id, chapter.id, question_type), default_test_cases.get(question_type, []))
+    return test_cases.get((book.id, chapter_num, question_type), default_test_cases.get(question_type, []))
 
 if __name__ == "__main__":
     update_all_practice_questions()
