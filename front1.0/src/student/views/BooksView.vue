@@ -82,25 +82,39 @@
     <!-- 练习题功能 -->
     <div class="practice-section">
       <h3>练习题</h3>
-      <div class="practice-container">
-        <div class="practice-card">
-          <div class="practice-icon">🐍</div>
-          <h4 class="practice-title">Python基础练习题</h4>
-          <p class="practice-desc">巩固Python基础知识，包含变量、数据类型、控制流等习题</p>
-          <button class="btn btn-primary" @click="startPractice('python')">开始练习</button>
+      <div class="practice-scroll-container">
+        <!-- 左箭头 -->
+        <button 
+          class="practice-arrow left-arrow"
+          @click="scrollLeft"
+          :disabled="currentTagIndex === 0"
+        >
+          ←
+        </button>
+        
+        <!-- 练习题标签容器 -->
+        <div class="practice-container">
+          <div 
+            v-for="tag in currentPracticeTags" 
+            :key="tag.id"
+            class="practice-card"
+          >
+            <div class="practice-icon">{{ tag.icon }}</div>
+            <h4 class="practice-title">{{ tag.title }}</h4>
+            <p class="practice-desc">{{ tag.description }}</p>
+            <button class="btn btn-primary" @click="startPractice(tag.id)">开始练习</button>
+          </div>
         </div>
-        <div class="practice-card">
-          <div class="practice-icon">🟨</div>
-          <h4 class="practice-title">JavaScript入门练习</h4>
-          <p class="practice-desc">JavaScript核心能力练习，包括DOM操作、函数、对象等</p>
-          <button class="btn btn-primary" @click="startPractice('javascript')">开始练习</button>
-        </div>
-        <div class="practice-card">
-          <div class="practice-icon">🧮</div>
-          <h4 class="practice-title">算法基础练习</h4>
-          <p class="practice-desc">常见算法与数据结构的练习，提升编程思维能力</p>
-          <button class="btn btn-primary" @click="startPractice('algorithm')">开始练习</button>
-        </div>
+        
+        <!-- 右箭头 -->
+        <button 
+          class="practice-arrow right-arrow"
+          @click="scrollRight"
+          :disabled="practiceData.length === 0"
+          title="查看所有练习题"
+        >
+          →
+        </button>
       </div>
     </div>
 
@@ -212,7 +226,7 @@
 </template>
 
 <script>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from '../api/api.js'
 import RoadmapRecommendation from '../components/RoadmapRecommendation.vue'
@@ -294,41 +308,83 @@ export default {
       }
     ])
 
-    // 练习题相关数据
-    const practiceData = ref([
-      {
-        id: 'python',
-        title: 'Python基础练习题',
-        description: '巩固Python基础知识，包含变量、数据类型、控制流等习题',
-        icon: '🐍'
-      },
-      {
-        id: 'javascript',
-        title: 'JavaScript入门练习',
-        description: 'JavaScript核心能力练习，包括DOM操作、函数、对象等',
-        icon: '🟨'
-      },
-      {
-        id: 'algorithm',
-        title: '算法基础练习',
-        description: '常见算法与数据结构的练习，提升编程思维能力',
-        icon: '🧮'
+    // 练习题相关数据 - 从数据库获取的三本书对应标签
+    const practiceData = ref([])
+    
+    // 当books数据加载完成后，动态生成practiceData
+    watch(() => books.value, (newBooks) => {
+      if (newBooks && newBooks.length > 0) {
+        practiceData.value = newBooks
+          // 过滤掉undefined或null的元素
+          .filter(book => book)
+          .map((book, index) => {
+            // 设置不同的图标
+            const icons = ['🐍', '🟨', '☕', '📚', '💻']
+            return {
+              id: book.id?.toString() || '',
+              title: `${book.title || '未知书籍'}练习`,
+              description: `${book.title || '未知书籍'}相关练习题`,
+              icon: icons[index % icons.length]
+            }
+          })
       }
-    ])
+    }, { deep: true })
 
-    // 开始练习
+    // 练习题标签切换相关
+    const currentTagIndex = ref(0)
+    const tagsPerPage = 3
+
+    // 计算当前显示的练习题
+    const currentPracticeTags = computed(() => {
+      const startIndex = currentTagIndex.value * tagsPerPage
+      return practiceData.value.slice(startIndex, startIndex + tagsPerPage)
+    })
+
+    // 左箭头点击事件
+    const scrollLeft = () => {
+      if (currentTagIndex.value > 0) {
+        currentTagIndex.value--
+      }
+    }
+
+    // 右箭头点击事件 - 跳转到练习题页面并选中第一本书
+    const scrollRight = () => {
+      // 跳转到练习题页面，并选中第一本书
+      if (practiceData.value.length > 0) {
+        const firstBookId = practiceData.value[0].id
+        router.push({
+          name: 'StudentPractice',
+          query: {
+            category: firstBookId,
+            questionIndex: 0 // 确保从第一道题目开始
+          }
+        })
+      }
+    }
+
+    // 开始练习 - 确保跳转到第一道题目
     const startPractice = (practiceId) => {
       console.log(`开始练习: ${practiceId}`)
-      // 跳转到练习题页面（学生端路由）
+      // 跳转到练习题页面，并确保是第一道题目
       router.push({ 
         name: 'StudentPractice',
-        query: { category: practiceId } 
+        query: { 
+          category: practiceId,
+          questionIndex: 0 // 确保从第一道题目开始
+        } 
       })
     }
 
     // 获取所有书籍
     const loadBooks = async () => {
-      books.value = await api.getBooks()
+      try {
+        const booksData = await api.getBooks()
+        console.log('获取到的书籍数据:', booksData)
+        books.value = booksData
+      } catch (error) {
+        console.error('获取书籍失败:', error)
+        books.value = []
+      }
     }
 
     const onRefresh = async () => {
@@ -575,7 +631,14 @@ export default {
       onRefresh,
       onPickPdf,
       submitPdf,
-      startPractice
+      startPractice,
+      // 练习题标签切换相关
+      currentPracticeTags,
+      currentTagIndex,
+      scrollLeft,
+      scrollRight,
+      practiceData,
+      tagsPerPage
     }
   }
 }
@@ -701,11 +764,114 @@ export default {
   }
 }
 
+/* 练习题板块样式 */
+.practice-section {
+  margin: 40px 0;
+}
+
+.practice-scroll-container {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  position: relative;
+  overflow: hidden;
+}
+
+.practice-arrow {
+  background: #f0f0f0;
+  border: 2px solid #e0e0e0;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  z-index: 10;
+}
+
+.practice-arrow:hover:not(:disabled) {
+  background: #409EFF;
+  color: white;
+  border-color: #409EFF;
+}
+
+.practice-arrow:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.practice-container {
+  display: flex;
+  gap: 20px;
+  overflow: hidden;
+  width: 100%;
+  padding: 10px 0;
+}
+
+.practice-card {
+  flex: 1;
+  min-width: calc(33.333% - 20px);
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s ease;
+  border: 2px solid transparent;
+}
+
+.practice-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+  border-color: #409EFF;
+}
+
+.practice-icon {
+  font-size: 3rem;
+  margin-bottom: 15px;
+  text-align: center;
+}
+
+.practice-title {
+  font-size: 1.2rem;
+  margin-bottom: 10px;
+  color: #333;
+  text-align: center;
+}
+
+.practice-desc {
+  font-size: 0.9rem;
+  color: #666;
+  margin-bottom: 20px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+/* 标签切换动画 */
+.practice-container {
+  transition: transform 0.3s ease;
+}
+
 /* 响应式调整 */
 @media (max-width: 768px) {
   .search-filters {
     flex-wrap: wrap;
     gap: 10px;
+  }
+  
+  .practice-card {
+    min-width: calc(100% - 20px);
+  }
+  
+  .practice-scroll-container {
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  .practice-arrow {
+    margin: 5px;
   }
   
   .search-input {

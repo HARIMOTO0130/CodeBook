@@ -253,18 +253,31 @@ export default {
         }
       } catch (e) {
         console.error('注册请求错误:', e)
-        console.error('错误详情:', e.response)
+        console.error('错误详情:', e)
+        console.error('错误响应:', e.response)
+        console.error('错误响应数据:', e.response?.data)
         
         // 尝试从错误对象中提取详细信息
         if (e.response && e.response.data) {
           const errors = e.response.data
-          console.log('后端返回的错误:', errors)
+          console.log('后端返回的错误:', JSON.stringify(errors, null, 2))
           
           if (typeof errors === 'string') {
             error.value = errors
           } else if (Array.isArray(errors)) {
             // 如果错误是数组
             error.value = errors.join(', ')
+          } else if (errors.error) {
+            // 处理后端返回的通用error字段
+            let errorMsg = errors.error
+            // 尝试提取更友好的错误信息
+            if (errorMsg.includes('Duplicate entry') && errorMsg.includes('username')) {
+              error.value = '用户名已存在，请更换其他用户名'
+            } else if (errorMsg.includes('Duplicate entry') && errorMsg.includes('email')) {
+              error.value = '邮箱已被注册，请更换其他邮箱'
+            } else {
+              error.value = errorMsg
+            }
           } else if (errors.username) {
             error.value = `用户名错误: ${Array.isArray(errors.username) ? errors.username[0] : errors.username}`
           } else if (errors.email) {

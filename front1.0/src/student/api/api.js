@@ -74,41 +74,48 @@ async function httpPost(path, body, requireAuth = false, method = 'POST') {
   
   const requestBody = { ...body };
   
-  const res = await fetch(fullUrl, {
-    method,
-    headers,
-    body: JSON.stringify(requestBody),
-    credentials: 'omit'
-  });
-  
-  if ((res.status === 401 || res.status === 403) && requireAuth) {
-    // 只在需要认证的请求中处理认证错误
-    try { localStorage.removeItem('token') } catch {};
+  try {
+    const res = await fetch(fullUrl, {
+      method,
+      headers,
+      body: JSON.stringify(requestBody),
+      credentials: 'omit'
+    });
     
-    // 避免在登录页面上形成重定向循环
-    if (window.location.pathname !== '/') {
-      const redirect = encodeURIComponent(window.location.pathname + window.location.search);
-      window.location.href = `/?redirect=${redirect}`;
+    if ((res.status === 401 || res.status === 403) && requireAuth) {
+      // 只在需要认证的请求中处理认证错误
+      try { localStorage.removeItem('token') } catch {};
+      
+      // 避免在登录页面上形成重定向循环
+      if (window.location.pathname !== '/') {
+        const redirect = encodeURIComponent(window.location.pathname + window.location.search);
+        window.location.href = `/?redirect=${redirect}`;
+      }
+      
+      throw new Error(`AUTH ${res.status}`);
     }
     
-    throw new Error(`AUTH ${res.status}`);
-  }
-  
-  if (!res.ok) {
-    // 尝试获取响应体中的错误信息
-    try {
-      const errorData = await res.json().catch(() => ({}));
+    // 解析响应体
+    const responseData = await res.json().catch(() => {
+      // 如果JSON解析失败，尝试获取原始文本
+      return res.text().then(text => ({ rawText: text })).catch(() => ({}));
+    });
+    
+    if (!res.ok) {
       // 创建一个包含更多信息的错误对象
       const error = new Error(`${method} ${path} ${res.status}`);
-      error.response = { status: res.status, data: errorData };
+      error.response = { status: res.status, data: responseData };
       throw error;
-    } catch (parseError) {
-      // 如果解析失败，抛出原始错误
-      throw new Error(`${method} ${path} ${res.status}`);
     }
+    
+    return responseData;
+  } catch (error) {
+    if (!error.response) {
+      // 如果没有response属性，添加一个基本的response对象
+      error.response = { status: 0, data: { message: '网络请求失败' } };
+    }
+    throw error;
   }
-  
-  return res.json().catch(() => ({}));
 }
 
 // 添加缺失的httpDelete和httpPut函数
@@ -253,13 +260,13 @@ export const api = {
   
   // 认证
   async register({ username, email, password, role }) {
-    // 使用全局注册接口，而不是学生端特定接口
-    return httpPost('/register/', { username, email, password, role }, false);
+    // 使用学生端注册接口
+    return httpPost('/users/register/', { username, email, password, role }, false);
   },
   async login({ username, password }) {
     try {
-      console.log('发送登录请求到 /login/');
-      const data = await httpPost('/login/', { username, password }, false);
+      console.log('发送登录请求到 /users/login/');
+      const data = await httpPost('/users/login/', { username, password }, false);
       
       console.log('登录API返回数据:', data);
       

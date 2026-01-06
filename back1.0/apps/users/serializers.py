@@ -1,5 +1,6 @@
 """用户序列化器"""
 from rest_framework import serializers
+from rest_framework.validators import UniqueValidator
 from .models import User, UserPreferences
 
 
@@ -56,10 +57,21 @@ class RegisterSerializer(serializers.ModelSerializer):
                 'required': True,
                 'min_length': 3,
                 'max_length': 150,
-                'validators': []
+                'validators': [
+                    UniqueValidator(
+                        queryset=User.objects.all(),
+                        message='用户名已存在，请更换其他用户名'
+                    )
+                ]
             },
             'email': {
-                'required': True
+                'required': True,
+                'validators': [
+                    UniqueValidator(
+                        queryset=User.objects.all(),
+                        message='邮箱已被注册，请更换其他邮箱'
+                    )
+                ]
             }
         }
     
