@@ -108,8 +108,17 @@ class JsonFormatTool(BaseToolEngine):
     
     def execute(self, params: Dict[str, Any]) -> Dict[str, Any]:
         try:
-            json_content = params.get('jsonContent', '')
-            indent_size = int(params.get('indentSize', 2))
+            json_content = params.get('jsonContent', '').strip()
+            
+            # 处理缩进大小
+            indent_size_str = params.get('indentSize', 2)
+            try:
+                if indent_size_str == '' or indent_size_str is None:
+                    indent_size = 2
+                else:
+                    indent_size = int(indent_size_str)
+            except (ValueError, TypeError):
+                indent_size = 2  # 使用默认值
             
             # 验证参数
             validation = self.validate_params(params)
@@ -117,7 +126,8 @@ class JsonFormatTool(BaseToolEngine):
                 return {
                     "success": False,
                     "result": None,
-                    "error": "；".join(validation['errors'])
+                    "error": "；".join(validation['errors']),
+                    "details": validation['errors']
                 }
             
             # 解析并格式化JSON
@@ -126,7 +136,12 @@ class JsonFormatTool(BaseToolEngine):
                 parsed_json = json.loads(json_content)
                 
                 # 格式化JSON
-                formatted_json = json.dumps(parsed_json, ensure_ascii=False, indent=indent_size)
+                formatted_json = json.dumps(
+                    parsed_json, 
+                    ensure_ascii=False, 
+                    indent=indent_size,
+                    sort_keys=False  # 保持原有键的顺序
+                )
                 
                 # 计算统计信息
                 original_size = len(json_content)
@@ -141,17 +156,28 @@ class JsonFormatTool(BaseToolEngine):
                             "original_size": original_size,
                             "formatted_size": formatted_size,
                             "size_difference": formatted_size - original_size,
-                            "indent_size": indent_size
+                            "indent_size": indent_size,
+                            "line_count": formatted_json.count('\n') + 1
                         }
                     },
                     "error": None
                 }
                 
             except json.JSONDecodeError as e:
+                error_msg = str(e)
+                # 提供更友好的错误信息
+                if "Expecting" in error_msg:
+                    error_msg = f"JSON格式错误：{error_msg}"
+                elif "Unterminated" in error_msg:
+                    error_msg = f"JSON格式错误：字符串未正确结束"
+                else:
+                    error_msg = f"JSON格式错误：{error_msg}"
+                
                 return {
                     "success": False,
                     "result": None,
-                    "error": f"JSON格式错误：{str(e)}"
+                    "error": error_msg,
+                    "details": [error_msg]
                 }
             
         except Exception as e:
@@ -160,15 +186,23 @@ class JsonFormatTool(BaseToolEngine):
     def validate_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
         errors = []
         
-        if not params.get('jsonContent'):
+        json_content = params.get('jsonContent', '')
+        if not json_content:
             errors.append("请输入JSON内容")
+        elif isinstance(json_content, str) and json_content.strip() == '':
+            errors.append("JSON内容不能为空")
         
+        indent_size_str = params.get('indentSize', 2)
         try:
-            indent_size = int(params.get('indentSize', 2))
+            if indent_size_str == '' or indent_size_str is None:
+                indent_size = 2  # 使用默认值
+            else:
+                indent_size = int(indent_size_str)
+            
             if indent_size < 1 or indent_size > 8:
                 errors.append("缩进空格数必须在1-8之间")
-        except ValueError:
-            errors.append("缩进空格数必须是数字")
+        except (ValueError, TypeError):
+            errors.append("缩进空格数必须是1-8之间的整数")
         
         return {
             "valid": len(errors) == 0,

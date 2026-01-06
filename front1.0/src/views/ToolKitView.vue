@@ -12,6 +12,18 @@
       <p class="header-subtitle">不用写代码，直接用现成工具解决实际问题</p>
     </div>
 
+    <!-- 消息提示 -->
+    <div v-if="errorMessage" class="message message-error" @click="clearMessages">
+      <span class="message-icon">⚠️</span>
+      <span class="message-text">{{ errorMessage }}</span>
+      <button class="message-close">×</button>
+    </div>
+    <div v-if="successMessage" class="message message-success" @click="clearMessages">
+      <span class="message-icon">✅</span>
+      <span class="message-text">{{ successMessage }}</span>
+      <button class="message-close">×</button>
+    </div>
+
     <!-- 搜索和筛选 -->
     <div class="search-filters">
       <div class="search-box">
@@ -20,24 +32,38 @@
           v-model="searchQuery" 
           placeholder="搜索工具..."
           class="input search-input"
+          @input="clearMessages"
         />
-        <button class="search-btn">🔍</button>
+        <button class="search-btn" @click="clearMessages">🔍</button>
       </div>
-      <select v-model="categoryFilter" class="input filter-select">
+      <select 
+        v-model="categoryFilter" 
+        class="input filter-select"
+        @change="clearMessages"
+      >
         <option value="">全部分类</option>
         <option value="file">文件处理</option>
         <option value="data">数据处理</option>
         <option value="image">图片处理</option>
         <option value="text">文本处理</option>
       </select>
+      <div v-if="loading" class="loading-indicator">加载中...</div>
     </div>
 
     <!-- 工具列表 -->
-    <div class="tools-grid">
+    <div v-if="loading" class="loading-container">
+      <div class="loading-spinner"></div>
+      <p>正在加载工具...</p>
+    </div>
+    <div v-else-if="filteredTools.length === 0" class="empty-state">
+      <p>暂无可用工具</p>
+    </div>
+    <div v-else class="tools-grid">
       <div 
         v-for="tool in filteredTools" 
         :key="tool.id" 
         class="tool-card"
+        :class="{ 'tool-card-featured': tool.id === 6 }"
         @click="openTool(tool)"
       >
         <div class="tool-icon">{{ tool.icon }}</div>
@@ -47,7 +73,7 @@
         <div class="tool-book-info">
           <span class="book-label">基于教材：</span>
           <span class="book-title">{{ tool.bookTitle }}</span>
-          <span class="book-chapter">第{{ tool.chapterNumber }}章</span>
+          <span v-if="tool.chapterNumber" class="book-chapter">第{{ tool.chapterNumber }}章</span>
         </div>
       </div>
     </div>
@@ -82,7 +108,10 @@
           <div class="tool-form">
             <h3>参数设置</h3>
             <div v-for="param in selectedTool.params" :key="param.name" class="form-group">
-              <label :for="param.name">{{ param.label }}</label>
+              <label :for="param.name">
+                {{ param.label }}
+                <span v-if="param.required" class="required-mark">*</span>
+              </label>
               <input 
                 v-if="param.type === 'text' || param.type === 'number'" 
                 :type="param.type"
@@ -90,6 +119,7 @@
                 v-model="toolParams[param.name]"
                 :placeholder="param.placeholder || ''"
                 class="input"
+                :class="{ 'input-error': errorMessage && !toolParams[param.name] && param.required }"
               />
               <textarea 
                 v-else-if="param.type === 'textarea'"
@@ -97,35 +127,74 @@
                 v-model="toolParams[param.name]"
                 :placeholder="param.placeholder || ''"
                 class="input textarea"
-                rows="4"
+                :class="{ 'input-error': errorMessage && !toolParams[param.name] && param.required }"
+                :rows="selectedTool && selectedTool.id === 6 ? 8 : 4"
               ></textarea>
               <select 
                 v-else-if="param.type === 'select'"
                 :id="param.name"
                 v-model="toolParams[param.name]"
                 class="input"
+                :class="{ 'input-error': errorMessage && !toolParams[param.name] && param.required }"
               >
+                <option value="">{{ param.placeholder || '请选择' }}</option>
                 <option v-for="option in param.options" :key="option.value" :value="option.value">
                   {{ option.label }}
                 </option>
               </select>
+              <div v-if="param.type === 'number' && param.name === 'indentSize'" class="input-hint">
+                建议值：2-4（默认：2）
+              </div>
             </div>
           </div>
 
           <!-- 运行结果 -->
           <div v-if="showResult" class="tool-result">
             <h3>运行结果</h3>
-            <div class="result-content">
-              <pre>{{ toolResult }}</pre>
+            <div class="result-content" :class="{ 
+              'json-result': selectedTool && selectedTool.id === 6 && toolResult.includes('✅'),
+              'result-error': toolResult.includes('❌')
+            }">
+              <pre v-if="selectedTool && selectedTool.id === 6 && toolResult.includes('格式化后的JSON')" class="json-formatted">{{ getFormattedJson() }}</pre>
+              <pre v-else>{{ toolResult }}</pre>
             </div>
             <div class="result-actions">
-              <button class="btn btn-primary" @click="saveResult">💾 保存结果</button>
+              <button 
+                v-if="selectedTool && selectedTool.id === 6 && toolResult.includes('格式化后的JSON') && !toolResult.includes('❌')" 
+                class="btn btn-secondary" 
+                @click="copyJson"
+              >
+                📋 复制JSON
+              </button>
+              <button 
+                v-if="!toolResult.includes('❌')"
+                class="btn btn-primary" 
+                @click="saveResult"
+              >
+                💾 保存结果
+              </button>
+              <button 
+                v-if="toolResult.includes('❌')"
+                class="btn btn-secondary" 
+                @click="runTool"
+                :disabled="running"
+              >
+                🔄 重试
+              </button>
             </div>
           </div>
         </div>
         <div class="tool-modal-footer">
           <button class="btn" @click="closeTool">关闭</button>
-          <button class="btn btn-primary" @click="runTool">▶ 运行工具</button>
+          <button 
+            class="btn btn-primary" 
+            @click="runTool"
+            :disabled="running"
+          >
+            <span v-if="running" class="btn-loading">⏳</span>
+            <span v-else>▶</span>
+            {{ running ? '运行中...' : '运行工具' }}
+          </button>
         </div>
       </div>
     </div>
@@ -135,56 +204,7 @@
 <script>
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-
-// API基础URL
-const API_BASE_URL = 'http://localhost:8000/api/toolkit';
-
-// 获取工具列表
-async function fetchTools() {
-  try {
-    const response = await fetch(`${API_BASE_URL}/tools/`);
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    return await response.json();
-  } catch (error) {
-    console.error('获取工具列表失败:', error);
-    return [];
-  }
-}
-
-// 运行工具
-async function runToolApi(toolId, parameters) {
-  try {
-    console.log('调用工具API:', toolId, '参数:', parameters);
-    const response = await fetch(`${API_BASE_URL}/tools/${toolId}/run/`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      // 根据后端要求，将参数包装在parameters字段中
-      body: JSON.stringify({ parameters })
-    });
-    
-    // 解析响应
-    let responseData;
-    try {
-      responseData = await response.json();
-    } catch (jsonError) {
-      throw new Error(`无法解析响应: ${jsonError.message}`);
-    }
-    
-    if (!response.ok) {
-      throw new Error(`工具执行失败: ${responseData.error || responseData.detail || '未知错误'}`);
-    }
-    
-    console.log('工具执行成功，响应:', responseData);
-    return responseData;
-  } catch (error) {
-    console.error('运行工具失败:', error);
-    throw error;
-  }
-}
+import { api } from '../api/api.js'
 
 export default {
   name: 'ToolKitView',
@@ -197,6 +217,11 @@ export default {
     const toolParams = ref({})
     const showResult = ref(false)
     const toolResult = ref('')
+    const loading = ref(false)
+    const running = ref(false)
+    const errorMessage = ref('')
+    const successMessage = ref('')
+    const debounceTimer = ref(null)
     
     const tools = ref([
       {
@@ -329,9 +354,9 @@ export default {
         ]
       },
       {        
-        id: 5,
-        title: 'JSON格式化工具',
-        description: '美化JSON格式，添加缩进和换行',
+        id: 6,
+        title: 'JSON格式化',
+        description: '格式化和美化JSON字符串，添加缩进和换行，使JSON更易读',
         icon: '🔧',
         category: 'text',
         bookId: 4,
@@ -343,7 +368,7 @@ export default {
             name: 'jsonContent',
             label: 'JSON内容',
             type: 'textarea',
-            placeholder: '请粘贴需要格式化的JSON内容',
+            placeholder: '请粘贴需要格式化的JSON内容，例如：{"name":"张三","value":123}',
             required: true
           },
           {
@@ -351,55 +376,25 @@ export default {
             label: '缩进空格数',
             type: 'number',
             placeholder: '2',
-            required: true,
+            required: false,
             default: 2
-          }
-        ]
-      },
-      {
-        id: 6,
-        title: '数据统计分析',
-        description: '快速统计Excel数据的基本信息，如平均值、最大值等',
-        icon: '📈',
-        category: 'data',
-        bookId: 1,
-        bookTitle: 'Python办公自动化',
-        chapterNumber: 5,
-        firstSectionId: 109,
-        params: [
-          {
-            name: 'filePath',
-            label: 'Excel文件路径',
-            type: 'text',
-            placeholder: '请输入Excel文件路径'
-          },
-          {
-            name: 'sheetName',
-            label: '工作表名称',
-            type: 'text',
-            placeholder: 'Sheet1'
-          },
-          {
-            name: 'columns',
-            label: '需要分析的列（逗号分隔）',
-            type: 'text',
-            placeholder: 'A,B,C'
           }
         ]
       }
     ])
 
-    // 过滤工具
+    // 过滤工具（带防抖）
     const filteredTools = computed(() => {
       let result = [...tools.value]
       
       // 搜索过滤
       if (searchQuery.value) {
-        const query = searchQuery.value.toLowerCase()
+        const query = searchQuery.value.toLowerCase().trim()
         result = result.filter(tool => 
           tool.title.toLowerCase().includes(query) ||
           tool.description.toLowerCase().includes(query) ||
-          tool.bookTitle.toLowerCase().includes(query)
+          tool.bookTitle.toLowerCase().includes(query) ||
+          (tool.params && tool.params.some(p => p.label.toLowerCase().includes(query)))
         )
       }
       
@@ -410,6 +405,28 @@ export default {
       
       return result
     })
+    
+    // 清除消息
+    const clearMessages = () => {
+      errorMessage.value = ''
+      successMessage.value = ''
+    }
+    
+    // 显示成功消息
+    const showSuccess = (message) => {
+      successMessage.value = message
+      setTimeout(() => {
+        successMessage.value = ''
+      }, 3000)
+    }
+    
+    // 显示错误消息
+    const showError = (message) => {
+      errorMessage.value = message
+      setTimeout(() => {
+        errorMessage.value = ''
+      }, 5000)
+    }
 
     // 获取分类文本
     const getCategoryText = (category) => {
@@ -428,10 +445,19 @@ export default {
       // 初始化参数
       toolParams.value = {}
       tool.params.forEach(param => {
-        toolParams.value[param.name] = param.default || ''
+        const defaultValue = param.default !== undefined 
+          ? param.default 
+          : (param.type === 'number' ? (param.name === 'indentSize' ? 2 : 0) : '')
+        toolParams.value[param.name] = defaultValue
       })
       showResult.value = false
       toolResult.value = ''
+      clearMessages()
+      
+      // 更新URL但不刷新页面
+      router.replace({
+        query: { ...route.query, toolId: tool.id }
+      })
     }
     
     // 根据toolId查找并打开工具
@@ -448,89 +474,268 @@ export default {
       toolParams.value = {}
       showResult.value = false
       toolResult.value = ''
+      clearMessages()
+      
+      // 清除URL参数
+      router.replace({
+        query: { ...route.query, toolId: undefined }
+      })
     }
 
     // 运行工具
     const runTool = async () => {
+      if (running.value) return // 防止重复提交
+      
       try {
+        clearMessages()
+        
         // 参数验证
         const requiredParams = selectedTool.value.params.filter(param => 
-          param.required !== false || 
-          // 对于没有显式设置required的参数，默认为必填
-          param.required === undefined
+          param.required !== false && param.required !== undefined
         );
         
+        const validationErrors = []
         for (const param of requiredParams) {
-          if (!toolParams.value[param.name] || 
-              (typeof toolParams.value[param.name] === 'string' && 
-               toolParams.value[param.name].trim() === '')) {
-            toolResult.value = `请输入${param.label}！`;
-            showResult.value = true;
-            return;
+          const value = toolParams.value[param.name]
+          if (!value || 
+              (typeof value === 'string' && value.trim() === '') ||
+              (param.type === 'number' && (value === '' || value === null || value === undefined))) {
+            validationErrors.push(`${param.label}是必填项`)
           }
         }
         
-        // 特殊验证：JSON格式化工具的JSON内容
-        if (selectedTool.value.id === 5 && toolParams.value.jsonContent) {
+        // 特殊验证：JSON格式化工具的JSON内容（toolId=6）
+        if (selectedTool.value.id === 6 && toolParams.value.jsonContent) {
           try {
-            // 预验证JSON格式
-            JSON.parse(toolParams.value.jsonContent);
+            const trimmedJson = toolParams.value.jsonContent.trim()
+            if (!trimmedJson) {
+              validationErrors.push('请输入JSON内容')
+            } else {
+              // 预验证JSON格式
+              JSON.parse(trimmedJson)
+            }
           } catch (e) {
-            toolResult.value = '请输入有效的JSON内容！\n\n错误详情：' + e.message;
-            showResult.value = true;
-            return;
+            validationErrors.push(`JSON格式错误：${e.message}`)
           }
         }
         
-        showResult.value = false;
-        // 显示加载状态
-        toolResult.value = '工具运行中...';
-        showResult.value = true;
+        if (validationErrors.length > 0) {
+          showError(validationErrors.join('；'))
+          return
+        }
+        
+        // 设置默认值
+        if (selectedTool.value.id === 6 && (!toolParams.value.indentSize || toolParams.value.indentSize === '')) {
+          toolParams.value.indentSize = 2
+        }
+        
+        // 转换参数类型
+        const processedParams = { ...toolParams.value }
+        selectedTool.value.params.forEach(param => {
+          if (param.type === 'number' && processedParams[param.name] !== undefined) {
+            processedParams[param.name] = Number(processedParams[param.name])
+          }
+        })
+        
+        running.value = true
+        showResult.value = false
+        toolResult.value = ''
         
         // 调用后端API，传递工具参数
-        const result = await runToolApi(selectedTool.value.id, toolParams.value);
+        let result
+        try {
+          result = await api.runTool(selectedTool.value.id, processedParams)
+        } catch (apiError) {
+          // 处理API调用异常
+          running.value = false
+          const errorMsg = apiError.error || apiError.message || '网络错误，请检查连接后重试'
+          showError(errorMsg)
+          toolResult.value = `❌ 工具运行异常！\n\n异常信息：${errorMsg}`
+          showResult.value = true
+          return
+        }
         
-        if (result.success) {
-          // 格式化并显示成功结果
-          toolResult.value = `工具运行成功！\n\n`;
+        running.value = false
+        
+        if (result && result.success) {
+          showSuccess('工具执行成功！')
           
-          // 添加运行参数信息
-          toolResult.value += `运行参数：\n${JSON.stringify(toolParams.value, null, 2)}\n\n`;
+          // JSON格式化工具特殊处理
+          if (selectedTool.value.id === 6 && result.result) {
+            const formattedResult = result.result
+            toolResult.value = `✅ JSON格式化成功！\n\n`
+            
+            // 显示格式化后的JSON
+            if (formattedResult.formatted_json) {
+              toolResult.value += `📄 格式化后的JSON：\n${formattedResult.formatted_json}\n\n`
+            }
+            
+            // 显示统计信息
+            if (formattedResult.statistics) {
+              const stats = formattedResult.statistics
+              toolResult.value += `📊 统计信息：\n`
+              toolResult.value += `  • 原始大小：${stats.original_size} 字符\n`
+              toolResult.value += `  • 格式化后大小：${stats.formatted_size} 字符\n`
+              toolResult.value += `  • 大小差异：${stats.size_difference > 0 ? '+' : ''}${stats.size_difference} 字符\n`
+              toolResult.value += `  • 缩进空格数：${stats.indent_size}\n`
+            }
+          } else {
+            // 其他工具的通用处理
+            toolResult.value = `✅ 工具运行成功！\n\n`
+            toolResult.value += `📋 执行结果：\n${JSON.stringify(result.result, null, 2)}`
+          }
           
-          // 添加执行结果
-          toolResult.value += `执行结果：\n${JSON.stringify(result.result, null, 2)}`;
+          showResult.value = true
         } else {
-          // 显示错误信息
-          toolResult.value = `工具运行失败！\n\n错误信息：${result.error || result.detail || '未知错误'}`;
+          const errorMsg = result.error || result.detail || result.message || '未知错误'
+          showError(`工具执行失败：${errorMsg}`)
+          toolResult.value = `❌ 工具运行失败！\n\n错误信息：${errorMsg}`
+          showResult.value = true
         }
       } catch (error) {
-        // 显示异常信息
-        toolResult.value = `工具运行异常！\n\n异常信息：${error.message}`;
-        console.error('工具运行异常:', error);
+        running.value = false
+        const errorMsg = error.message || '网络错误，请检查连接后重试'
+        showError(errorMsg)
+        toolResult.value = `❌ 工具运行异常！\n\n异常信息：${errorMsg}`
+        showResult.value = true
+        console.error('工具运行异常:', error)
       }
     }
 
+    // 获取格式化后的JSON（用于toolId=6）
+    const getFormattedJson = () => {
+      if (!selectedTool.value || selectedTool.value.id !== 6) return toolResult.value;
+      
+      try {
+        // 从结果中提取JSON
+        const jsonMatch = toolResult.value.match(/格式化后的JSON：\n([\s\S]+?)\n\n/);
+        if (jsonMatch && jsonMatch[1]) {
+          return jsonMatch[1].trim();
+        }
+      } catch (e) {
+        console.error('提取JSON失败:', e);
+      }
+      return toolResult.value;
+    }
+    
+    // 复制JSON到剪贴板
+    const copyJson = async () => {
+      try {
+        const jsonText = getFormattedJson()
+        if (!jsonText || jsonText.trim() === '') {
+          showError('没有可复制的内容')
+          return
+        }
+        
+        await navigator.clipboard.writeText(jsonText)
+        showSuccess('JSON已复制到剪贴板！')
+      } catch (error) {
+        console.error('复制失败:', error)
+        // 降级方案：使用传统方法
+        try {
+          const textArea = document.createElement('textarea')
+          textArea.value = getFormattedJson()
+          textArea.style.position = 'fixed'
+          textArea.style.opacity = '0'
+          document.body.appendChild(textArea)
+          textArea.select()
+          const success = document.execCommand('copy')
+          document.body.removeChild(textArea)
+          
+          if (success) {
+            showSuccess('JSON已复制到剪贴板！')
+          } else {
+            showError('复制失败，请手动复制')
+          }
+        } catch (e) {
+          showError('复制失败，请手动复制')
+        }
+      }
+    }
+    
     // 保存结果
     const saveResult = () => {
-      // 模拟保存功能
-      alert('结果已保存到本地！')
+      try {
+        const resultText = selectedTool.value && selectedTool.value.id === 6 
+          ? getFormattedJson() 
+          : toolResult.value
+        
+        if (!resultText || resultText.trim() === '') {
+          showError('没有可保存的内容')
+          return
+        }
+        
+        // 创建下载链接
+        const blob = new Blob([resultText], { type: 'text/plain;charset=utf-8' })
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        const toolName = selectedTool.value?.title?.replace(/\s+/g, '_') || 'tool'
+        link.download = `${toolName}_${Date.now()}.${selectedTool.value?.id === 6 ? 'json' : 'txt'}`
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        URL.revokeObjectURL(url)
+        
+        showSuccess('结果已保存！')
+      } catch (error) {
+        console.error('保存失败:', error)
+        showError('保存失败，请手动复制结果')
+      }
     }
 
     onMounted(async () => {
-      // 组件挂载时加载真实工具数据
-      const realTools = await fetchTools();
-      if (realTools.length > 0) {
-        tools.value = realTools.map(tool => ({
-          ...tool,
-          // 转换参数格式以适应前端组件
-          params: tool.parameters || []
-        }));
+      loading.value = true
+      clearMessages()
+      
+      try {
+        // 组件挂载时加载真实工具数据
+        const realTools = await api.getTools()
+        if (realTools && realTools.length > 0) {
+          // 转换后端数据格式为前端需要的格式
+          tools.value = realTools.map(tool => ({
+            id: tool.id,
+            title: tool.title,
+            description: tool.description,
+            icon: tool.icon || '🔧',
+            category: tool.category_name?.toLowerCase() || tool.category?.slug || 'other',
+            bookId: tool.book_id,
+            bookTitle: tool.book_title || '未指定教材',
+            chapterNumber: tool.chapter_number || 0,
+            firstSectionId: tool.first_section_id,
+            params: (tool.params || []).map(param => ({
+              name: param.name,
+              label: param.label,
+              type: param.type,
+              placeholder: param.placeholder || '',
+              required: param.is_required !== false,
+              default: param.default_value || (param.type === 'number' ? (param.name === 'indentSize' ? 2 : 0) : ''),
+              options: param.options || []
+            }))
+          }))
+        } else {
+          showError('未找到可用工具，请稍后重试')
+        }
+      } catch (error) {
+        console.error('加载工具列表失败:', error)
+        showError('加载工具列表失败，请刷新页面重试')
+        // 如果加载失败，使用默认数据
+      } finally {
+        loading.value = false
       }
       
       // 检查URL查询参数
       const toolId = route.query.toolId
       if (toolId) {
-        openToolById(toolId)
+        // 等待工具列表加载完成后再打开
+        setTimeout(() => {
+          const tool = tools.value.find(t => t.id === parseInt(toolId))
+          if (tool) {
+            openTool(tool)
+          } else {
+            showError(`未找到ID为${toolId}的工具`)
+          }
+        }, 300)
       }
     })
 
@@ -543,11 +748,18 @@ export default {
       toolParams,
       showResult,
       toolResult,
+      loading,
+      running,
+      errorMessage,
+      successMessage,
       getCategoryText,
       openTool,
       closeTool,
       runTool,
-      saveResult
+      saveResult,
+      getFormattedJson,
+      copyJson,
+      clearMessages
     }
   }
 }
@@ -639,6 +851,15 @@ export default {
   min-width: 150px;
 }
 
+.loading-indicator {
+  padding: 8px 16px;
+  background: #f0f9ff;
+  color: #409EFF;
+  border-radius: 4px;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
 .tools-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
@@ -709,6 +930,127 @@ export default {
   color: #67C23A;
   padding: 2px 8px;
   border-radius: 10px;
+}
+
+.tool-card-featured {
+  border: 2px solid #409EFF;
+  box-shadow: 0 4px 12px rgba(64, 158, 255, 0.2);
+}
+
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  color: #666;
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #409EFF;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 20px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: #999;
+  font-size: 16px;
+}
+
+/* 消息提示样式 */
+.message {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  margin-bottom: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+  animation: slideIn 0.3s ease-out;
+  max-width: 1200px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.message-error {
+  background: #fef0f0;
+  border-left: 4px solid #f56c6c;
+  color: #f56c6c;
+}
+
+.message-success {
+  background: #f0f9eb;
+  border-left: 4px solid #67c23a;
+  color: #67c23a;
+}
+
+.message-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.message-text {
+  flex: 1;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.message-close {
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: inherit;
+  opacity: 0.7;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.message-close:hover {
+  opacity: 1;
+}
+
+.btn-loading {
+  display: inline-block;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 /* 工具弹窗样式 */
@@ -863,6 +1205,30 @@ export default {
   word-break: break-all;
 }
 
+.result-content.json-result {
+  background: #1e1e1e;
+  color: #d4d4d4;
+}
+
+.result-content.json-result pre.json-formatted {
+  color: #d4d4d4;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.result-content.json-result pre:not(.json-formatted) {
+  color: #d4d4d4;
+}
+
+.result-content.result-error {
+  background: #fef0f0;
+  border-left: 4px solid #f56c6c;
+}
+
+.result-content.result-error pre {
+  color: #f56c6c;
+}
+
 .result-actions {
   display: flex;
   justify-content: flex-end;
@@ -877,20 +1243,239 @@ export default {
   background: #fafafa;
 }
 
+.btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.3s;
+  font-weight: 500;
+}
+
+.btn-primary {
+  background: #409EFF;
+  color: white;
+}
+
+.btn-primary:hover {
+  background: #66b1ff;
+}
+
+.btn-primary:active {
+  background: #3a8ee6;
+}
+
+.btn-secondary {
+  background: #f0f0f0;
+  color: #666;
+}
+
+.btn-secondary:hover {
+  background: #e0e0e0;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.input {
+  width: 100%;
+  padding: 10px 15px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 14px;
+  transition: border-color 0.3s;
+  box-sizing: border-box;
+}
+
+.input:focus {
+  outline: none;
+  border-color: #409EFF;
+}
+
+.input.textarea {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  resize: vertical;
+}
+
+.input-error {
+  border-color: #f56c6c !important;
+  background-color: #fef0f0;
+}
+
+.input-error:focus {
+  border-color: #f56c6c !important;
+  box-shadow: 0 0 0 2px rgba(245, 108, 108, 0.2);
+}
+
+.required-mark {
+  color: #f56c6c;
+  margin-left: 4px;
+}
+
+.input-hint {
+  font-size: 12px;
+  color: #999;
+  margin-top: 4px;
+  margin-left: 2px;
+}
+
+/* 响应式设计 */
 @media (max-width: 768px) {
+  .toolkit-container {
+    padding: 15px;
+  }
+  
+  .page-header h1 {
+    font-size: 24px;
+  }
+  
+  .header-subtitle {
+    font-size: 14px;
+  }
+  
   .search-filters {
     flex-direction: column;
     align-items: stretch;
+    padding: 15px;
+  }
+  
+  .search-box {
+    width: 100%;
+  }
+  
+  .filter-select {
+    width: 100%;
+    min-width: auto;
   }
   
   .tools-grid {
     grid-template-columns: 1fr;
+    gap: 15px;
+  }
+  
+  .tool-card {
+    padding: 20px;
+  }
+  
+  .tool-icon {
+    font-size: 40px;
+  }
+  
+  .tool-title {
+    font-size: 16px;
+  }
+  
+  .tool-description {
+    font-size: 13px;
   }
   
   .tool-meta {
     flex-direction: column;
     align-items: flex-start;
     gap: 10px;
+  }
+  
+  .tool-modal-overlay {
+    padding: 10px;
+  }
+  
+  .tool-modal {
+    max-width: 100%;
+    max-height: 95vh;
+  }
+  
+  .tool-modal-header {
+    padding: 15px;
+  }
+  
+  .modal-title-section h2 {
+    font-size: 20px;
+  }
+  
+  .tool-modal-content {
+    padding: 15px;
+  }
+  
+  .tool-form h3,
+  .tool-result h3 {
+    font-size: 16px;
+  }
+  
+  .form-group {
+    margin-bottom: 15px;
+  }
+  
+  .result-content {
+    max-height: 200px;
+    font-size: 12px;
+  }
+  
+  .tool-modal-footer {
+    padding: 15px;
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  .tool-modal-footer .btn {
+    width: 100%;
+  }
+  
+  .result-actions {
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  .result-actions .btn {
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .toolkit-container {
+    padding: 10px;
+  }
+  
+  .page-header h1 {
+    font-size: 20px;
+  }
+  
+  .header-subtitle {
+    font-size: 13px;
+  }
+  
+  .tools-grid {
+    gap: 10px;
+  }
+  
+  .tool-card {
+    padding: 15px;
+  }
+  
+  .tool-icon {
+    font-size: 36px;
+  }
+  
+  .result-content {
+    padding: 10px;
+    font-size: 11px;
+  }
+  
+  .message {
+    padding: 10px 15px;
+    font-size: 13px;
+  }
+  
+  .message-icon {
+    font-size: 16px;
+  }
+  
+  .message-close {
+    width: 20px;
+    height: 20px;
+    font-size: 18px;
   }
 }
 </style>

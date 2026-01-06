@@ -17,6 +17,9 @@
               <h3 class="practice-title">{{ practiceName }}</h3>
             </div>
             <div class="header-right">
+              <button class="btn-secondary" @click="showAddToWrongQuestionsDialog = true" title="添加到错题本">
+                📝 添加到错题本
+              </button>
               <span class="question-progress">
                 {{ currentIndex + 1 }}/{{ totalQuestions }}
               </span>
@@ -31,7 +34,7 @@
             <!-- 选择题 -->
             <div v-if="currentQuestion.type === 'choice'" class="question-choice">
               <div class="question-stem">
-                <h4>{{ currentQuestion.stem }}</h4>
+                <h4>{{ currentQuestion.question }}</h4>
                 <div v-if="currentQuestion.description" class="question-description">
                   {{ currentQuestion.description }}
                 </div>
@@ -78,10 +81,60 @@
               </div>
             </div>
             
+            <!-- 判断题 -->
+            <div v-else-if="currentQuestion.type === 'judgment'" class="question-judgment">
+              <div class="question-stem">
+                <h4>{{ currentQuestion.question }}</h4>
+                <div v-if="currentQuestion.description" class="question-description">
+                  {{ currentQuestion.description }}
+                </div>
+              </div>
+              
+              <div class="options-container">
+                <label 
+                  v-for="(option, index) in currentQuestion.options" 
+                  :key="index"
+                  class="option-item"
+                  :class="{ 
+                    'selected': isOptionSelected(index),
+                    'correct': showFeedback && isOptionCorrect(index),
+                    'incorrect': showFeedback && isOptionSelected(index) && !isOptionCorrect(index)
+                  }"
+                  @click="selectOption(index)"
+                >
+                  <div class="option-label">
+                    {{ index === 0 ? 'T' : 'F' }}.
+                  </div>
+                  <div class="option-content">
+                    {{ option.content }}
+                  </div>
+                  <div class="option-feedback" v-if="showFeedback">
+                    <span v-if="isOptionCorrect(index)" class="correct-icon">✅</span>
+                    <span v-else-if="isOptionSelected(index)" class="incorrect-icon">❌</span>
+                  </div>
+                </label>
+              </div>
+              
+              <!-- 即时反馈 -->
+              <div v-if="showFeedback" class="question-feedback">
+                <div v-if="isAnswerCorrect" class="feedback-correct">
+                  <div class="feedback-icon">🎉</div>
+                  <div class="feedback-text">回答正确！</div>
+                </div>
+                <div v-else class="feedback-incorrect">
+                  <div class="feedback-icon">😢</div>
+                  <div class="feedback-text">回答错误，请再试一次！</div>
+                </div>
+                <div v-if="currentQuestion.explanation" class="feedback-explanation">
+                  <strong>解析：</strong>{{ currentQuestion.explanation }}
+                </div>
+              </div>
+            </div>
+            
             <!-- 填空题 -->
             <div v-else-if="currentQuestion.type === 'fill'" class="question-fill">
               <div class="question-stem">
-                <h4>{{ currentQuestion.stem }}</h4>
+                <h4>{{ currentQuestion.question }}</h4>
               </div>
               
               <div class="fill-container">
@@ -120,7 +173,7 @@
             <!-- 代码补全题 -->
             <div v-else-if="currentQuestion.type === 'codeCompletion'" class="question-code-completion">
               <div class="question-stem">
-                <h4>{{ currentQuestion.stem }}</h4>
+                <h4>{{ currentQuestion.question }}</h4>
                 <div v-if="currentQuestion.description" class="question-description">
                   {{ currentQuestion.description }}
                 </div>
@@ -146,7 +199,7 @@
             <!-- 编程题 -->
             <div v-else-if="currentQuestion.type === 'programming'" class="question-programming">
               <div class="question-stem">
-                <h4>{{ currentQuestion.stem }}</h4>
+                <h4>{{ currentQuestion.question }}</h4>
                 <div v-if="currentQuestion.description" class="question-description">
                   {{ currentQuestion.description }}
                 </div>
@@ -281,12 +334,50 @@
       </div>
     </transition>
   </Teleport>
+
+  <!-- 添加到错题本对话框 -->
+  <Teleport to="body">
+    <transition name="modal">
+      <div v-if="showAddToWrongQuestionsDialog" class="modal-overlay" @click.self="hideAddToWrongQuestionsDialog">
+        <div class="modal-container small">
+          <div class="modal-header">
+            <h3>添加到错题本</h3>
+            <button class="btn-icon" @click="hideAddToWrongQuestionsDialog" title="关闭">✕</button>
+          </div>
+          <div class="modal-content">
+            <div class="form-group">
+              <label for="error-reason">错误原因</label>
+              <textarea 
+                id="error-reason" 
+                v-model="newWrongQuestion.errorReason" 
+                placeholder="请描述您的错误原因..."
+                rows="3"
+              ></textarea>
+            </div>
+            <div class="form-group">
+              <label for="knowledge-points">关联知识点（用逗号分隔）</label>
+              <input 
+                id="knowledge-points" 
+                v-model="newWrongQuestion.knowledgePoints"
+                placeholder="例如：变量作用域,函数调用,循环结构"
+              />
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn-secondary" @click="hideAddToWrongQuestionsDialog">取消</button>
+            <button class="btn-primary" @click="addCurrentQuestionToWrongQuestions">确认添加</button>
+          </div>
+        </div>
+      </div>
+    </transition>
+  </Teleport>
 </template>
 
 <script>
 import { ref, computed, watch } from 'vue'
 import MonacoCard from './MonacoCard.vue'
 import ConsoleOutput from './ConsoleOutput.vue'
+import { api } from '../api/api.js'
 
 export default {
   name: 'PracticeModal',
@@ -306,6 +397,10 @@ export default {
     practiceName: {
       type: String,
       default: ''
+    },
+    practiceId: {
+      type: Number,
+      default: null
     }
   },
   emits: ['update:visible', 'close', 'complete'],
@@ -324,6 +419,13 @@ export default {
     // 结果存储
     const codeResult = ref(null) // 代码运行结果
     const submissionResult = ref(null) // 提交结果
+    
+    // 错题本相关状态
+    const showAddToWrongQuestionsDialog = ref(false)
+    const newWrongQuestion = ref({
+      errorReason: '',
+      knowledgePoints: ''
+    })
     
     // 计算属性
     const totalQuestions = computed(() => props.questions.length)
@@ -421,7 +523,7 @@ export default {
     const calculateScore = () => {
       let correctCount = 0
       questions.value.forEach(q => {
-        if (q.type === 'choice') {
+        if (q.type === 'choice' || q.type === 'judgment') {
           const correctAnswer = q.correctAnswer
           const userAnswer = q.selectedOption
           if (correctAnswer === userAnswer) {
@@ -469,15 +571,15 @@ export default {
     const loadQuestionState = () => {
       const question = currentQuestion.value
       
-      if (question.type === 'choice') {
+      if (question.type === 'choice' || question.type === 'judgment') {
         selectedOptions.value = []
       } else if (question.type === 'fill') {
         userAnswers.value = new Array(question.blanks.length).fill('')
       } else if (question.type === 'codeCompletion') {
         // 用??替换需要补全的部分
-        codeCompletionAnswer.value = question.codeTemplate || ''
+        codeCompletionAnswer.value = question.code_template || ''
       } else if (question.type === 'programming') {
-        programmingAnswer.value = question.initialCode || ''
+        programmingAnswer.value = question.initial_code || ''
       }
     }
     
@@ -663,6 +765,54 @@ export default {
       }
     }
     
+    // 错题本相关方法
+    const hideAddToWrongQuestionsDialog = () => {
+      showAddToWrongQuestionsDialog.value = false
+      // 重置表单
+      newWrongQuestion.value = {
+        errorReason: '',
+        knowledgePoints: ''
+      }
+    }
+    
+    const addCurrentQuestionToWrongQuestions = async () => {
+      try {
+        const question = currentQuestion.value
+        const questionIndex = currentIndex.value
+        const questionId = question.id || question.order || questionIndex
+        
+        // 处理知识点输入，转换为数组
+        const knowledgePoints = newWrongQuestion.value.knowledgePoints
+          .split(',')
+          .map(p => p.trim())
+          .filter(p => p)
+          
+        // 调用API添加错题
+        // 如果提供了practiceId，使用Practice模式；否则尝试使用Exercise模式
+        if (!props.practiceId) {
+          console.error('添加错题失败：practiceId未提供或无效', props.practiceId)
+          alert('添加错题失败：无法获取练习ID，请重新开始练习。')
+          return
+        }
+        
+        await api.addWrongQuestionFromExercise(
+          null, // exerciseId
+          newWrongQuestion.value.errorReason,
+          knowledgePoints,
+          props.practiceId, // practiceId
+          questionIndex, // questionIndex
+          questionId // questionId
+        )
+        
+        // 显示成功消息
+        alert('题目已成功添加到错题本！')
+        hideAddToWrongQuestionsDialog()
+      } catch (error) {
+        console.error('添加错题失败:', error)
+        alert('添加错题失败，请稍后重试。')
+      }
+    }
+    
     // 监听题目变化，加载初始状态
     watch(() => props.questions, () => {
       if (props.questions.length > 0) {
@@ -696,7 +846,12 @@ export default {
       runCode,
       submitCode,
       runProgrammingCode,
-      submitProgrammingCode
+      submitProgrammingCode,
+      // 错题本相关
+      showAddToWrongQuestionsDialog,
+      newWrongQuestion,
+      hideAddToWrongQuestionsDialog,
+      addCurrentQuestionToWrongQuestions
     }
   }
 }
@@ -780,6 +935,45 @@ export default {
   padding: 8px;
   border-radius: 4px;
   transition: background-color 0.2s;
+}
+
+/* 小尺寸对话框 */
+.modal-container.small {
+  max-width: 500px;
+}
+
+/* 表单样式 */
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+  color: #333;
+}
+
+.form-group input,
+.form-group textarea {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 14px;
+  transition: border-color 0.2s;
+}
+
+.form-group input:focus,
+.form-group textarea:focus {
+  border-color: #007bff;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+.form-group textarea {
+  resize: vertical;
+  min-height: 80px;
 }
 
 .btn-icon:hover {

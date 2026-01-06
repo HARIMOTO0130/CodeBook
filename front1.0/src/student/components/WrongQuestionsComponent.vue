@@ -3,11 +3,40 @@
     <div class="component-header">
       <h3>错题本</h3>
       <div class="header-actions">
+        <div class="filter-container">
+          <select v-model="statusFilter" class="filter-select" @change="applyFilters">
+            <option value="">所有状态</option>
+            <option value="unresolved">未解决</option>
+            <option value="redoing">重做中</option>
+            <option value="resolved">已解决</option>
+          </select>
+          <select v-model="difficultyFilter" class="filter-select" @change="applyFilters">
+            <option value="">所有难度</option>
+            <option value="1">★</option>
+            <option value="2">★★</option>
+            <option value="3">★★★</option>
+            <option value="4">★★★★</option>
+            <option value="5">★★★★★</option>
+          </select>
+        </div>
         <button class="btn btn-sm" @click="refreshQuestions" :disabled="loading">
           <span v-if="loading">刷新中...</span>
           <span v-else>🔄 刷新</span>
         </button>
       </div>
+    </div>
+    
+    <!-- 筛选后的知识点标签 -->
+    <div v-if="availableKnowledgePoints.length > 0" class="knowledge-filters">
+      <span 
+        v-for="(point, index) in availableKnowledgePoints" 
+        :key="index"
+        class="knowledge-tag"
+        :class="{ active: selectedKnowledgePoints.includes(point) }"
+        @click="toggleKnowledgePoint(point)"
+      >
+        {{ point }}
+      </span>
     </div>
     
     <div class="questions-content">
@@ -22,24 +51,47 @@
       
       <div v-else class="questions-list">
         <div 
-          v-for="(question, index) in wrongQuestions" 
-          :key="index"
+          v-for="(question, index) in filteredQuestions" 
+          :key="question.id"
           class="question-item"
+          :class="`status-${question.status}`"
         >
           <div class="question-header">
             <div class="question-title">{{ question.title }}</div>
             <div class="question-meta">
               <span class="question-time">{{ formatTime(question.attemptTime) }}</span>
               <span class="question-difficulty">难度: {{ getDifficultyStars(question.difficulty) }}</span>
+              <span class="question-status" :class="`status-${question.status}`">
+                {{ getStatusDisplay(question.status) }}
+              </span>
             </div>
           </div>
           
+          <div v-if="question.error_reason" class="question-error-reason">
+            <strong>错误原因:</strong> {{ question.error_reason }}
+          </div>
+          
+          <div v-if="question.knowledge_points && question.knowledge_points.length > 0" class="question-knowledge-points">
+            <strong>关联知识点:</strong>
+            <span 
+              v-for="(point, idx) in question.knowledge_points" 
+              :key="idx"
+              class="knowledge-point-item"
+            >
+              {{ point }}
+            </span>
+          </div>
+          
           <div class="question-actions">
-            <button class="btn btn-primary btn-sm" @click="reviewQuestion(question)">
-              重新练习
+            <button class="btn btn-primary btn-sm" @click="startRedoing(question)">
+              开始重做
             </button>
-            <button class="btn btn-secondary btn-sm" @click="markAsFixed(index)">
-              ✅ 标记已掌握
+            <button 
+              class="btn btn-secondary btn-sm" 
+              :class="{'btn-success': question.status === 'resolved', 'btn-warning': question.status === 'redoing'}"
+              @click="updateQuestionStatus(question.id, getNextStatus(question.status))"
+            >
+              {{ getNextStatusText(question.status) }}
             </button>
           </div>
         </div>
@@ -55,15 +107,20 @@
 </template>
 
 <script>
-import { ref, onMounted, defineEmits } from 'vue'
+import { ref, onMounted, computed, defineEmits } from 'vue'
 import { api } from '../api/api.js'
 
 export default {
   name: 'WrongQuestionsComponent',
-  emits: ['review-question'],
+  emits: ['review-question', 'redo-question'],
   setup(props, { emit }) {
     const wrongQuestions = ref([])
     const loading = ref(false)
+    
+    // 筛选条件
+    const statusFilter = ref('')
+    const difficultyFilter = ref('')
+    const selectedKnowledgePoints = ref([])
     
     // 获取错题数据
     const fetchWrongQuestions = async () => {
@@ -101,21 +158,30 @@ export default {
           title: 'Python中的列表推导式',
           difficulty: 3,
           practiceId: 1,
-          attemptTime: now.toISOString()
+          attemptTime: now.toISOString(),
+          error_reason: '语法错误，忘记冒号',
+          knowledge_points: ['列表', '推导式'],
+          status: 'unresolved'
         },
         {
           id: 2,
           title: 'JavaScript事件循环机制',
           difficulty: 4,
           practiceId: 2,
-          attemptTime: yesterday.toISOString()
+          attemptTime: yesterday.toISOString(),
+          error_reason: '不理解宏任务和微任务的执行顺序',
+          knowledge_points: ['事件循环', '异步编程'],
+          status: 'redoing'
         },
         {
           id: 3,
           title: '数据结构中的二叉树遍历',
           difficulty: 5,
           practiceId: 3,
-          attemptTime: twoDaysAgo.toISOString()
+          attemptTime: twoDaysAgo.toISOString(),
+          error_reason: '递归逻辑错误',
+          knowledge_points: ['二叉树', '遍历', '递归'],
+          status: 'resolved'
         }
       ]
     }
@@ -147,6 +213,110 @@ export default {
         stars.push(i < difficulty ? '⭐' : '☆')
       }
       return stars.join('')
+    }
+    
+    // 获取可用的知识点列表
+    const availableKnowledgePoints = computed(() => {
+      const allPoints = new Set()
+      wrongQuestions.value.forEach(q => {
+        if (q.knowledge_points && Array.isArray(q.knowledge_points)) {
+          q.knowledge_points.forEach(point => {
+            if (point) {
+              allPoints.add(point)
+            }
+          })
+        }
+      })
+      return Array.from(allPoints)
+    })
+    
+    // 切换知识点筛选
+    const toggleKnowledgePoint = (point) => {
+      const index = selectedKnowledgePoints.value.indexOf(point)
+      if (index === -1) {
+        selectedKnowledgePoints.value.push(point)
+      } else {
+        selectedKnowledgePoints.value.splice(index, 1)
+      }
+      applyFilters()
+    }
+    
+    // 应用所有筛选条件
+    const applyFilters = () => {
+      // 筛选逻辑已在filteredQuestions计算属性中实现
+    }
+    
+    // 筛选后的题目列表
+    const filteredQuestions = computed(() => {
+      return wrongQuestions.value.filter(q => {
+        // 状态筛选
+        const statusMatch = !statusFilter.value || q.status === statusFilter.value
+        // 难度筛选
+        const difficultyMatch = !difficultyFilter.value || q.difficulty === Number(difficultyFilter.value)
+        // 知识点筛选
+        const knowledgeMatch = selectedKnowledgePoints.value.length === 0 || 
+          (q.knowledge_points && Array.isArray(q.knowledge_points) && 
+           q.knowledge_points.some(p => selectedKnowledgePoints.value.includes(p)))
+        
+        return statusMatch && difficultyMatch && knowledgeMatch
+      })
+    })
+    
+    // 开始重做题目
+    const startRedoing = (question) => {
+      emit('redo-question', question)
+      // 自动更新状态为redoing
+      updateQuestionStatus(question.id, 'redoing')
+    }
+    
+    // 更新题目状态
+    const updateQuestionStatus = async (questionId, newStatus) => {
+      try {
+        await api.updateWrongQuestionStatus(questionId, newStatus)
+        // 更新本地数据
+        const question = wrongQuestions.value.find(q => q.id === questionId)
+        if (question) {
+          question.status = newStatus
+        }
+        // 如果标记为已解决，从列表中移除
+        if (newStatus === 'resolved') {
+          const index = wrongQuestions.value.findIndex(q => q.id === questionId)
+          if (index !== -1) {
+            wrongQuestions.value.splice(index, 1)
+          }
+        }
+      } catch (error) {
+        console.error('更新题目状态失败:', error)
+        alert('更新状态失败，请稍后重试')
+      }
+    }
+    
+    // 获取状态显示文本
+    const getStatusDisplay = (status) => {
+      const statusMap = {
+        'unresolved': '未解决',
+        'redoing': '重做中',
+        'resolved': '已解决'
+      }
+      return statusMap[status] || '未知状态'
+    }
+    
+    // 获取下一个状态
+    const getNextStatus = (currentStatus) => {
+      const statusOrder = {
+        'unresolved': 'redoing',
+        'redoing': 'resolved'
+      }
+      return statusOrder[currentStatus] || 'unresolved'
+    }
+    
+    // 获取下一个状态的显示文本
+    const getNextStatusText = (currentStatus) => {
+      const statusTextMap = {
+        'unresolved': '开始重做',
+        'redoing': '标记为已解决'
+      }
+      return statusTextMap[currentStatus] || '开始重做'
     }
     
     // 重新练习题目
@@ -196,8 +366,6 @@ export default {
       }
     }
     
-    // 不再需要筛选功能，直接使用所有错题
-    
     // 刷新题目
     const refreshQuestions = () => {
       fetchWrongQuestions()
@@ -211,8 +379,20 @@ export default {
     return {
       wrongQuestions,
       loading,
+      statusFilter,
+      difficultyFilter,
+      selectedKnowledgePoints,
+      availableKnowledgePoints,
+      filteredQuestions,
       formatTime,
       getDifficultyStars,
+      toggleKnowledgePoint,
+      applyFilters,
+      startRedoing,
+      updateQuestionStatus,
+      getStatusDisplay,
+      getNextStatus,
+      getNextStatusText,
       reviewQuestion,
       markAsFixed,
       refreshQuestions
@@ -269,6 +449,37 @@ export default {
   border-color: #409EFF;
 }
 
+/* 知识点筛选标签 */
+.knowledge-filters {
+  padding: 10px 15px;
+  border-bottom: 1px solid #e0e0e0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  background: #f5f5f5;
+}
+
+.knowledge-tag {
+  padding: 3px 8px;
+  border-radius: 12px;
+  background: #e9ecef;
+  color: #495057;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 1px solid transparent;
+}
+
+.knowledge-tag:hover {
+  background: #dee2e6;
+}
+
+.knowledge-tag.active {
+  background: #409EFF;
+  color: white;
+  border-color: #409EFF;
+}
+
 /* 内容区域 */
 .questions-content {
   flex: 1;
@@ -313,6 +524,20 @@ export default {
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
 
+/* 状态样式 */
+.question-item.status-unresolved {
+  border-left: 4px solid #F56C6C;
+}
+
+.question-item.status-redoing {
+  border-left: 4px solid #E6A23C;
+}
+
+.question-item.status-resolved {
+  border-left: 4px solid #67C23A;
+  opacity: 0.8;
+}
+
 .question-header {
   margin-bottom: 10px;
 }
@@ -331,6 +556,57 @@ export default {
   gap: 15px;
   font-size: 12px;
   color: #999;
+}
+
+/* 错误原因样式 */
+.question-error-reason {
+  margin: 8px 0;
+  padding: 8px;
+  background: rgba(245, 108, 108, 0.05);
+  border-radius: 4px;
+  border-left: 3px solid #F56C6C;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* 知识点样式 */
+.question-knowledge-points {
+  margin: 8px 0;
+  font-size: 13px;
+}
+
+.knowledge-point-item {
+  display: inline-block;
+  padding: 2px 6px;
+  margin-right: 6px;
+  margin-bottom: 4px;
+  background: #e7f3ff;
+  color: #337ab7;
+  border-radius: 3px;
+  font-size: 11px;
+}
+
+/* 题目状态标签 */
+.question-status {
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.question-status.status-unresolved {
+  background: #fef0f0;
+  color: #F56C6C;
+}
+
+.question-status.status-redoing {
+  background: #fdf6ec;
+  color: #E6A23C;
+}
+
+.question-status.status-resolved {
+  background: #f0f9eb;
+  color: #67C23A;
 }
 
 .question-actions {
@@ -391,6 +667,24 @@ export default {
 }
 
 .btn-secondary:hover {
+  background: #85ce61;
+}
+
+.btn-warning {
+  background: #E6A23C;
+  color: white;
+}
+
+.btn-warning:hover {
+  background: #ebb563;
+}
+
+.btn-success {
+  background: #67C23A;
+  color: white;
+}
+
+.btn-success:hover {
   background: #85ce61;
 }
 </style>

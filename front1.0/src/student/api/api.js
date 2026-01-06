@@ -96,28 +96,26 @@ async function httpPost(path, body, requireAuth = false, method = 'POST') {
   
   if (!res.ok) {
     // 尝试获取响应体中的错误信息
-    let errorData = {};
     try {
-      const text = await res.text();
-      if (text) {
-        errorData = JSON.parse(text);
-      }
+      const errorData = await res.json().catch(() => ({}));
+      // 创建一个包含更多信息的错误对象
+      const error = new Error(`${method} ${path} ${res.status}`);
+      error.response = { status: res.status, data: errorData };
+      throw error;
     } catch (parseError) {
-      console.warn('无法解析错误响应:', parseError);
+      // 如果解析失败，抛出原始错误
+      throw new Error(`${method} ${path} ${res.status}`);
     }
-    
-    // 创建一个包含更多信息的错误对象
-    const error = new Error(`${method} ${path} ${res.status}`);
-    error.response = { status: res.status, data: errorData };
-    console.error(`[API错误] ${method} ${path}:`, errorData);
-    throw error;
   }
   
   return res.json().catch(() => ({}));
 }
 
 // 添加缺失的httpDelete和httpPut函数
-export async function httpDelete(path, requireAuth = false) {
+export async function httpDelete(path, requireAuth = false, body = null) {
+  if (body) {
+    return httpPost(path, body, requireAuth, 'DELETE');
+  }
   return httpPost(path, {}, requireAuth, 'DELETE');
 }
 
@@ -252,8 +250,8 @@ export const api = {
   },
   
   // 认证
-  async register({ username, email, password, role = 'student' }) {
-    return httpPost('/users/register/', { username, email, password, role }, false);
+  async register({ username, email, password }) {
+    return httpPost('/users/register/', { username, email, password }, false);
   },
   async login({ username, password }) {
     try {
@@ -531,19 +529,67 @@ export const api = {
     return httpPost('/learning/execute/', { language, code, input }, true);
   },
   
-  async getWrongQuestions() {
-    const response = await httpGet('/learning/wrong-questions/', true)
-    // 确保获取到的数据是数组
-    const list = Array.isArray(response) ? response : (response && response.data && Array.isArray(response.data) ? response.data : [])
-    // 映射为 RecordsView 期望的字段
-    return list.map(q => ({
-      id: q.id,
-      title: q.title,
-      difficulty: q.difficulty,
-      question_type: q.question_type,
-      practiceId: q.practice_id || q.practice,
-      attemptTime: q.attempt_time || q.created_at
-    }))
+  // 错题本相关API
+  async getWrongQuestions(filters = {}) {
+    try {
+      // 构建查询参数
+      const params = new URLSearchParams()
+      if (filters.status) params.append('status', filters.status)
+      if (filters.question_type) params.append('question_type', filters.question_type)
+      if (filters.difficulty) params.append('difficulty', filters.difficulty)
+      if (filters.book_id) params.append('book_id', filters.book_id)
+      if (filters.chapter_id) params.append('chapter_id', filters.chapter_id)
+      
+      const url = `/learning/wrong-questions/${params.toString() ? '?' + params.toString() : ''}`
+      const response = await httpGet(url, true)
+      // 确保获取到的数据是数组
+      const list = Array.isArray(response) ? response : (response && response.data && Array.isArray(response.data) ? response.data : [])
+      // 映射为统一的字段格式
+      return list.map(q => ({
+        id: q.id,
+        title: q.title,
+        difficulty: q.difficulty,
+        question_type: q.question_type,
+        question_type_display: q.question_type_display,
+        practiceId: q.practice || q.practice_id,
+        exerciseId: q.exercise,
+        question_index: q.question_index,
+        question_content: q.question_content,
+        attemptTime: q.attempt_time || q.created_at,
+        attempt_count: q.attempt_count || 1,
+        error_time: q.error_time,
+        error_reason: q.error_reason,
+        knowledge_points: q.knowledge_points || [],
+        status: q.status,
+        status_display: q.status_display,
+        book_title: q.book_title,
+        chapter_title: q.chapter_title,
+        practice_title: q.practice_title
+      }))
+    } catch (error) {
+      console.error('获取错题列表失败:', error)
+      throw error
+    }
+  },
+  
+  async getWrongQuestionDetail(questionId) {
+    try {
+      const response = await httpGet(`/learning/wrong-questions/${questionId}/detail/`, true)
+      return response.data || response
+    } catch (error) {
+      console.error('获取错题详情失败:', error)
+      throw error
+    }
+  },
+  
+  async getWrongQuestionStatistics() {
+    try {
+      const response = await httpGet('/learning/wrong-questions/statistics/', true)
+      return response.data || response
+    } catch (error) {
+      console.error('获取错题统计失败:', error)
+      throw error
+    }
   },
   
   // 批量添加错题
@@ -574,6 +620,72 @@ export const api = {
       return await httpPut(`/learning/wrong-questions/${questionId}/status/`, { status }, true)
     } catch (error) {
       console.error('更新错题状态失败:', error)
+      throw error
+    }
+  },
+  
+  // 重做错题
+  async redoWrongQuestion(questionId) {
+    try {
+      const response = await httpPost(`/learning/wrong-questions/${questionId}/redo/`, {}, true)
+      return response.data || response
+    } catch (error) {
+      console.error('开始重做错题失败:', error)
+      throw error
+    }
+  },
+  
+  // 完成错题重做
+  async completeWrongQuestionRedo(questionId, isCorrect) {
+    try {
+      const response = await httpPost(`/learning/wrong-questions/${questionId}/complete_redo/`, { is_correct: isCorrect }, true)
+      return response.data || response
+    } catch (error) {
+      console.error('完成错题重做失败:', error)
+      throw error
+    }
+  },
+  
+  // 批量删除错题
+  async batchDeleteWrongQuestions(questionIds) {
+    try {
+      return await httpDelete('/learning/wrong-questions/batch_delete/', true, { question_ids: questionIds })
+    } catch (error) {
+      console.error('批量删除错题失败:', error)
+      throw error
+    }
+  },
+  
+  // 从练习题直接添加错题
+  // 支持两种模式：
+  // 1. exerciseId模式：传递Exercise模型的ID
+  // 2. practiceId + questionIndex模式：传递Practice的ID和题目索引
+  async addWrongQuestionFromExercise(exerciseId, errorReason = '', knowledgePoints = [], practiceId = null, questionIndex = null, questionId = null) {
+    try {
+      const data = {
+        error_reason: errorReason,
+        knowledge_points: knowledgePoints
+      }
+      
+      // 如果提供了practiceId且它是有效的值，使用Practice模式
+      if (practiceId) {
+        data.practice_id = practiceId
+        if (questionIndex !== null) {
+          data.question_index = questionIndex
+        }
+        if (questionId !== null) {
+          data.question_id = questionId
+        }
+      } else if (exerciseId) {
+        // 否则使用Exercise模式
+        data.exercise_id = exerciseId
+      } else {
+        throw new Error('必须提供exercise_id或practice_id')
+      }
+      
+      return await httpPost('/learning/wrong-questions/add_from_exercise/', data, true)
+    } catch (error) {
+      console.error('从练习题添加错题失败:', error)
       throw error
     }
   },

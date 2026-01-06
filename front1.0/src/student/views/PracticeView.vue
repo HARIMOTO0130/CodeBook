@@ -2,7 +2,7 @@
   <div class="practice-view">
     <!-- 顶部面包屑 -->
     <div class="breadcrumb">
-      <router-link to="/" class="breadcrumb-item">首页</router-link>
+      <router-link to="/student/books" class="breadcrumb-item">首页</router-link>
       <span class="breadcrumb-separator">/</span>
       <span class="breadcrumb-item current">练习题</span>
     </div>
@@ -25,26 +25,7 @@
       </button>
     </div>
 
-    <!-- 过滤和筛选 -->
-    <div class="filter-section" v-if="currentBookPractices.length > 0">
-      <div class="filter-controls">
-        <select v-model="selectedLanguage" class="select-input">
-          <option value="">所有语言</option>
-          <option value="python">Python</option>
-          <option value="javascript">JavaScript</option>
-          <option value="java">Java</option>
-          <option value="c">C</option>
-          <option value="cpp">C++</option>
-        </select>
-        
-        <select v-model="difficultyFilter" class="select-input">
-          <option value="">所有难度</option>
-          <option value="easy">简单</option>
-          <option value="medium">中等</option>
-          <option value="hard">困难</option>
-        </select>
-      </div>
-    </div>
+
 
     <!-- 练习题列表 - 按章节分组 -->
     <div class="practice-list">
@@ -67,13 +48,13 @@
             <span class="chapter-section-count">{{ chapter.practices.length }} 道题</span>
           </div>
           
-          <div v-if="getFilteredPracticesForChapter(chapter).length === 0" class="chapter-empty">
-            <p>该章节没有符合条件的练习题</p>
+          <div v-if="chapter.practices.length === 0" class="chapter-empty">
+            <p>该章节没有练习题</p>
           </div>
-          
+
           <div v-else class="practice-grid">
             <div 
-              v-for="practice in getFilteredPracticesForChapter(chapter)" 
+              v-for="practice in chapter.practices" 
               :key="practice.id" 
               class="practice-card"
               @click="startPractice(practice)"
@@ -133,6 +114,7 @@
         v-model:visible="showPracticeModal"
         :questions="currentQuestions"
         :practice-name="currentPracticeName"
+        :practice-id="currentPracticeId"
         @close="closePractice"
         @complete="handlePracticeComplete"
       />
@@ -165,10 +147,7 @@ export default {
     const urlBookId = computed(() => Number(route.query.bookId))
     const urlChapterId = computed(() => Number(route.query.chapterId))
     
-    // 过滤条件
-    const selectedLanguage = ref('')
-    const difficultyFilter = ref('')
-    
+
     // 模态框状态
     const showPracticeModal = ref(false)
     const currentQuestions = ref([])
@@ -222,53 +201,12 @@ export default {
       return Math.round(sum / practiceRecords.value.length)
     })
     const streakDays = computed(() => {
-      // 简化计算，实际应该基于日期计算连续天数
       return Math.floor(Math.random() * 7) + 1
     })
-    
-    // 计算过滤后的练习题
-    const filteredPractices = computed(() => {
-      const practices = currentChapterPractices.value || []
-      return practices.filter(practice => {
-        // 语言筛选
-        const languageMatch = !selectedLanguage.value || 
-                             (practice.language && 
-                              practice.language.toString().toLowerCase() === selectedLanguage.value.toLowerCase())
-        
-        // 难度筛选
-        const difficultyMatch = !difficultyFilter.value || 
-                               (practice.difficulty !== undefined && 
-                                practice.difficulty.toString().toLowerCase() === difficultyFilter.value.toLowerCase())
-        
-        return languageMatch && difficultyMatch
-      })
-    })
-    
-    // 获取章节的过滤后练习题
-    const getFilteredPracticesForChapter = (chapter) => {
-      const practices = chapter.practices || []
-      return practices.filter(practice => {
-        // 语言筛选
-        const languageMatch = !selectedLanguage.value || 
-                             (practice.language && 
-                              practice.language.toString().toLowerCase() === selectedLanguage.value.toLowerCase())
-        
-        // 难度筛选
-        const difficultyMatch = !difficultyFilter.value || 
-                               (practice.difficulty !== undefined && 
-                                practice.difficulty.toString().toLowerCase() === difficultyFilter.value.toLowerCase())
-        
-        return languageMatch && difficultyMatch
-      })
-    }
-    
-    // 选择书籍
+
     const selectBook = (bookId) => {
       selectedBookId.value = bookId
       selectedChapterId.value = null
-      // 重置过滤条件
-      selectedLanguage.value = ''
-      difficultyFilter.value = ''
     }
     
     // 获取练习题 - 直接从数据库获取
@@ -346,6 +284,8 @@ export default {
     // 开始练习
     const startPractice = (practice) => {
       console.log('开始练习:', practice)
+      console.log('练习ID:', practice.id)
+      console.log('练习对象结构:', Object.keys(practice))
       currentPracticeId.value = practice.id
       currentPracticeName.value = practice.title
       
@@ -354,7 +294,7 @@ export default {
         // 如果已经是问题数组格式
         currentQuestions.value = practice.questions.map((q, index) => ({
           id: q.id || index + 1,
-          type: q.type,
+          type: q.type.replace(/_([a-z])/g, g => g[1].toUpperCase()),
           title: q.title,
           description: q.description,
           question: q.question,
@@ -456,7 +396,7 @@ export default {
     const submitMultiQuestionPractice = async (questionAnswers, result) => {
       try {
         // 获取当前练习所属的章节ID
-        const currentPractice = practices.value.find(p => p.id === currentPracticeId.value)
+        const currentPractice = currentBookPractices.value.find(p => p.id === currentPracticeId.value)
         const chapterId = currentPractice ? currentPractice.chapter_id : null
         
         if (!chapterId) {
@@ -1380,8 +1320,6 @@ export default {
       currentBookChapters,
       currentChapterPractices,
       practiceRecords,
-      selectedLanguage,
-      difficultyFilter,
       showPracticeModal,
       currentQuestions,
       currentPracticeName,
@@ -1399,9 +1337,7 @@ export default {
       getQuestionTypeText,
       getQuestionTypesText,
       getQuestionCount,
-      truncateText,
-      filteredPractices,
-      getFilteredPracticesForChapter
+      truncateText
     }
   }
 }
