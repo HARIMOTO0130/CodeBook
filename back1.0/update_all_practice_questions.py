@@ -210,7 +210,7 @@ def get_choice_option(book, chapter, option_num):
     
     return options.get((book.id, chapter.id, option_num), f"选项{chr(ord('A') + option_num - 1)}")
 
-def get_fill_question(book, chapter):
+def get_fill_question(book, chapter_num):
     """根据书籍和章节生成填空题题目"""
     questions = {
         (1, 1): "计算机系统由______和______两部分组成。",
@@ -226,9 +226,9 @@ def get_fill_question(book, chapter):
         (3, 3): "深度学习的特点是具有______层神经网络结构。",
     }
     
-    return questions.get((book.id, chapter.id), f"关于{chapter.title}的填空题")
+    return questions.get((book.id, chapter_num), f"关于第{chapter_num}章的填空题")
 
-def get_fill_answer(book, chapter, blank_num):
+def get_fill_answer(book, chapter_num, blank_num):
     """根据书籍、章节和空白编号生成填空题答案"""
     answers = {
         # 大学计算机基础与应用 - 第1章 计算机基础知识
@@ -269,9 +269,9 @@ def get_fill_answer(book, chapter, blank_num):
         (3, 3, 1): "多层",
     }
     
-    return answers.get((book.id, chapter.id, blank_num), f"答案{blank_num}")
+    return answers.get((book.id, chapter_num, blank_num), f"答案{blank_num}")
 
-def get_true_false_question(book, chapter):
+def get_true_false_question(book, chapter_num):
     """根据书籍和章节生成判断题题目"""
     questions = {
         (1, 1): "计算机的基本存储单位是字节(Byte)。",
@@ -287,9 +287,9 @@ def get_true_false_question(book, chapter):
         (3, 3): "深度学习是机器学习的一个分支。",
     }
     
-    return questions.get((book.id, chapter.id), f"关于{chapter.title}的判断题")
+    return questions.get((book.id, chapter_num), f"关于第{chapter_num}章的判断题")
 
-def get_true_false_answer(book, chapter):
+def get_true_false_answer(book, chapter_num):
     """根据书籍和章节生成判断题答案"""
     answers = {
         (1, 1): True,
@@ -298,16 +298,16 @@ def get_true_false_answer(book, chapter):
         
         (2, 1): False,
         (2, 2): True,
-        (2, 3): False,
+        (2, 3): True,
         
         (3, 1): False,
         (3, 2): True,
         (3, 3): True,
     }
     
-    return answers.get((book.id, chapter.id), True)
+    return answers.get((book.id, chapter_num), True)
 
-def get_code_completion_question(book, chapter):
+def get_code_completion_question(book, chapter_num):
     """根据书籍和章节生成代码补全题题目"""
     questions = {
         (1, 1): "请补全以下Python代码，实现打印'Hello World'的功能。",
@@ -323,9 +323,9 @@ def get_code_completion_question(book, chapter):
         (3, 3): "请补全以下代码，定义一个简单的神经网络层。",
     }
     
-    return questions.get((book.id, chapter.id), f"关于{chapter.title}的代码补全题")
+    return questions.get((book.id, chapter_num), f"关于第{chapter_num}章的代码补全题")
 
-def get_programming_question(book, chapter):
+def get_programming_question(book, chapter_num):
     """根据书籍和章节生成编程题题目"""
     questions = {
         (1, 1): "请编写一个Python函数，实现两个数的加法运算。",
@@ -333,15 +333,15 @@ def get_programming_question(book, chapter):
         (1, 3): "请编写一个Python程序，统计一段文本中每个单词出现的频率。",
         
         (2, 1): "请编写一个Python程序，使用pandas读取CSV文件并显示前5行数据。",
-        (2, 2): "请编写一个Python程序，计算一组数据的平均值、中位数和标准差。",
+        (2, 2): "请编写一个Python程序，计算数据的均值、中位数和标准差。",
         (2, 3): "请编写一个Python程序，使用matplotlib绘制柱状图。",
         
-        (3, 1): "请编写一个Python函数，实现简单的线性回归预测。",
-        (3, 2): "请编写一个Python程序，使用scikit-learn进行分类任务。",
-        (3, 3): "请编写一个Python程序，使用TensorFlow定义一个简单的神经网络。",
+        (3, 1): "请编写一个Python程序，实现简单的线性搜索算法。",
+        (3, 2): "请编写一个Python程序，实现简单的冒泡排序算法。",
+        (3, 3): "请编写一个Python程序，实现简单的神经网络前向传播。",
     }
     
-    return questions.get((book.id, chapter.id), f"关于{chapter.title}的编程题")
+    return questions.get((book.id, chapter_num), f"关于第{chapter_num}章的编程题")
 
 def get_code_template(book, chapter, question_type):
     """根据书籍、章节和题目类型生成代码模板"""
