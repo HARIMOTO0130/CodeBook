@@ -52,6 +52,21 @@ int main() {
     
     return 0;
 }''',
+    'cpp': '''// C++ 初始代码
+#include <iostream>
+
+int main() {
+    std::cout << "欢迎使用C++编程!" << std::endl;
+    
+    // 这里是一些示例代码:
+    int x = 10;
+    int y = 20;
+    std::cout << "x + y = " << (x + y) << std::endl;
+    
+    // 尝试修改这段代码，体验C++的强大功能!
+    
+    return 0;
+}''',
     'html': '''<!-- HTML 初始代码 -->
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -82,7 +97,40 @@ int main() {
         console.log("HTML页面加载完成");
     </script>
 </body>
-</html>'''
+</html>''',
+    'css': '''/* CSS 初始代码 */
+/* 欢迎使用CSS编程! */
+
+/* 这里是一些示例代码: */
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: #f0f0f0;
+}
+
+h1 {
+    color: #333;
+    text-align: center;
+    padding: 20px 0;
+}
+
+p {
+    color: #666;
+    font-size: 16px;
+    line-height: 1.5;
+    margin: 0 20px 20px;
+}
+
+.container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+    background-color: white;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+}
+
+/* 尝试修改这段代码，体验CSS的强大功能! */'''
 }
 
 # 支持的编程语言列表

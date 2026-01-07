@@ -47,6 +47,25 @@ class User(AbstractUser):
         verbose_name='用户角色'
     )
     
+    # 新增基本信息字段
+    nickname = models.CharField(max_length=50, blank=True, null=True, verbose_name='昵称')
+    bio = models.TextField(blank=True, null=True, verbose_name='个性签名')
+    phone = models.CharField(max_length=20, blank=True, null=True, verbose_name='手机号')
+    
+    # 新增隐私设置字段
+    profile_visibility = models.CharField(
+        max_length=20, 
+        choices=[('public', '公开'), ('friends', '好友可见'), ('private', '私密')],
+        default='public',
+        verbose_name='资料可见性'
+    )
+    learning_records_visibility = models.CharField(
+        max_length=20, 
+        choices=[('public', '公开'), ('friends', '好友可见'), ('private', '私密')],
+        default='private',
+        verbose_name='学习记录可见性'
+    )
+    
     objects = UserManager()
     
     class Meta:
@@ -80,6 +99,25 @@ class UserPreferences(models.Model):
     code_theme = models.CharField(max_length=50, default='vs-dark', verbose_name='代码编辑器主题')
     auto_play_video = models.BooleanField(default=False, verbose_name='自动播放视频')
     keyboard_shortcuts = models.BooleanField(default=True, verbose_name='启用键盘快捷键')
+    show_line_numbers = models.BooleanField(default=True, verbose_name='显示代码行号')
+    use_vim_mode = models.BooleanField(default=False, verbose_name='使用Vim模式')
+    
+    # 新增学习信息字段
+    learning_goals = models.JSONField(default=list, verbose_name='学习目标')
+    major = models.CharField(max_length=100, blank=True, null=True, verbose_name='专业方向')
+    learning_stage = models.CharField(
+        max_length=20, 
+        choices=[('beginner', '初学者'), ('intermediate', '进阶者'), ('advanced', '高级学习者')],
+        default='beginner',
+        verbose_name='学习阶段'
+    )
+    interests = models.JSONField(default=list, verbose_name='兴趣领域')
+    
+    # 新增学习提醒设置
+    enable_learning_reminders = models.BooleanField(default=True, verbose_name='启用学习提醒')
+    reminder_time = models.TimeField(default='09:00', verbose_name='提醒时间')
+    daily_reminder = models.BooleanField(default=True, verbose_name='每日学习提醒')
+    deadline_reminder = models.BooleanField(default=True, verbose_name='截止日期提醒')
     
     class Meta:
         verbose_name = '用户偏好设置'

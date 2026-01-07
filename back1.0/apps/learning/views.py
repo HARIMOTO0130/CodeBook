@@ -401,19 +401,73 @@ def execute_code(request):
     stdin_data = request.data.get('input') or ''
 
     # 支持的编程语言
-    supported_languages = ['python', 'javascript', 'java', 'c', 'html']
+    supported_languages = ['python', 'javascript', 'java', 'c', 'cpp', 'html', 'css']
     
     # 安全检查
     if language not in supported_languages:
-        return Response({'error': f'暂不支持该语言，支持的语言: {', '.join(supported_languages)}'}, 
-                        status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'success': False,
+            'error': {
+                'type': 'unsupported_language',
+                'code': 'UNSUPPORTED_LANGUAGE',
+                'message': f'暂不支持该语言',
+                'details': f'支持的语言: {', '.join(supported_languages)}'
+            },
+            'stdout': '',
+            'stderr': '',
+            'exitCode': -1,
+            'durationMs': 0,
+            'stats': {
+                'language': language,
+                'codeLength': len(code),
+                'executionTime': 0,
+                'timestamp': time.strftime('%Y-%m-%d %H:%M:%S')
+            }
+        }, status=status.HTTP_400_BAD_REQUEST)
     
     if not code:
-        return Response({'error': '代码为空'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'success': False,
+            'error': {
+                'type': 'empty_code',
+                'code': 'EMPTY_CODE',
+                'message': '代码为空',
+                'details': '请输入要执行的代码'
+            },
+            'stdout': '',
+            'stderr': '',
+            'exitCode': -1,
+            'durationMs': 0,
+            'stats': {
+                'language': language,
+                'codeLength': 0,
+                'executionTime': 0,
+                'timestamp': time.strftime('%Y-%m-%d %H:%M:%S')
+            }
+        }, status=status.HTTP_400_BAD_REQUEST)
     
     # 代码长度限制
-    if len(code) > 10000:
-        return Response({'error': '代码长度超过限制（最大10000字符）'}, status=status.HTTP_400_BAD_REQUEST)
+    max_code_length = 10000
+    if len(code) > max_code_length:
+        return Response({
+            'success': False,
+            'error': {
+                'type': 'code_too_long',
+                'code': 'CODE_TOO_LONG',
+                'message': '代码长度超过限制',
+                'details': f'最大允许长度: {max_code_length}字符，当前长度: {len(code)}字符'
+            },
+            'stdout': '',
+            'stderr': '',
+            'exitCode': -1,
+            'durationMs': 0,
+            'stats': {
+                'language': language,
+                'codeLength': len(code),
+                'executionTime': 0,
+                'timestamp': time.strftime('%Y-%m-%d %H:%M:%S')
+            }
+        }, status=status.HTTP_400_BAD_REQUEST)
 
     start = time.time()
     max_time = 5  # 5秒超时限制
@@ -432,7 +486,8 @@ def execute_code(request):
             # 清理环境变量，只保留必要的
             'PATH': os.environ.get('PATH', ''),
             'HOME': '',  # 防止访问用户主目录
-        }
+        },
+        'shell': False,  # 禁用shell，防止命令注入
     }
 
     try:
@@ -442,105 +497,220 @@ def execute_code(request):
             # 根据语言准备执行环境和命令
             if language == 'python':
                 # 安全的Python执行，禁用危险模块导入
-                secure_code = f"""
+                # 使用字符串拼接而不是f-string来避免转义问题
+                secure_code = """
 # 安全执行包装
 import sys
 import builtins
 
+# 限制资源使用 - 只在支持resource模块的系统上执行
+try:
+    import resource
+    # 限制内存使用
+    resource.setrlimit(resource.RLIMIT_AS, (int(MAX_MEMORY * 1024 * 1024), -1))
+    # 限制CPU时间
+    resource.setrlimit(resource.RLIMIT_CPU, (MAX_TIME, MAX_TIME))
+    # 限制进程数
+    resource.setrlimit(resource.RLIMIT_NPROC, (16, 16))
+except ImportError:
+    # 在Windows系统上，resource模块不可用，跳过资源限制
+    pass
+
 # 禁用危险模块和函数
-blocked_modules = ['os', 'sys', 'subprocess', 'socket', 'shutil', '__import__', 
-                  'exec', 'eval', 'open', 'file', 'compile', 'globals', 'locals']
+blocked_modules = ['os', 'sys', 'subprocess', 'socket', 'shutil', '__import__', \
+                  'exec', 'eval', 'open', 'file', 'compile', 'globals', 'locals',\
+                  'input', 'help', 'exit', 'quit', 'breakpoint']
 
 # 覆盖__builtins__中的危险函数
-for func in ['open', 'file', 'execfile', '__import__', 'eval', 'exec']:
-    if func in builtins.__dict__:
-        builtins.__dict__[func] = lambda *args, **kwargs: None
+for func_name in ['open', 'file', 'execfile', '__import__', 'eval', 'exec',\
+             'input', 'help', 'exit', 'quit', 'breakpoint']:
+    if func_name in builtins.__dict__:
+        def create_blocked_func(f_name):
+            def blocked_func(*args, **kwargs):
+                print(f"Error: Disabled function '{f_name}'")
+            return blocked_func
+        builtins.__dict__[func_name] = create_blocked_func(func_name)
 
-# 限制内存使用
-import resource
-resource.setrlimit(resource.RLIMIT_AS, (int({max_memory_mb} * 1024 * 1024), -1))
+# 覆盖sys模块，禁用危险操作
+sys.modules['sys'] = type('FakeSys', (), {
+    'argv': ['python'],
+    'version': '3.8.10',
+    'platform': 'linux',
+    'exit': lambda *args: print("错误：禁止使用sys.exit")
+})()
 
 # 执行用户代码
-{code}
+USER_CODE
 """
+                # 使用字符串替换来插入变量
+                secure_code = secure_code.replace('MAX_MEMORY', str(max_memory_mb))
+                secure_code = secure_code.replace('MAX_TIME', str(max_time))
+                secure_code = secure_code.replace('USER_CODE', code)
                 filename = os.path.join(cwd, 'main.py')
                 with open(filename, 'w', encoding='utf-8') as f:
-                    f.write(secure_code.format(max_memory_mb=max_memory_mb, code=code))
-                cmd = ['python', '-B', '-E', filename]  # -B: 不写入.pyc文件, -E: 忽略环境变量
+                    f.write(secure_code)
+                cmd = ['python', '-B', '-E', '-S', filename]  # -B: 不写入.pyc文件, -E: 忽略环境变量, -S: 不导入site模块
                 
             elif language == 'javascript':
                 filename = os.path.join(cwd, 'main.js')
                 with open(filename, 'w', encoding='utf-8') as f:
                     # 避免使用f-string嵌套，直接拼接字符串
                     wrapper_start = '''
-// 内存使用监控
+// 安全执行包装
 const originalSetTimeout = setTimeout;
+const originalSetInterval = setInterval;
+
+// 限制内存使用
+function checkMemoryUsage() {
+  const currentMem = process.memoryUsage().heapUsed;
+  const maxMemory = '''
+                    wrapper_middle = str(max_memory_mb) + ''' * 1024 * 1024;
+  if (currentMem > maxMemory) {
+    console.error('内存使用超出限制');
+    process.exit(1);
+  }
+}
+
+// 覆盖定时器，添加内存检查
 setTimeout = (callback, delay) => {
-  const startMem = process.memoryUsage().heapUsed;
   const wrappedCallback = () => {
-    const currentMem = process.memoryUsage().heapUsed;
-    if (currentMem > '''
-                    wrapper_middle = str(max_memory_mb) + ''' * 1024 * 1024) {
-      console.error('内存使用超出限制');
-      process.exit(1);
-    }
+    checkMemoryUsage();
     callback();
   };
   return originalSetTimeout(wrappedCallback, delay);
 };
 
+setInterval = (callback, delay) => {
+  const wrappedCallback = () => {
+    checkMemoryUsage();
+    callback();
+  };
+  return originalSetInterval(wrappedCallback, delay);
+};
+
+// 禁用危险模块
+const blockedModules = ['child_process', 'fs', 'net', 'http', 'https', 'os', 'path', 'process', 'url'];
+for (const moduleName of blockedModules) {
+  Object.defineProperty(require, 'cache', {
+    __get: () => ({
+      [moduleName]: { exports: {}} // 返回空对象
+    })
+  });
+}
+
+// 禁用危险全局对象
+const originalRequire = require;
+require = (moduleName) => {
+  if (blockedModules.includes(moduleName)) {
+    console.error(`错误：禁止导入${moduleName}模块`);
+    return {};
+  }
+  return originalRequire(moduleName);
+};
+
 // 执行用户代码
 '''
                     f.write(wrapper_start + wrapper_middle + code)
-                cmd = ['node', '--max-old-space-size={}'.format(max_memory_mb), filename]
+                cmd = ['node', '--max-old-space-size={}'.format(max_memory_mb), '--no-warnings', filename]
             elif language == 'java':
                 # Java代码执行：先编译再运行
                 filename = os.path.join(cwd, 'Main.java')
                 with open(filename, 'w', encoding='utf-8') as f:
                     f.write(code)
                 # 编译Java文件
-                compile_cmd = ['javac', 'Main.java']
-                compile_proc = subprocess.run(
-                    compile_cmd,
-                    cwd=cwd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    timeout=max_time // 2  # 编译超时限制
-                )
-                
-                # 检查编译是否成功
-                if compile_proc.returncode != 0:
-                    stderr_text = compile_proc.stderr.decode('utf-8', errors='replace')
-                    exit_code = compile_proc.returncode
-                    # 编译失败，不执行运行命令
+                compile_cmd = ['javac', '-Xlint:all', 'Main.java']
+                try:
+                    compile_proc = subprocess.run(
+                        compile_cmd,
+                        cwd=cwd,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        timeout=max_time // 2  # 编译超时限制
+                    )
+                    
+                    # 检查编译是否成功
+                    if compile_proc.returncode != 0:
+                        stderr_text = compile_proc.stderr.decode('utf-8', errors='replace')
+                        exit_code = compile_proc.returncode
+                        # 编译失败，不执行运行命令
+                        cmd = None
+                    else:
+                        # 运行编译后的Java程序
+                        cmd = ['java', '-Xmx{}m'.format(max_memory_mb), '-Xms64m', '-Djava.security.manager', 'Main']
+                except FileNotFoundError:
+                    stderr_text = 'Java编译器未安装，请安装JDK以执行Java代码'
+                    exit_code = -1
                     cmd = None
-                else:
-                    # 运行编译后的Java程序
-                    cmd = ['java', '-Xmx{}m'.format(max_memory_mb), 'Main']
+                except Exception as e:
+                    stderr_text = f'Java编译失败：{str(e)}'
+                    exit_code = -1
+                    cmd = None
             elif language == 'c':
                 # C代码执行：先编译再运行
                 filename = os.path.join(cwd, 'main.c')
                 with open(filename, 'w', encoding='utf-8') as f:
                     f.write(code)
                 # 编译C文件
-                compile_cmd = ['gcc', 'main.c', '-o', 'main.exe']
-                compile_proc = subprocess.run(
-                    compile_cmd,
-                    cwd=cwd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    timeout=max_time // 2  # 编译超时限制
-                )
-                
-                # 检查编译是否成功
-                if compile_proc.returncode != 0:
-                    stderr_text = compile_proc.stderr.decode('utf-8', errors='replace')
-                    exit_code = compile_proc.returncode
-                    # 编译失败，不执行运行命令
+                compile_cmd = ['gcc', '-Wall', '-Wextra', '-pedantic', '-O2', 'main.c', '-o', 'main.exe']
+                try:
+                    compile_proc = subprocess.run(
+                        compile_cmd,
+                        cwd=cwd,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        timeout=max_time // 2  # 编译超时限制
+                    )
+                    
+                    # 检查编译是否成功
+                    if compile_proc.returncode != 0:
+                        stderr_text = compile_proc.stderr.decode('utf-8', errors='replace')
+                        exit_code = compile_proc.returncode
+                        # 编译失败，不执行运行命令
+                        cmd = None
+                    else:
+                        # 运行编译后的C程序
+                        cmd = ['./main.exe']
+                except FileNotFoundError:
+                    stderr_text = 'C编译器未安装，请安装GCC以执行C代码'
+                    exit_code = -1
                     cmd = None
-                else:
-                    # 运行编译后的C程序
-                    cmd = ['./main.exe']
+                except Exception as e:
+                    stderr_text = f'C编译失败：{str(e)}'
+                    exit_code = -1
+                    cmd = None
+            elif language == 'cpp':
+                # C++代码执行：先编译再运行
+                filename = os.path.join(cwd, 'main.cpp')
+                with open(filename, 'w', encoding='utf-8') as f:
+                    f.write(code)
+                # 编译C++文件
+                compile_cmd = ['g++', '-Wall', '-Wextra', '-pedantic', '-O2', 'main.cpp', '-o', 'main.exe']
+                try:
+                    compile_proc = subprocess.run(
+                        compile_cmd,
+                        cwd=cwd,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        timeout=max_time // 2  # 编译超时限制
+                    )
+                    
+                    # 检查编译是否成功
+                    if compile_proc.returncode != 0:
+                        stderr_text = compile_proc.stderr.decode('utf-8', errors='replace')
+                        exit_code = compile_proc.returncode
+                        # 编译失败，不执行运行命令
+                        cmd = None
+                    else:
+                        # 运行编译后的C++程序
+                        cmd = ['./main.exe']
+                except FileNotFoundError:
+                    stderr_text = 'C++编译器未安装，请安装GCC以执行C++代码'
+                    exit_code = -1
+                    cmd = None
+                except Exception as e:
+                    stderr_text = f'C++编译失败：{str(e)}'
+                    exit_code = -1
+                    cmd = None
             elif language == 'html':
                 # HTML不能直接执行，返回解析后的信息
                 filename = os.path.join(cwd, 'index.html')
@@ -557,24 +727,82 @@ setTimeout = (callback, delay) => {
                     stdout_text += f"\n- 图片数量: {len(soup.find_all('img'))}"
                     stdout_text += f"\n- 链接数量: {len(soup.find_all('a'))}"
                     stdout_text += f"\n- 标题标签数量: {len(soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6']))}"
+                    stdout_text += f"\n- 脚本数量: {len(soup.find_all('script'))}"
+                    stdout_text += f"\n- 样式数量: {len(soup.find_all('style'))}"
+                    stdout_text += f"\n- div容器数量: {len(soup.find_all('div'))}"
+                    stdout_text += f"\n- 表单元素数量: {len(soup.find_all(['form', 'input', 'button', 'select', 'textarea']))}"
                 except Exception as e:
                     stdout_text += f"\n解析HTML时出错: {str(e)}"
                 exit_code = 0
                 # HTML不需要执行命令
+                cmd = None
+            elif language == 'css':
+                # CSS不能直接执行，返回解析后的信息
+                filename = os.path.join(cwd, 'style.css')
+                with open(filename, 'w', encoding='utf-8') as f:
+                    f.write(code)
+                # 返回CSS解析信息而非执行结果
+                stdout_text = "CSS文件已生成，在实际环境中可以应用到HTML文件"
+                # 简单解析CSS内容统计
+                try:
+                    # 统计CSS规则数量
+                    rules_count = len(code.split('}')) - 1
+                    # 统计选择器数量
+                    selectors_count = len(code.split('{')) - 1
+                    # 统计属性数量
+                    properties_count = len(code.split(';')) - code.count('/*')
+                    
+                    stdout_text += f"\n\nCSS解析信息："
+                    stdout_text += f"\n- 规则数量: {rules_count}"
+                    stdout_text += f"\n- 选择器数量: {selectors_count}"
+                    stdout_text += f"\n- 属性数量: {properties_count}"
+                    stdout_text += f"\n- 文件大小: {len(code)} 字符"
+                except Exception as e:
+                    stdout_text += f"\n解析CSS时出错: {str(e)}"
+                exit_code = 0
+                # CSS不需要执行命令
                 cmd = None
 
             # 设置额外的安全参数
             if sys.platform.startswith('linux'):
                 # Linux系统下使用更严格的隔离
                 subprocess_kwargs.update({
-                    'preexec_fn': lambda: resource.setrlimit(resource.RLIMIT_NPROC, (32, 32))  # 限制进程数
+                    'preexec_fn': lambda: (
+                        # 限制进程数
+                        resource.setrlimit(resource.RLIMIT_NPROC, (16, 16)),
+                        # 限制CPU时间
+                        resource.setrlimit(resource.RLIMIT_CPU, (max_time, max_time)),
+                        # 限制文件大小
+                        resource.setrlimit(resource.RLIMIT_FSIZE, (1024 * 1024, 1024 * 1024)),
+                        # 限制打开文件数
+                        resource.setrlimit(resource.RLIMIT_NOFILE, (128, 128))
+                    )
+                })
+            elif sys.platform.startswith('win'):
+                # Windows系统下的安全设置
+                subprocess_kwargs.update({
+                    'creationflags': subprocess.CREATE_NEW_CONSOLE | subprocess.CREATE_NO_WINDOW
                 })
 
             # 执行代码（仅在非HTML且cmd存在时执行）
             if language != 'html' and cmd is not None:
                 proc = subprocess.run(cmd, cwd=cwd, **subprocess_kwargs)
-                stdout_text = proc.stdout.decode('utf-8', errors='replace')
-                stderr_text = proc.stderr.decode('utf-8', errors='replace')
+                
+                # 智能解码输出，优先使用utf-8，失败时尝试gbk（Windows系统常见编码）
+                def decode_output(output_bytes):
+                    try:
+                        # 优先尝试UTF-8
+                        return output_bytes.decode('utf-8')
+                    except UnicodeDecodeError:
+                        try:
+                            # 尝试GBK编码（Windows系统常见）
+                            return output_bytes.decode('gbk')
+                        except UnicodeDecodeError:
+                            # 最后使用replace模式，确保不会崩溃
+                            return output_bytes.decode('utf-8', errors='replace')
+                
+                stdout_text = decode_output(proc.stdout)
+                stderr_text = decode_output(proc.stderr)
                 exit_code = proc.returncode
 
     except subprocess.TimeoutExpired:
@@ -582,6 +810,9 @@ setTimeout = (callback, delay) => {
         exit_code = -1
     except FileNotFoundError as e:
         stderr_text = '执行环境缺失，请安装所需运行时（如 Python 或 Node.js）'
+        exit_code = -1
+    except PermissionError as e:
+        stderr_text = f'权限错误：{str(e)}'
         exit_code = -1
     except Exception as e:
         stderr_text = f'执行错误: {str(e)}'
@@ -607,7 +838,37 @@ setTimeout = (callback, delay) => {
     # 根据测试脚本期望的格式返回响应
     success = exit_code == 0 and not stderr_text
     output = stdout_text if stdout_text else stderr_text
-    error = stderr_text if stderr_text and exit_code != 0 else None
+    
+    # 构建错误信息
+    error = None
+    if stderr_text and exit_code != 0:
+        error_type = 'execution_error'
+        error_code = 'EXECUTION_ERROR'
+        error_message = '代码执行失败'
+        
+        if '超时' in stderr_text:
+            error_type = 'timeout_error'
+            error_code = 'TIMEOUT_ERROR'
+            error_message = '执行超时'
+        elif '环境缺失' in stderr_text:
+            error_type = 'environment_error'
+            error_code = 'ENVIRONMENT_ERROR'
+            error_message = '执行环境缺失'
+        elif '权限错误' in stderr_text:
+            error_type = 'permission_error'
+            error_code = 'PERMISSION_ERROR'
+            error_message = '权限错误'
+        elif language in ['java', 'c', 'cpp'] and any(term in stderr_text for term in ['error:', 'warning:', 'undefined reference']):
+            error_type = 'compile_error'
+            error_code = 'COMPILE_ERROR'
+            error_message = '编译失败'
+        
+        error = {
+            'type': error_type,
+            'code': error_code,
+            'message': error_message,
+            'details': stderr_text
+        }
     
     return Response({
         'success': success,

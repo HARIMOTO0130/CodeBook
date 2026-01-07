@@ -8,7 +8,11 @@ class UserPreferencesSerializer(serializers.ModelSerializer):
     """用户偏好设置序列化器"""
     class Meta:
         model = UserPreferences
-        fields = ('default_language', 'code_theme', 'auto_play_video', 'keyboard_shortcuts')
+        fields = (
+            'default_language', 'code_theme', 'auto_play_video', 'keyboard_shortcuts', 'show_line_numbers', 'use_vim_mode',
+            'learning_goals', 'major', 'learning_stage', 'interests',
+            'enable_learning_reminders', 'reminder_time', 'daily_reminder', 'deadline_reminder'
+        )
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -19,7 +23,10 @@ class UserSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = User
-        fields = ('id', 'username', 'email', 'avatar', 'role', 'preferences')
+        fields = (
+            'id', 'username', 'nickname', 'email', 'phone', 'avatar', 'bio', 
+            'role', 'profile_visibility', 'learning_records_visibility', 'preferences'
+        )
         read_only_fields = ('id', 'role')
     
     def get_avatar(self, obj):

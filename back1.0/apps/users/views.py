@@ -116,6 +116,7 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def me(self, request):
         """获取当前用户信息"""
+        print(f"[DEBUG] GET /me/ called by user: {request.user}")
         if request.user.is_authenticated:
             serializer = UserSerializer(request.user, context={'request': request})
             return Response(serializer.data)
@@ -124,36 +125,43 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['put', 'post'])
     def update_me(self, request):
         """更新当前用户信息"""
+        print(f"[DEBUG] PUT/POST /me/ called by user: {request.user}")
+        print(f"[DEBUG] Request data: {request.data}")
         if not request.user.is_authenticated:
             return Response({'error': '未登录'}, status=status.HTTP_401_UNAUTHORIZED)
         
         serializer = UserSerializer(request.user, data=request.data, context={'request': request}, partial=True)
         if serializer.is_valid():
             user = serializer.save()
+            print(f"[DEBUG] User updated successfully: {user}")
             return Response(UserSerializer(user, context={'request': request}).data)
+        print(f"[DEBUG] Serializer errors: {serializer.errors}")
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
     @action(detail=False, methods=['get', 'put'], url_path='preferences')
     def preferences(self, request):
         """获取或更新用户偏好设置"""
+        print(f"[DEBUG] {request.method} /preferences/ called by user: {request.user}")
+        if request.method == 'PUT':
+            print(f"[DEBUG] Preferences update data: {request.data}")
+        
         if not request.user.is_authenticated:
             return Response({'error': '未登录'}, status=status.HTTP_401_UNAUTHORIZED)
             
         if request.method == 'GET':
             preferences, created = UserPreferences.objects.get_or_create(user=request.user)
             serializer = UserPreferencesSerializer(preferences)
+            print(f"[DEBUG] Preferences retrieved: {preferences}")
             return Response(serializer.data)
         elif request.method == 'PUT':
             preferences, created = UserPreferences.objects.get_or_create(user=request.user)
             serializer = UserPreferencesSerializer(preferences, data=request.data, partial=True)
             if serializer.is_valid():
                 preferences = serializer.save()
-                return Response({
-                    'default_language': preferences.default_language,
-                    'code_theme': preferences.code_theme,
-                    'auto_play_video': preferences.auto_play_video,
-                    'keyboard_shortcuts': preferences.keyboard_shortcuts
-                })
+                print(f"[DEBUG] Preferences updated successfully: {preferences}")
+                # 使用序列化器返回所有更新后的字段
+                return Response(UserPreferencesSerializer(preferences).data)
+            print(f"[DEBUG] Preferences serializer errors: {serializer.errors}")
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
     @action(detail=False, methods=['post'], url_path='change-password')
