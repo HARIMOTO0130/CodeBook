@@ -36,7 +36,7 @@
             :class="{ active: currentBook && currentBook.id === book.id }"
           >
             <div class="book-cover" :style="{ backgroundColor: getCoverColor(book.id) }">
-              {{ book.title.charAt(0) }}
+              {{ book.title ? book.title.charAt(0) : '📚' }}
             </div>
             <div class="book-info">
               <div class="book-title-row">

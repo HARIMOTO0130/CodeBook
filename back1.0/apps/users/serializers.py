@@ -15,11 +15,21 @@ class UserSerializer(serializers.ModelSerializer):
     """用户序列化器"""
     preferences = UserPreferencesSerializer(required=False)
     role = serializers.CharField(read_only=True)
+    avatar = serializers.SerializerMethodField()
     
     class Meta:
         model = User
         fields = ('id', 'username', 'email', 'avatar', 'role', 'preferences')
         read_only_fields = ('id', 'role')
+    
+    def get_avatar(self, obj):
+        """返回完整的头像URL"""
+        if obj.avatar:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.avatar.url)
+            return obj.avatar.url
+        return None
     
     def update(self, instance, validated_data):
         preferences_data = validated_data.pop('preferences', None)

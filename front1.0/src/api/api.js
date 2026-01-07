@@ -64,7 +64,9 @@ export async function httpGet(path, requireAuth = false) {
 }
 
 async function httpPost(path, body, requireAuth = false, method = 'POST') {
-  const fullUrl = `${API_BASE_URL}${path}`;
+  // 确保API路径格式正确，避免重复的/api前缀
+  const apiPath = path.startsWith('/') ? path : `/${path}`;
+  const fullUrl = `${API_BASE_URL}${apiPath}`;
   
   const headers = {
     'Content-Type': 'application/json',
@@ -120,9 +122,11 @@ export async function httpPut(path, body, requireAuth = false) {
   return httpPost(path, body, requireAuth, 'PUT');
 }
 
-async function httpPostForm(path, formData, requireAuth = false) {
-  const fullUrl = `${API_BASE_URL}${path}`;
-  console.log(`[HTTP POST_FORM] 请求: ${fullUrl}`);
+async function httpPostForm(path, formData, requireAuth = false, method = 'POST') {
+  // 确保API路径格式正确，避免重复的/api前缀
+  const apiPath = path.startsWith('/') ? path : `/${path}`;
+  const fullUrl = `${API_BASE_URL}${apiPath}`;
+  console.log(`[HTTP ${method}_FORM] 请求: ${fullUrl}`);
   
   const headers = {
     ...(requireAuth ? authHeaders() : {})
@@ -131,13 +135,13 @@ async function httpPostForm(path, formData, requireAuth = false) {
   
   try {
     const res = await fetch(fullUrl, {
-      method: 'POST',
+      method,
       headers,
       body: formData,
       credentials: 'omit'
     });
     
-    console.log(`[HTTP POST_FORM] 响应状态: ${res.status} ${res.statusText}`);
+    console.log(`[HTTP ${method}_FORM] 响应状态: ${res.status} ${res.statusText}`);
     
       if (res.status === 401 || res.status === 403) {
         try { localStorage.removeItem('token') } catch {}
@@ -153,10 +157,10 @@ async function httpPostForm(path, formData, requireAuth = false) {
       try {
         const errorData = await res.json();
         console.error('[HTTP POST_FORM] 错误详情:', errorData);
-        throw new Error(`POST_FORM ${path} ${res.status}: ${errorData.error || res.statusText}`);
+        throw new Error(`${method}_FORM ${path} ${res.status}: ${errorData.error || res.statusText}`);
       } catch (parseError) {
         console.error('[HTTP POST_FORM] 无法解析错误响应:', parseError);
-        throw new Error(`POST_FORM ${path} ${res.status}`);
+        throw new Error(`${method}_FORM ${path} ${res.status}`);
       }
     }
     
@@ -286,17 +290,41 @@ export const api = {
 
   // 用户
   async getUserInfo() {
-    return httpGet('/auth/me/', true);
+    return httpGet('/student/users/me/', true);
+  },
+  async updateUserInfo(userData, fileData = null) {
+    if (fileData) {
+      // 如果有文件数据，使用表单数据上传，使用POST方法
+      const formData = new FormData();
+      // 添加所有用户数据字段
+      Object.keys(userData).forEach(key => {
+        formData.append(key, userData[key]);
+      });
+      // 添加文件字段
+      Object.keys(fileData).forEach(key => {
+        formData.append(key, fileData[key]);
+      });
+      return httpPostForm('/student/users/me/', formData, true, 'POST');
+    } else {
+      // 否则使用普通JSON请求，使用PUT方法
+      return httpPut('/student/users/me/', userData, true);
+    }
+  },
+  async getUserPreferences() {
+    return httpGet('/student/users/preferences/', true);
   },
   async updateUserPreferences(preferences) {
     // 前端传入为 camelCase，转换成后端的 snake_case
     const payload = {
-      ...(preferences.defaultLanguage !== undefined ? { default_language: preferences.defaultLanguage } : {}),
-      ...(preferences.codeTheme !== undefined ? { code_theme: preferences.codeTheme } : {}),
-      ...(preferences.autoPlayVideo !== undefined ? { auto_play_video: preferences.autoPlayVideo } : {}),
-      ...(preferences.keyboardShortcuts !== undefined ? { keyboard_shortcuts: preferences.keyboardShortcuts } : {})
+      ...(preferences.default_language !== undefined ? { default_language: preferences.default_language } : {}),
+      ...(preferences.code_theme !== undefined ? { code_theme: preferences.code_theme } : {}),
+      ...(preferences.auto_play_video !== undefined ? { auto_play_video: preferences.auto_play_video } : {}),
+      ...(preferences.keyboard_shortcuts !== undefined ? { keyboard_shortcuts: preferences.keyboard_shortcuts } : {})
     };
-    return httpPost('/auth/preferences/', payload, true, 'PUT');
+    return httpPut('/student/users/preferences/', payload, true);
+  },
+  async changePassword(passwordData) {
+    return httpPost('/student/users/change-password/', passwordData, true);
   },
 
   // 书籍

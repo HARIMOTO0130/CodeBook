@@ -2,6 +2,8 @@
 from django.db import models
 from django.conf import settings
 from django.utils import timezone
+from django.db.models.signals import post_save, post_delete
+from django.dispatch import receiver
 import json
 import os
 import logging
@@ -141,8 +143,8 @@ class Book(models.Model):
     def save(self, *args, **kwargs):
         # 计算章节数
         if self.pk:
-            # 已经有主键的情况，直接计算章节数
-            self.chapter_count = self.chapters.count()
+            # 已经有主键的情况，计算非练习类型的章节数
+            self.chapter_count = self.chapters.filter(type__in=['reading', 'video']).count()
         else:
             # 新建记录时，章节数默认为0
             self.chapter_count = 0
@@ -368,6 +370,26 @@ class ChapterVersion(models.Model):
 
     def __str__(self):
         return f"{self.chapter.title} - v{self.version_number}"
+
+
+# 信号处理函数：自动更新书籍的章节数
+@receiver([post_save, post_delete], sender=Chapter)
+def update_book_chapter_count(sender, instance, **kwargs):
+    """
+    当章节被保存或删除时，自动更新所属书籍的章节数
+    只计算非练习类型的章节（reading、video）
+    """
+    # 获取章节所属的书籍
+    book = instance.book
+    
+    # 计算非练习类型的章节数
+    book.chapter_count = Chapter.objects.filter(
+        book=book, 
+        type__in=['reading', 'video']
+    ).count()
+    
+    # 保存书籍实例
+    book.save()
 
 
 class ChapterMedia(models.Model):

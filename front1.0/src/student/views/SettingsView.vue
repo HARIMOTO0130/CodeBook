@@ -27,16 +27,18 @@
           <div class="form-content">
             <div class="avatar-setting">
               <div class="avatar-preview">
-                <div class="avatar-placeholder">{{ userInfo.nickname.charAt(0) }}</div>
+                <img v-if="userInfo.avatar" :src="userInfo.avatar" class="avatar-image" alt="头像" />
+                <div v-else class="avatar-placeholder">{{ userInfo.username ? userInfo.username.charAt(0) : '👤' }}</div>
               </div>
-              <button class="btn">更换头像</button>
+              <input type="file" ref="avatarInput" accept="image/*" style="display: none" @change="handleAvatarUpload" />
+              <button class="btn" @click="triggerAvatarUpload">更换头像</button>
             </div>
 
             <div class="form-group">
               <label class="form-label">昵称</label>
               <input 
                 type="text" 
-                v-model="userInfo.nickname" 
+                v-model="userInfo.username" 
                 class="input"
                 placeholder="请输入昵称"
               />
@@ -245,7 +247,7 @@ export default {
     
     // 用户信息
     const userInfo = ref({
-      nickname: '张三',
+      username: '张三',
       email: 'zhangsan@example.com',
       avatar: ''
     })
@@ -272,6 +274,9 @@ export default {
     const storageTotal = ref('50')
     const storageUsedPercentage = ref(5)
     
+    // 头像上传相关
+    const avatarInput = ref(null)
+    
     // 设置分类
     const settingSections = [
       { key: 'account', label: '账号设置', icon: '👤' },
@@ -288,29 +293,88 @@ export default {
           userInfo.value = user
         }
         
-        // 从localStorage加载偏好设置
+        // 从后端加载偏好设置
+        const preferencesData = await api.getUserPreferences()
+        if (preferencesData) {
+          preferences.value = {
+            defaultLanguage: preferencesData.default_language || 'javascript',
+            editorTheme: preferencesData.code_theme || 'vs-dark',
+            autoPlayVideo: preferencesData.auto_play_video || true,
+            enableKeyboardShortcuts: preferencesData.keyboard_shortcuts || true,
+            showLineNumbers: true,
+            useVimMode: false
+          }
+          // 保存到localStorage作为备份
+          localStorage.setItem('userPreferences', JSON.stringify(preferences.value))
+        } else {
+          // 从localStorage加载偏好设置作为备用
+          const savedPreferences = localStorage.getItem('userPreferences')
+          if (savedPreferences) {
+            preferences.value = { ...preferences.value, ...JSON.parse(savedPreferences) }
+          }
+        }
+      } catch (error) {
+        console.error('加载设置失败:', error)
+        // 错误情况下从localStorage加载作为备用
         const savedPreferences = localStorage.getItem('userPreferences')
         if (savedPreferences) {
           preferences.value = { ...preferences.value, ...JSON.parse(savedPreferences) }
         }
+      }
+    }
+    
+    // 触发头像上传
+    const triggerAvatarUpload = () => {
+      avatarInput.value?.click()
+    }
+    
+    // 处理头像上传
+    const handleAvatarUpload = async (event) => {
+      const file = event.target.files?.[0]
+      if (!file) return
+      
+      try {
+        // 直接使用文件上传到后端
+        const result = await api.updateUserInfo({}, { avatar: file })
+        if (result && result.avatar) {
+          // 更新用户头像
+          userInfo.value.avatar = result.avatar
+          alert('头像上传成功')
+        }
       } catch (error) {
-        console.error('加载设置失败:', error)
+        console.error('上传头像失败:', error)
+        alert('上传头像失败，请重试')
+      } finally {
+        // 重置文件输入
+        if (avatarInput.value) {
+          avatarInput.value.value = ''
+        }
       }
     }
     
     // 保存设置
     const saveSettings = async () => {
       try {
-        // 先调用后端更新偏好中可映射的字段
-        await api.updateUserPreferences({
-          defaultLanguage: preferences.value.defaultLanguage,
-          codeTheme: preferences.value.editorTheme,
-          autoPlayVideo: preferences.value.autoPlayVideo,
-          keyboardShortcuts: preferences.value.enableKeyboardShortcuts
-        })
-        // 其余仅前端生效的设置落地到本地
-        localStorage.setItem('userPreferences', JSON.stringify(preferences.value))
-        alert('设置已保存！')
+        // 根据当前激活的设置部分执行不同的保存逻辑
+        if (activeSection.value === 'account') {
+          // 保存账号设置
+          await api.updateUserInfo({
+            username: userInfo.value.username,
+            // avatar已经在上传时单独保存了
+          })
+          alert('账号设置已保存！')
+        } else if (activeSection === 'preferences') {
+          // 保存学习偏好
+          await api.updateUserPreferences({
+            default_language: preferences.value.defaultLanguage,
+            code_theme: preferences.value.editorTheme,
+            auto_play_video: preferences.value.autoPlayVideo,
+            keyboard_shortcuts: preferences.value.enableKeyboardShortcuts
+          })
+          // 保存到本地作为备份
+          localStorage.setItem('userPreferences', JSON.stringify(preferences.value))
+          alert('学习偏好已保存！')
+        }
       } catch (error) {
         console.error('保存设置失败:', error)
         alert('保存失败，请重试')
@@ -335,7 +399,13 @@ export default {
       }
       
       try {
-        // 模拟修改密码
+        // 调用后端API修改密码
+        await api.changePassword({
+          current_password: passwordForm.value.currentPassword,
+          new_password: passwordForm.value.newPassword,
+          confirm_password: passwordForm.value.confirmPassword
+        })
+        
         alert('密码修改成功')
         showChangePassword.value = false
         
@@ -346,22 +416,80 @@ export default {
           confirmPassword: ''
         }
       } catch (error) {
-        alert('密码修改失败，请重试')
+        console.error('修改密码失败:', error)
+        alert('密码修改失败，请检查当前密码是否正确')
       }
     }
     
     // 导出学习数据
     const exportLearningData = async (format) => {
       try {
-        const records = await api.getLearningRecords('year')
+        // 调用后端API获取学习记录
+        const learningRecords = await api.getLearningRecords('year')
+        const practiceRecords = await api.getPracticeRecords()
+        const wrongQuestions = await api.getWrongQuestions()
+        
+        // 构建完整的导出数据
+        const exportData = {
+          user: userInfo.value,
+          exportDate: new Date().toISOString(),
+          learningRecords: learningRecords || [],
+          practiceRecords: practiceRecords || [],
+          wrongQuestions: wrongQuestions || []
+        }
+        
         alert(`${format.toUpperCase()} 文件正在生成，请稍后...`)
-        // 模拟导出
-        setTimeout(() => {
-          alert(`学习数据已成功导出为 ${format.toUpperCase()} 格式！`)
-        }, 1000)
+        
+        // 根据格式生成并下载文件
+        if (format === 'csv') {
+          // 生成CSV内容
+          const csvContent = generateCSV(exportData)
+          downloadFile(csvContent, `learning_data_${new Date().getTime()}.csv`, 'text/csv')
+        } else if (format === 'pdf') {
+          // 生成PDF内容（简化实现，实际项目中可使用更复杂的PDF生成库）
+          const pdfContent = generatePDF(exportData)
+          downloadFile(pdfContent, `learning_report_${new Date().getTime()}.pdf`, 'application/pdf')
+        }
+        
+        alert(`学习数据已成功导出为 ${format.toUpperCase()} 格式！`)
       } catch (error) {
+        console.error('导出学习数据失败:', error)
         alert('导出失败，请重试')
       }
+    }
+    
+    // 生成CSV内容
+    const generateCSV = (data) => {
+      // 简化实现，仅导出学习记录
+      if (!data.learningRecords || data.learningRecords.length === 0) {
+        return '记录ID,课程ID,章节ID,学习时长,完成状态,学习日期\n'
+      }
+      
+      let csv = '记录ID,课程ID,章节ID,学习时长,完成状态,学习日期\n'
+      data.learningRecords.forEach(record => {
+        csv += `${record.id || ''},${record.course_id || ''},${record.chapter_id || ''},${record.duration || ''},${record.completed ? '已完成' : '未完成'},${record.learn_date || ''}\n`
+      })
+      return csv
+    }
+    
+    // 生成PDF内容（简化实现）
+    const generatePDF = (data) => {
+      // 实际项目中可使用jsPDF等库生成复杂PDF
+      const pdfContent = `Learning Report\n\nUser: ${data.user.nickname || 'Unknown'}\nExport Date: ${new Date(data.exportDate).toLocaleString()}\n\nLearning Records: ${data.learningRecords.length || 0}\nPractice Records: ${data.practiceRecords.length || 0}\nWrong Questions: ${data.wrongQuestions.length || 0}\n\nThis is a simplified PDF report. For detailed reports, please use CSV format.`
+      return pdfContent
+    }
+    
+    // 下载文件
+    const downloadFile = (content, filename, mimeType) => {
+      const blob = new Blob([content], { type: mimeType })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
     }
     
     // 清除本地缓存
@@ -395,11 +523,14 @@ export default {
       storageUsed,
       storageTotal,
       storageUsedPercentage,
+      avatarInput,
       saveSettings,
       changePassword,
       exportLearningData,
       clearLocalCache,
-      clearLearningProgress
+      clearLearningProgress,
+      triggerAvatarUpload,
+      handleAvatarUpload
     }
   }
 }
@@ -508,6 +639,13 @@ export default {
   color: white;
   font-size: 48px;
   font-weight: bold;
+}
+
+.avatar-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
 }
 
 .form-group {

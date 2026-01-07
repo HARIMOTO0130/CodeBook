@@ -7,7 +7,7 @@
           <div class="language-select-container">
             <select v-if="!isLanguagesLoading && supportedLanguages.length > 0" v-model="codeLanguage" class="language-select" @change="updateLanguage">
               <option v-for="lang in supportedLanguages" :key="lang" :value="lang">
-                {{ lang.charAt(0).toUpperCase() + lang.slice(1) }}
+                {{ lang ? (lang.charAt(0).toUpperCase() + lang.slice(1)) : 'Unknown' }}
               </option>
             </select>
             <div v-else-if="isLanguagesLoading" class="language-select-loading">

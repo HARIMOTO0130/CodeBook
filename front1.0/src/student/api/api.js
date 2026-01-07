@@ -301,17 +301,26 @@ export const api = {
 
   // 用户
   async getUserInfo() {
-    return httpGet('/auth/me/', true);
+    return httpGet('/users/me/', true);
+  },
+  async updateUserInfo(userData) {
+    return httpPut('/users/me/', userData, true);
+  },
+  async getUserPreferences() {
+    return httpGet('/users/preferences/', true);
   },
   async updateUserPreferences(preferences) {
-    // 前端传入为 camelCase，转换成后端的 snake_case
-    const payload = {
-      ...(preferences.defaultLanguage !== undefined ? { default_language: preferences.defaultLanguage } : {}),
-      ...(preferences.codeTheme !== undefined ? { code_theme: preferences.codeTheme } : {}),
-      ...(preferences.autoPlayVideo !== undefined ? { auto_play_video: preferences.autoPlayVideo } : {}),
-      ...(preferences.keyboardShortcuts !== undefined ? { keyboard_shortcuts: preferences.keyboardShortcuts } : {})
-    };
-    return httpPost('/auth/preferences/', payload, true, 'PUT');
+        // 前端传入为 camelCase，转换成后端的 snake_case
+        const payload = {
+            ...(preferences.defaultLanguage !== undefined ? { default_language: preferences.defaultLanguage } : {}),
+            ...(preferences.codeTheme !== undefined ? { code_theme: preferences.codeTheme } : {}),
+            ...(preferences.autoPlayVideo !== undefined ? { auto_play_video: preferences.autoPlayVideo } : {}),
+            ...(preferences.keyboardShortcuts !== undefined ? { keyboard_shortcuts: preferences.keyboardShortcuts } : {})
+        };
+        return httpPut('/users/preferences/', payload, true);
+  },
+  async changePassword(passwordData) {
+    return httpPost('/users/change-password/', passwordData, true);
   },
 
   // 书籍

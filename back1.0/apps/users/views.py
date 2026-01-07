@@ -117,9 +117,21 @@ class UserViewSet(viewsets.ModelViewSet):
     def me(self, request):
         """获取当前用户信息"""
         if request.user.is_authenticated:
-            serializer = UserSerializer(request.user)
+            serializer = UserSerializer(request.user, context={'request': request})
             return Response(serializer.data)
         return Response({'error': '未登录'}, status=status.HTTP_401_UNAUTHORIZED)
+    
+    @action(detail=False, methods=['put', 'post'])
+    def update_me(self, request):
+        """更新当前用户信息"""
+        if not request.user.is_authenticated:
+            return Response({'error': '未登录'}, status=status.HTTP_401_UNAUTHORIZED)
+        
+        serializer = UserSerializer(request.user, data=request.data, context={'request': request}, partial=True)
+        if serializer.is_valid():
+            user = serializer.save()
+            return Response(UserSerializer(user, context={'request': request}).data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
     @action(detail=False, methods=['get', 'put'], url_path='preferences')
     def preferences(self, request):
@@ -133,6 +145,7 @@ class UserViewSet(viewsets.ModelViewSet):
             return Response(serializer.data)
         elif request.method == 'PUT':
             preferences, created = UserPreferences.objects.get_or_create(user=request.user)
+            serializer = UserPreferencesSerializer(preferences, data=request.data, partial=True)
             if serializer.is_valid():
                 preferences = serializer.save()
                 return Response({
@@ -142,3 +155,33 @@ class UserViewSet(viewsets.ModelViewSet):
                     'keyboard_shortcuts': preferences.keyboard_shortcuts
                 })
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=False, methods=['post'], url_path='change-password')
+    def change_password(self, request):
+        """修改用户密码"""
+        if not request.user.is_authenticated:
+            return Response({'error': '未登录'}, status=status.HTTP_401_UNAUTHORIZED)
+        
+        current_password = request.data.get('current_password')
+        new_password = request.data.get('new_password')
+        confirm_password = request.data.get('confirm_password')
+        
+        # 验证密码
+        if not current_password:
+            return Response({'error': '当前密码不能为空'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not new_password:
+            return Response({'error': '新密码不能为空'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if new_password != confirm_password:
+            return Response({'error': '两次输入的新密码不一致'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # 验证当前密码是否正确
+        if not request.user.check_password(current_password):
+            return Response({'error': '当前密码错误'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # 更新密码
+        request.user.set_password(new_password)
+        request.user.save()
+        
+        return Response({'message': '密码修改成功'}, status=status.HTTP_200_OK)
