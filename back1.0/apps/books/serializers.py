@@ -65,7 +65,8 @@ class PracticeDetailSerializer(serializers.ModelSerializer):
 
 class ChapterSerializer(serializers.ModelSerializer):
     """章节序列化器（兼容性保留）"""
-    practice = PracticeSerializer(read_only=True)
+    # 不再直接包含practice字段，练习应该通过 /practice/ API 单独获取
+    # practice = PracticeSerializer(read_only=True)
     has_practice = serializers.SerializerMethodField()
     # 添加merged_content字段
     merged_content = serializers.JSONField(default=dict, allow_null=True)
@@ -76,10 +77,11 @@ class ChapterSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Chapter
-        fields = ('id', 'title', 'type', 'duration', 'description', 'content', 'code', 'language', 'video_url', 'practice', 'has_practice', 'merged_content', 'is_main_chapter', 'parent_chapter', 'sub_chapters')
+        fields = ('id', 'title', 'type', 'duration', 'description', 'content', 'code', 'language', 'video_url', 'has_practice', 'merged_content', 'is_main_chapter', 'parent_chapter', 'sub_chapters')
     
     def get_has_practice(self, obj):
-        return hasattr(obj, 'practice') and obj.practice is not None
+        # 通过检查是否有关联的practices来判断
+        return hasattr(obj, 'practices') and obj.practices.exists()
 
 
 class ChapterSummarySerializer(serializers.ModelSerializer):
@@ -95,7 +97,9 @@ class ChapterSummarySerializer(serializers.ModelSerializer):
 
 class ChapterDetailSerializer(serializers.ModelSerializer):
     """章节详情序列化器（用于单独获取章节内容时）"""
-    practice = PracticeSerializer(read_only=True)
+    # 不再直接包含practice字段，练习应该通过 /practice/ API 单独获取
+    # practice = PracticeSerializer(read_only=True)
+    
     # 添加子章节信息
     sub_chapters = ChapterSummarySerializer(many=True, read_only=True)
     
@@ -111,7 +115,7 @@ class ChapterDetailSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Chapter
-        fields = ('id', 'title', 'type', 'duration', 'description', 'content', 'content_type', 'jupyter_content', 'code', 'language', 'video_url', 'practice', 'merged_content', 'sub_chapters', 'is_main_chapter', 'parent_chapter')
+        fields = ('id', 'title', 'type', 'duration', 'description', 'content', 'content_type', 'jupyter_content', 'code', 'language', 'video_url', 'merged_content', 'sub_chapters', 'is_main_chapter', 'parent_chapter')
 
 
 class BookListSerializer(serializers.ModelSerializer):
@@ -139,7 +143,7 @@ class BookListSerializer(serializers.ModelSerializer):
 
 class BookDetailSerializer(serializers.ModelSerializer):
     """书籍详情序列化器"""
-    chapters = ChapterSummarySerializer(many=True, read_only=True)
+    chapters = serializers.SerializerMethodField()
     owner = serializers.SerializerMethodField()
     
     categories = serializers.SlugRelatedField(
@@ -173,6 +177,13 @@ class BookDetailSerializer(serializers.ModelSerializer):
 
     def get_owner(self, obj):
         return getattr(obj.owner, 'id', None)
+        
+    def get_chapters(self, obj):
+        """只返回非练习类型的章节"""
+        # 排除practice类型的章节
+        chapters = obj.chapters.filter(type__in=['reading', 'video']).order_by('order')
+        serializer = ChapterSummarySerializer(chapters, many=True)
+        return serializer.data
 
 
 # ===== 教材提供者端相关序列化器 =====

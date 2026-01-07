@@ -212,6 +212,7 @@
 
 <script>
 import { ref, onMounted, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { api } from '../api/api.js'
 import WrongQuestionDetail from '../components/WrongQuestionDetail.vue'
 import WrongQuestionRedo from '../components/WrongQuestionRedo.vue'
@@ -223,6 +224,7 @@ export default {
     WrongQuestionRedo
   },
   setup() {
+    const router = useRouter()
     const wrongQuestions = ref([])
     const loading = ref(false)
     const statistics = ref(null)
@@ -337,9 +339,61 @@ export default {
     // 开始重做
     const startRedo = async (question) => {
       try {
-        const result = await api.redoWrongQuestion(question.id)
-        redoQuestion.value = result.data || result
-        showRedoDialog.value = true
+        console.log('开始重做，错题数据:', question)
+        // 更新错题状态为redoing
+        await api.updateWrongQuestionStatus(question.id, 'redoing')
+        
+        // 尝试获取practiceId，优先从不同字段获取
+        let practiceId = question.practiceId || question.practice_id || question.practice?.id
+        
+        // 如果practiceId不存在，尝试通过chapter_id查找练习
+        if (!practiceId && (question.chapter_id || question.chapter?.id)) {
+          console.log('practiceId不存在，尝试通过chapter_id查找练习...', {
+            chapter_id: question.chapter_id || question.chapter?.id,
+            book_id: question.book_id || question.book?.id
+          })
+          
+          const chapterId = question.chapter_id || question.chapter?.id
+          const bookId = question.book_id || question.book?.id
+          
+          if (chapterId) {
+            // 跳转到练习页面，使用chapterId和标题参数，确保能精确匹配到对应的练习
+            const practiceTitle = question.title || question.practice_title
+            console.log('使用chapterId和标题跳转到练习页面...', { 
+              chapterId, 
+              bookId, 
+              practiceTitle,
+              redo: true 
+            })
+            router.push({ 
+              path: '/student/practice', 
+              query: { 
+                chapterId: chapterId,
+                bookId: bookId,
+                practiceTitle: practiceTitle, // 添加标题参数用于精确匹配
+                redo: 'true'
+              } 
+            })
+            return
+          }
+        }
+        
+        if (practiceId) {
+          // 跳转到练习题页面，添加redo标志以清除之前的作答记录
+          router.push({ 
+            path: '/student/practice', 
+            query: { 
+              practiceId: practiceId,
+              redo: 'true' // 添加重做标志
+            } 
+          })
+        } else {
+          // 如果没有practiceId和chapterId，尝试使用旧的对话框方式
+          console.log('无法获取practiceId或chapterId，使用对话框方式')
+          const result = await api.redoWrongQuestion(question.id)
+          redoQuestion.value = result.data || result
+          showRedoDialog.value = true
+        }
       } catch (error) {
         console.error('开始重做失败:', error)
         alert('开始重做失败，请稍后重试')

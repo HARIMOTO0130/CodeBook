@@ -2,9 +2,9 @@
   <div class="learn-container">
     <!-- 顶部面包屑 -->
     <div class="breadcrumb">
-      <router-link to="/books" class="breadcrumb-item">书架</router-link>
+      <router-link to="/student/books" class="breadcrumb-item">书架</router-link>
       <span class="breadcrumb-separator">/</span>
-      <router-link :to="`/books/${bookId}`" class="breadcrumb-item">{{ book?.title }}</router-link>
+      <router-link :to="`/student/books/${bookId}`" class="breadcrumb-item">{{ book?.title }}</router-link>
       <span class="breadcrumb-separator">/</span>
       <span class="breadcrumb-item current">{{ currentSection?.title }}</span>
     </div>
@@ -45,15 +45,25 @@
     </div>
 
     <!-- 主要内容区域 -->
-    <div class="main-layout">
-      <!-- 章节列表侧边栏 -->
-      <div class="chapter-list-sidebar">
+    <div class="main-layout" ref="mainLayoutRef">
+      <!-- 章节列表侧边栏（可拖动调整宽度） -->
+      <div 
+        class="chapter-list-sidebar"
+        :style="{ width: sidebarWidth + 'px' }"
+      >
       <ChapterList 
         :chapters="getAllSections()" 
         :current-section-id="currentSection?.id"
         :bookId="bookId"
       />
     </div>
+
+      <!-- 中间拖动手柄 -->
+      <div 
+        class="sidebar-resize-handle"
+        @mousedown="startSidebarResize"
+      ></div>
+
     <!-- 1. 内容区 -->
     <div class="chapter-list-container">
       <div class="content-area">
@@ -364,10 +374,64 @@ export default {
     const selectionRange = ref(null)
     const isHighlighted = ref(false)
     
+    // 布局与侧边栏宽度控制
+    const mainLayoutRef = ref(null)
+    const sidebarWidth = ref(280) // 默认侧边栏宽度
+    const isResizingSidebar = ref(false)
+    const sidebarMinWidth = 180
+    const sidebarMaxWidth = 480
+    const sidebarResizeHandler = ref(null)
+    const sidebarStopHandler = ref(null)
+
+    const startSidebarResize = (event) => {
+      // 移动端使用上下布局，不启用左右拖动
+      if (window.innerWidth <= 768) {
+        return
+      }
+
+      isResizingSidebar.value = true
+
+      const moveHandler = (e) => {
+        if (!isResizingSidebar.value) return
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX
+        const layoutEl = mainLayoutRef.value
+        if (!layoutEl) return
+        const rect = layoutEl.getBoundingClientRect()
+        const newWidth = clientX - rect.left
+        if (newWidth >= sidebarMinWidth && newWidth <= sidebarMaxWidth) {
+          sidebarWidth.value = newWidth
+        }
+      }
+
+      const upHandler = () => {
+        isResizingSidebar.value = false
+        if (sidebarResizeHandler.value) {
+          document.removeEventListener('mousemove', sidebarResizeHandler.value)
+          document.removeEventListener('touchmove', sidebarResizeHandler.value)
+        }
+        if (sidebarStopHandler.value) {
+          document.removeEventListener('mouseup', sidebarStopHandler.value)
+          document.removeEventListener('touchend', sidebarStopHandler.value)
+        }
+        sidebarResizeHandler.value = null
+        sidebarStopHandler.value = null
+      }
+
+      sidebarResizeHandler.value = moveHandler
+      sidebarStopHandler.value = upHandler
+
+      document.addEventListener('mousemove', moveHandler)
+      document.addEventListener('mouseup', upHandler)
+      document.addEventListener('touchmove', moveHandler, { passive: false })
+      document.addEventListener('touchend', upHandler)
+
+      event.preventDefault()
+    }
+
     // 打开代码沙盒
     const openCodeSandbox = () => {
       router.push({
-        name: 'FullCode',
+        name: 'StudentFullCode',
         query: {
           language: codeLanguage.value,
           bookId: bookId.value,
@@ -490,6 +554,16 @@ export default {
         // 获取章节详细内容
         if (currentSection.value && currentSection.value.id) {
           await fetchChapterContent(currentSection.value.id);
+          
+          // 检查URL查询参数，如果openPractice为true，延迟加载练习题
+          // 这样可以确保章节内容已经加载完成，currentSection已经更新
+          if (route.query.openPractice === 'true') {
+            console.log('🔍 URL包含openPractice=true，准备加载练习题');
+            // 使用setTimeout确保章节内容加载完成
+            setTimeout(() => {
+              showPractice.value = true;
+            }, 100);
+          }
         } else if (book.value) {
           // 如果没有当前章节，初始化默认数据
           await initializeDefaultData()
@@ -575,10 +649,8 @@ export default {
       currentSection.value = found
       ensureVideoUrl(currentSection.value)
       
-      // 当找到新章节时，获取其详细内容
-      if (found && found.id) {
-        await fetchChapterContent(found.id);
-      }
+      // 注意：内容获取逻辑已在 loadContent 函数中根据章节类型处理
+      // 这里不再直接调用 fetchChapterContent 或 loadPractice
     }
     
     // 当前小节索引
@@ -614,7 +686,7 @@ export default {
       const sections = getAllSections()
       if (hasPreviousSection.value) {
         const prevSection = sections[currentSectionIndex.value - 1]
-        router.push(`/books/${bookId.value}/chapter/${prevSection.id}`)
+        router.push({ name: 'StudentLearning', params: { bookId: bookId.value, chapterId: prevSection.id } })
       }
     }
     
@@ -623,7 +695,7 @@ export default {
       const sections = getAllSections()
       if (hasNextSection.value) {
         const nextSection = sections[currentSectionIndex.value + 1]
-        router.push(`/books/${bookId.value}/chapter/${nextSection.id}`)
+        router.push({ name: 'StudentLearning', params: { bookId: bookId.value, chapterId: nextSection.id } })
       }
     }
     
@@ -1028,11 +1100,6 @@ export default {
     
     onMounted(() => {
       loadContent()
-      
-      // 检查URL查询参数，如果存在openPractice参数，则自动打开练习题弹窗
-      if (route.query.openPractice === 'true') {
-        showPractice.value = true
-      }
       
       // 添加点击外部关闭菜单事件
       document.addEventListener('click', handleClickOutside)
@@ -1617,7 +1684,11 @@ export default {
       handleCreateNote,
       handleRemoveHighlight,
       contentRef,
-      handleJupyterTextSelection
+      handleJupyterTextSelection,
+      // 布局与侧边栏拖动
+      mainLayoutRef,
+      sidebarWidth,
+      startSidebarResize
       // AI助手相关变量已移至App.vue中
     }
   }
@@ -1679,6 +1750,35 @@ export default {
   flex-shrink: 0;
 }
 
+/* 章节列表与内容区之间的可拖动分隔条 */
+.sidebar-resize-handle {
+  width: 6px;
+  cursor: col-resize;
+  background: #e0e0e0;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.sidebar-resize-handle::before {
+  content: '';
+  position: absolute;
+  top: 20%;
+  bottom: 20%;
+  left: 50%;
+  width: 2px;
+  transform: translateX(-50%);
+  background: #c0c4cc;
+  border-radius: 1px;
+}
+
+.sidebar-resize-handle:hover {
+  background: #d0d7e2;
+}
+
+.sidebar-resize-handle:active {
+  background: #409EFF;
+}
+
 .chapter-list-container {
   background: white;
   border-radius: 8px;
@@ -1698,6 +1798,11 @@ export default {
     border-right: none;
     border-bottom: 1px solid #e4e7ed;
     max-height: 300px;
+  }
+
+  /* 移动端采用上下布局，不显示左右拖动手柄 */
+  .sidebar-resize-handle {
+    display: none;
   }
 }
 

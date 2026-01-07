@@ -163,7 +163,7 @@
 
           <div v-if="selectedSection.type !== 'quiz'" class="section-actions">
             <router-link 
-              :to="`/student/books/${bookId}/chapter/${selectedSection.id}`" 
+                  :to="{ name: 'StudentLearning', params: { bookId, chapterId: selectedSection.id } }" 
               class="btn btn-primary large"
             >
               开始学习
@@ -171,7 +171,7 @@
           </div>
           <div v-else class="section-actions">
             <router-link 
-              :to="`/student/books/${bookId}/chapter/${selectedSection.id}`" 
+                  :to="{ name: 'StudentLearning', params: { bookId, chapterId: selectedSection.id } }" 
               class="btn btn-primary large"
             >
               开始练习
@@ -198,7 +198,7 @@
         </div>
       </div>
       <router-link 
-        :to="`/student/books/${bookId}/chapter/${lastLearnedSection.id}`" 
+        :to="{ name: 'StudentLearning', params: { bookId, chapterId: lastLearnedSection.id } }" 
         class="btn btn-primary large"
       >
         继续上次进度

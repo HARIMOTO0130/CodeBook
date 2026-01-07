@@ -1,6 +1,6 @@
 """学习记录序列化器"""
 from rest_framework import serializers
-from .models import LearningRecord, PracticeRecord, HeatmapData, WrongQuestion, UserLearningPath, RoadmapTemplate, RoadmapStage, RoadmapBook, UserPathStage, Note, NoteTag, NoteAttachment, NoteVersion, NoteShare, JupyterDocument, LearningStyle, KnowledgeMastery, LearningRecommendation, LearningPreference
+from .models import LearningRecord, PracticeRecord, HeatmapData, WrongQuestion, UserLearningPath, RoadmapTemplate, RoadmapStage, RoadmapBook, UserPathStage, Note, NoteTag, NoteTagRelation, NoteAttachment, NoteVersion, NoteShare, JupyterDocument, LearningStyle, KnowledgeMastery, LearningRecommendation, LearningPreference
 
 
 class LearningRecordSerializer(serializers.ModelSerializer):
@@ -230,7 +230,7 @@ class NoteListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Note
         fields = ('id', 'title', 'content', 'is_favorite', 'is_public', 'view_count', 
-                  'created_at', 'updated_at', 'tags', 'book_title', 'chapter_title')
+                  'created_at', 'updated_at', 'tags', 'book', 'chapter', 'book_title', 'chapter_title')
         read_only_fields = ('id', 'user', 'created_at', 'updated_at')
 
     def get_book_title(self, obj):
@@ -320,7 +320,8 @@ class NoteUpdateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Note
-        fields = ('title', 'content', 'is_favorite', 'is_public', 'tags')
+        fields = ('id', 'title', 'content', 'is_favorite', 'is_public', 'tags')
+        read_only_fields = ('id',)
 
     def update(self, instance, validated_data):
         tags = validated_data.pop('tags', None)

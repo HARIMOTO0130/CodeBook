@@ -108,6 +108,7 @@
 
 <script>
 import { ref, onMounted, computed, defineEmits } from 'vue'
+import { useRouter } from 'vue-router'
 import { api } from '../api/api.js'
 
 export default {
@@ -116,6 +117,7 @@ export default {
   setup(props, { emit }) {
     const wrongQuestions = ref([])
     const loading = ref(false)
+    const router = useRouter()
     
     // 筛选条件
     const statusFilter = ref('')
@@ -263,10 +265,69 @@ export default {
     })
     
     // 开始重做题目
-    const startRedoing = (question) => {
+    const startRedoing = async (question) => {
+      console.log('开始重做函数被调用:', question)
+      console.log('错题数据:', question)
       emit('redo-question', question)
-      // 自动更新状态为redoing
-      updateQuestionStatus(question.id, 'redoing')
+      // 自动更新状态为redoing（异步执行，不阻塞路由跳转）
+      updateQuestionStatus(question.id, 'redoing').catch(error => {
+        console.error('更新状态失败，但仍会跳转到练习页面:', error)
+      })
+      
+      // 尝试获取practiceId，优先从不同字段获取
+      let practiceId = question.practiceId || question.practice_id || question.practice?.id
+      
+      // 如果practiceId不存在，尝试通过chapter_id查找练习
+      if (!practiceId && (question.chapter_id || question.chapter?.id)) {
+        try {
+          console.log('practiceId不存在，尝试通过chapter_id查找练习...', {
+            chapter_id: question.chapter_id || question.chapter?.id,
+            book_id: question.book_id || question.book?.id
+          })
+          
+          // 如果错题有chapter信息，可以跳转到练习页面，让页面根据chapter来显示
+          // 或者尝试获取该章节的练习列表
+          const chapterId = question.chapter_id || question.chapter?.id
+          const bookId = question.book_id || question.book?.id
+          
+          if (chapterId) {
+            // 跳转到练习页面，使用chapterId和标题参数，确保能精确匹配到对应的练习
+            const practiceTitle = question.title || question.practice_title
+            console.log('使用chapterId和标题跳转到练习页面...', { 
+              chapterId, 
+              bookId, 
+              practiceTitle,
+              redo: true 
+            })
+            router.push({ 
+              path: '/student/practice', 
+              query: { 
+                chapterId: chapterId,
+                bookId: bookId,
+                practiceTitle: practiceTitle, // 添加标题参数用于精确匹配
+                redo: 'true'
+              } 
+            })
+            return
+          }
+        } catch (error) {
+          console.error('通过chapter查找练习失败:', error)
+        }
+      }
+      
+      if (practiceId) {
+        console.log('正在跳转到练习题页面进行重做...', { practiceId, redo: true })
+        router.push({ 
+          path: '/student/practice', 
+          query: { 
+            practiceId: practiceId,
+            redo: 'true' // 添加重做标志，用于清除之前的作答记录
+          } 
+        })
+      } else {
+        console.error('无法获取practiceId或chapterId，无法跳转到练习页面', question)
+        alert('无法获取练习题信息，该错题可能没有关联的练习题。请尝试从章节页面进入练习。')
+      }
     }
     
     // 更新题目状态

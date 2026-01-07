@@ -43,7 +43,13 @@
     </main>
 
     <!-- 笔记/讨论侧边抽屉 -->
-    <div class="sidebar-drawer" :class="{ open: notesOpen }">
+    <div class="sidebar-drawer" :style="{ width: `${drawerWidth}px` }" :class="{ open: notesOpen }">
+      <!-- 左侧拖动手柄 -->
+      <div 
+        class="drawer-resize-handle left"
+        @mousedown="startDrawerResize"
+        title="拖动调整宽度"
+      ></div>
       <div class="drawer-header">
         <h3>笔记/错题本</h3>
         <button class="close-btn" @click="toggleNotes">✕</button>
@@ -165,6 +171,42 @@ export default {
     const targetNoteId = ref(null)
     // 使用ref替代computed，避免频繁检查localStorage导致的页面抖动
     const isAuthed = ref(false)
+    
+    // 抽屉拖动状态
+    const drawerWidth = ref(400)
+    const minDrawerWidth = 300
+    const maxDrawerWidth = 800
+    const isResizingDrawer = ref(false)
+    const resizeStartX = ref(0)
+    const resizeStartWidth = ref(0)
+    
+    // 开始拖动抽屉
+    const startDrawerResize = (e) => {
+      isResizingDrawer.value = true
+      resizeStartX.value = e.clientX
+      resizeStartWidth.value = drawerWidth.value
+      
+      document.addEventListener('mousemove', handleDrawerResize)
+      document.addEventListener('mouseup', stopDrawerResize)
+      e.preventDefault()
+    }
+    
+    // 拖动处理
+    const handleDrawerResize = (e) => {
+      if (!isResizingDrawer.value) return
+      const deltaX = e.clientX - resizeStartX.value
+      const newWidth = resizeStartWidth.value - deltaX
+      if (newWidth >= minDrawerWidth && newWidth <= maxDrawerWidth) {
+        drawerWidth.value = newWidth
+      }
+    }
+    
+    // 停止拖动
+    const stopDrawerResize = () => {
+      isResizingDrawer.value = false
+      document.removeEventListener('mousemove', handleDrawerResize)
+      document.removeEventListener('mouseup', stopDrawerResize)
+    }
     
     // 初始化检查认证状态
     const checkAuthStatus = () => {
@@ -660,10 +702,12 @@ export default {
       notesOpen,
       activeTab,
       targetNoteId,
+      drawerWidth,
       toggleNotes,
       isAuthed,
       onLogout,
       handleReviewQuestion,
+      startDrawerResize,
       // AI助手相关变量和函数
       showAssistant,
       isDragging,
@@ -762,33 +806,58 @@ export default {
 /* 侧边抽屉样式 */
 .sidebar-drawer {
   position: fixed;
-  right: -400px;
+  right: 0;
+  transform: translateX(100%);
   top: 0;
-  width: 400px;
+  /* width 由动态绑定控制 */
   height: 100vh;
   background: white;
   box-shadow: -2px 0 8px rgba(0,0,0,0.15);
-  transition: right 0.3s ease;
+  transition: transform 0.3s ease, width 0.1s ease;
   z-index: 200;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .sidebar-drawer.open {
-  right: 0;
+  transform: translateX(0);
+}
+
+/* 抽屉左侧拖动手柄 */
+.drawer-resize-handle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  background: transparent;
+  z-index: 2;
+  transition: background 0.2s;
+}
+
+.drawer-resize-handle:hover,
+.drawer-resize-handle:active {
+  background: rgba(64, 158, 255, 0.5);
 }
 
 .drawer-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 20px;
+  padding: 15px 20px;
   border-bottom: 1px solid #eee;
+  background: white;
+  position: relative;
+  z-index: 3;
+  flex-shrink: 0;
 }
 
 .drawer-header h3 {
   margin: 0;
   font-size: 18px;
+  flex: 1;
 }
 
 .close-btn {
@@ -797,13 +866,16 @@ export default {
   font-size: 20px;
   cursor: pointer;
   color: #999;
-  padding: 0;
-  width: 30px;
-  height: 30px;
+  padding: 8px;
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 4px;
+  transition: all 0.2s;
+  flex-shrink: 0;
+  z-index: 10;
 }
 
 .close-btn:hover {
@@ -838,7 +910,7 @@ export default {
 
 .drawer-content {
   flex: 1;
-  overflow: hidden;
+  overflow: auto;
   display: flex;
   flex-direction: column;
 }
@@ -846,7 +918,7 @@ export default {
 .notes-content,
 .wrong-questions-content {
   flex: 1;
-  overflow: hidden;
+  overflow: auto;
   display: flex;
   flex-direction: column;
 }
@@ -858,7 +930,8 @@ export default {
   right: 0;
   bottom: 0;
   background: rgba(0,0,0,0.3);
-  z-index: 150;
+  z-index: 199;
+  cursor: pointer;
 }
 
 /* 页面切换动画 */

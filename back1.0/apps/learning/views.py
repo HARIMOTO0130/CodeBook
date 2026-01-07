@@ -8,6 +8,7 @@ from django.db import models
 action = decorators.action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.exceptions import PermissionDenied
 from django.db import transaction
 from datetime import date, datetime
 import tempfile
@@ -16,6 +17,25 @@ import os
 import time
 import json
 import sys
+import logging
+import functools
+
+# 配置日志记录器
+logger = logging.getLogger(__name__)
+
+# 权限验证装饰器
+def note_permission_required(action_name):
+    def decorator(view_func):
+        @functools.wraps(view_func)
+        def wrapped_view(self, request, *args, **kwargs):
+            note = self.get_object()
+            if note.user != request.user:
+                logger.warning(f"用户 {request.user.username} (ID: {request.user.id}) 尝试越权{action_name}笔记 {note.id}，该笔记属于用户 {note.user.username} (ID: {note.user.id})")
+                raise PermissionDenied(detail="您没有权限操作该笔记")
+            return view_func(self, request, *args, **kwargs)
+        return wrapped_view
+    return decorator
+
 from bs4 import BeautifulSoup
 from django.utils import timezone
 from apps.books.models import Book, Chapter
@@ -684,7 +704,7 @@ class WrongQuestionViewSet(viewsets.ModelViewSet):
     
     def list(self, request, *args, **kwargs):
         # 获取用户的所有错题
-        wrong_questions = WrongQuestion.objects.filter(user=request.user).order_by('-attempt_time')
+        wrong_questions = WrongQuestion.objects.filter(user=request.user).select_related('book', 'chapter', 'practice').order_by('-attempt_time')
         
         # 构建响应数据
         data = []
@@ -695,7 +715,14 @@ class WrongQuestionViewSet(viewsets.ModelViewSet):
                 'difficulty': wq.difficulty,
                 'question_type': wq.question_type,
                 'attempt_time': wq.attempt_time.isoformat() if wq.attempt_time else wq.created_at.isoformat(),
-                'practice_id': wq.practice.id if wq.practice else None
+                'practice_id': wq.practice.id if wq.practice else None,
+                'book': wq.book.id if wq.book else None,
+                'book_id': wq.book.id if wq.book else None,  # 添加book_id字段
+                'chapter': wq.chapter.id if wq.chapter else None,
+                'chapter_id': wq.chapter.id if wq.chapter else None,  # 添加chapter_id字段
+                'book_title': wq.book.title if wq.book else None,
+                'chapter_title': wq.chapter.title if wq.chapter else None,
+                'status': 'unresolved'  # 默认状态为未解决
             })
         
         return Response(data)
@@ -776,41 +803,85 @@ class WrongQuestionViewSet(viewsets.ModelViewSet):
     def add_from_exercise(self, request):
         """从练习题添加错题"""
         try:
+            from apps.books.models import Practice as BookPractice
+            
             data = request.data
             user = request.user
             
             # 获取练习题或练习记录
             practice_id = data.get('practice_id')
             exercise_id = data.get('exercise_id')
+            question_type = data.get('question_type', 'unknown')
             
             if not practice_id and not exercise_id:
                 return Response({"error": "必须提供practice_id或exercise_id"}, status=status.HTTP_400_BAD_REQUEST)
             
-            practice = None
+            # 初始化错题数据
+            wrong_question_data = {
+                'title': '',
+                'difficulty': 2,
+                'question_type': question_type,
+                'book': None,
+                'chapter': None,
+                'practice': None  # 添加practice字段用于唯一标识
+            }
+            
+            # 处理BookPractice模型（教材练习题集）
             if practice_id:
                 try:
-                    practice = Exercise.objects.get(id=practice_id)
-                except Exercise.DoesNotExist:
-                    return Response({"error": "练习题不存在"}, status=status.HTTP_404_NOT_FOUND)
+                    # 首先尝试从BookPractice模型查询
+                    book_practice = BookPractice.objects.get(id=practice_id)
+                    wrong_question_data['title'] = book_practice.title
+                    wrong_question_data['difficulty'] = book_practice.difficulty
+                    wrong_question_data['book'] = book_practice.chapter.book if hasattr(book_practice, 'chapter') and hasattr(book_practice.chapter, 'book') else None
+                    wrong_question_data['chapter'] = book_practice.chapter if hasattr(book_practice, 'chapter') else None
+                except BookPractice.DoesNotExist:
+                    # 如果BookPractice不存在，再尝试从Exercise模型查询
+                    try:
+                        exercise = Exercise.objects.get(id=practice_id)
+                        wrong_question_data['title'] = exercise.title
+                        wrong_question_data['difficulty'] = exercise.difficulty
+                        wrong_question_data['practice'] = exercise  # 设置practice字段
+                    except Exercise.DoesNotExist:
+                        return Response({"error": "练习题不存在"}, status=status.HTTP_404_NOT_FOUND)
             elif exercise_id:
+                # 处理Exercise模型（独立练习题）
                 try:
-                    practice = Exercise.objects.get(id=exercise_id)
+                    exercise = Exercise.objects.get(id=exercise_id)
+                    wrong_question_data['title'] = exercise.title
+                    wrong_question_data['difficulty'] = exercise.difficulty
+                    wrong_question_data['practice'] = exercise  # 设置practice字段
                 except Exercise.DoesNotExist:
                     return Response({"error": "练习题不存在"}, status=status.HTTP_404_NOT_FOUND)
             
             # 创建或更新错题记录
-            wrong_question, created = WrongQuestion.objects.update_or_create(
-                user=user,
-                practice=practice,
-                defaults={
-                    'title': practice.title,
-                    'difficulty': practice.difficulty,
-                    'question_type': data.get('question_type', 'unknown'),
-                    'book': practice.book if hasattr(practice, 'book') else None,
-                    'chapter': practice.chapter if hasattr(practice, 'chapter') else None,
-                    'attempt_time': timezone.now()
-                }
-            )
+            if wrong_question_data['practice']:
+                # 如果有practice对象，使用practice作为唯一标识
+                wrong_question, created = WrongQuestion.objects.update_or_create(
+                    user=user,
+                    practice=wrong_question_data['practice'],
+                    defaults={
+                        'title': wrong_question_data['title'],
+                        'difficulty': wrong_question_data['difficulty'],
+                        'question_type': wrong_question_data['question_type'],
+                        'book': wrong_question_data['book'],
+                        'chapter': wrong_question_data['chapter'],
+                        'attempt_time': timezone.now()
+                    }
+                )
+            else:
+                # 如果没有practice对象（即BookPractice），使用title + book + chapter作为唯一标识
+                wrong_question, created = WrongQuestion.objects.update_or_create(
+                    user=user,
+                    title=wrong_question_data['title'],
+                    book=wrong_question_data['book'],
+                    chapter=wrong_question_data['chapter'],
+                    defaults={
+                        'difficulty': wrong_question_data['difficulty'],
+                        'question_type': wrong_question_data['question_type'],
+                        'attempt_time': timezone.now()
+                    }
+                )
             
             return Response({
                 "success": True,
@@ -827,12 +898,17 @@ class WrongQuestionViewSet(viewsets.ModelViewSet):
             wrong_question = self.get_object()
             status_value = request.data.get('status')
             
-            if status_value == 'mastered':
-                # 标记为已掌握，删除错题记录
+            if status_value == 'resolved' or status_value == 'mastered':
+                # 标记为已解决或已掌握，删除错题记录
                 wrong_question.delete()
                 return Response({"success": True, "message": "错题已标记为掌握"})
-            elif status_value == 'reviewed':
-                # 标记为已复习，更新最后尝试时间
+            elif status_value == 'redoing' or status_value == 'reviewed':
+                # 标记为重做中或已复习，更新最后尝试时间
+                wrong_question.attempt_time = timezone.now()
+                wrong_question.save()
+                return Response({"success": True, "message": "错题状态已更新"})
+            elif status_value == 'unresolved':
+                # 标记为未解决，仅更新最后尝试时间
                 wrong_question.attempt_time = timezone.now()
                 wrong_question.save()
                 return Response({"success": True, "message": "错题状态已更新"})
@@ -1252,15 +1328,15 @@ class NoteViewSet(viewsets.ModelViewSet):
         # 更新时确保只能修改自己的笔记
         instance = self.get_object()
         if instance.user != self.request.user:
-            from rest_framework import status
-            raise status.HTTP_403_FORBIDDEN
+            logger.warning(f"用户 {self.request.user.username} (ID: {self.request.user.id}) 尝试越权修改笔记 {instance.id}，该笔记属于用户 {instance.user.username} (ID: {instance.user.id})")
+            raise PermissionDenied(detail="您没有权限修改该笔记")
         serializer.save()
     
     def perform_destroy(self, instance):
         # 删除时确保只能删除自己的笔记
         if instance.user != self.request.user:
-            from rest_framework import status
-            raise status.HTTP_403_FORBIDDEN
+            logger.warning(f"用户 {self.request.user.username} (ID: {self.request.user.id}) 尝试越权删除笔记 {instance.id}，该笔记属于用户 {instance.user.username} (ID: {instance.user.id})")
+            raise PermissionDenied(detail="您没有权限删除该笔记")
         instance.delete()
     
     @action(detail=False, methods=['get'])
@@ -1283,6 +1359,7 @@ class NoteViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
     
     @action(detail=True, methods=['post'])
+    @note_permission_required("操作")
     def toggle_favorite(self, request, pk=None):
         """切换收藏状态"""
         note = self.get_object()
@@ -1291,20 +1368,16 @@ class NoteViewSet(viewsets.ModelViewSet):
         return Response({'is_favorite': note.is_favorite})
     
     @action(detail=True, methods=['get'])
+    @note_permission_required("查看")
     def versions(self, request, pk=None):
         """获取笔记版本历史"""
-        print(f"获取版本历史 - 笔记ID: {pk}")
-        print(f"获取版本历史 - 用户: {request.user}")
         note = self.get_object()
-        print(f"获取版本历史 - 笔记对象: {note}")
-        print(f"获取版本历史 - 笔记用户: {note.user}")
         versions = note.versions.all()[:10]  # 只返回最近10个版本
-        print(f"获取版本历史 - 版本数量: {len(versions)}")
         serializer = NoteVersionSerializer(versions, many=True)
-        print(f"获取版本历史 - 序列化数据: {serializer.data}")
         return Response(serializer.data)
     
     @action(detail=True, methods=['post'])
+    @note_permission_required("恢复")
     def restore_version(self, request, pk=None):
         """恢复到指定版本"""
         note = self.get_object()
@@ -1329,6 +1402,7 @@ class NoteViewSet(viewsets.ModelViewSet):
             return Response({'error': '版本不存在'}, status=status.HTTP_404_NOT_FOUND)
     
     @action(detail=True, methods=['post'])
+    @note_permission_required("分享")
     def share(self, request, pk=None):
         """分享笔记"""
         note = self.get_object()
@@ -1367,6 +1441,7 @@ class NoteViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
     
     @action(detail=True, methods=['post'])
+    @note_permission_required("标记")
     def mark_as_reviewed(self, request, pk=None):
         """标记为已复习"""
         note = self.get_object()
@@ -1375,6 +1450,7 @@ class NoteViewSet(viewsets.ModelViewSet):
         return Response({'message': '已标记为已复习'})
     
     @action(detail=True, methods=['post'])
+    @note_permission_required("添加")
     def add_attachment(self, request, pk=None):
         """添加附件"""
         note = self.get_object()
@@ -1395,6 +1471,7 @@ class NoteViewSet(viewsets.ModelViewSet):
         return Response(serializer.data, status=status.HTTP_201_CREATED)
     
     @action(detail=True, methods=['delete'])
+    @note_permission_required("删除")
     def remove_attachment(self, request, pk=None):
         """删除附件"""
         note = self.get_object()
@@ -1430,6 +1507,7 @@ class NoteViewSet(viewsets.ModelViewSet):
         return Response(serializer.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
     
     @action(detail=True, methods=['post'])
+    @note_permission_required("添加")
     def add_tag(self, request, pk=None):
         """为笔记添加标签"""
         note = self.get_object()
@@ -1443,6 +1521,7 @@ class NoteViewSet(viewsets.ModelViewSet):
             return Response({'error': '标签不存在'}, status=status.HTTP_404_NOT_FOUND)
     
     @action(detail=True, methods=['post'])
+    @note_permission_required("移除")
     def remove_tag(self, request, pk=None):
         """移除笔记的标签"""
         note = self.get_object()

@@ -112,6 +112,7 @@ async function httpPost(path, body, requireAuth = false, method = 'POST') {
 
 // 添加缺失的httpDelete和httpPut函数
 export async function httpDelete(path, requireAuth = false) {
+  console.log(`[HTTP DELETE] 发送请求到: ${API_BASE_URL}${path}`);
   return httpPost(path, {}, requireAuth, 'DELETE');
 }
 
@@ -737,52 +738,52 @@ export const api = {
   
   // 笔记相关API
   async getNotes() {
-    return httpGet('/learning/notes/', true);
+    return httpGet('/student/learning/notes/', true);
   },
   
   async getNoteTags() {
-    return httpGet('/learning/notes/tags/', true);
+    return httpGet('/student/learning/notes/tags/', true);
   },
   
   async createNote(noteData) {
-    return httpPost('/learning/notes/', noteData, true);
+    return httpPost('/student/learning/notes/', noteData, true);
   },
   
   async updateNote(noteId, noteData) {
-    return httpPut(`/learning/notes/${noteId}/`, noteData, true);
+    return httpPut(`/student/learning/notes/${noteId}/`, noteData, true);
   },
   
   async deleteNote(noteId) {
-    return httpDelete(`/learning/notes/${noteId}/`, true);
+    return httpDelete(`/student/learning/notes/${noteId}/`, true);
   },
   
   async toggleNoteFavorite(noteId) {
-    return httpPost(`/learning/notes/${noteId}/toggle_favorite/`, {}, true);
+    return httpPost(`/student/learning/notes/${noteId}/toggle_favorite/`, {}, true);
   },
   
   async createNoteTag(tagData) {
-    return httpPost('/learning/notes/create_tag/', tagData, true);
+    return httpPost('/student/learning/notes/create_tag/', tagData, true);
   },
   
   async addNoteTag(noteId, tagId) {
-    return httpPost(`/learning/notes/${noteId}/add_tag/`, { tag_id: tagId }, true);
+    return httpPost(`/student/learning/notes/${noteId}/add_tag/`, { tag_id: tagId }, true);
   },
   
   async removeNoteTag(noteId, tagId) {
-    return httpPost(`/learning/notes/${noteId}/remove_tag/`, { tag_id: tagId }, true);
+    return httpPost(`/student/learning/notes/${noteId}/remove_tag/`, { tag_id: tagId }, true);
   },
   
   async getNoteVersions(noteId) {
-    return httpGet(`/learning/notes/${noteId}/versions/`, true);
+    return httpGet(`/student/learning/notes/${noteId}/versions/`, true);
   },
   
   async restoreNoteVersion(noteId, versionId) {
-    return httpPost(`/learning/notes/${noteId}/restore_version/`, { version_id: versionId }, true);
+    return httpPost(`/student/learning/notes/${noteId}/restore_version/`, { version_id: versionId }, true);
   },
   
   async addNoteAttachment(noteId, file) {
     const formData = new FormData();
     formData.append('files', file);
-    return httpPostForm(`/learning/notes/${noteId}/add_attachment/`, formData, true);
+    return httpPostForm(`/student/learning/notes/${noteId}/add_attachment/`, formData, true);
   }
 };

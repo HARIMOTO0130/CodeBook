@@ -156,6 +156,9 @@ export default {
     const urlBookId = computed(() => Number(route.query.bookId))
     const urlChapterId = computed(() => Number(route.query.chapterId))
     const urlCategory = computed(() => route.query.category)
+    const urlPracticeId = computed(() => Number(route.query.practiceId))
+    const urlPracticeTitle = computed(() => route.query.practiceTitle || route.query.title) // 练习标题参数
+    const urlRedo = computed(() => route.query.redo === 'true') // 检测是否为重做模式
     
 
     // 模态框状态
@@ -230,6 +233,191 @@ export default {
         selectedBookId.value = null
         // 重新获取过滤后的练习数据
         fetchPracticeChapters()
+      }
+    })
+    
+    // 监听URL中的bookId参数，自动选中对应书籍
+    watch(urlBookId, (newBookId, oldBookId) => {
+      if (newBookId && newBookId !== oldBookId) {
+        console.log(`检测到书籍ID参数: ${newBookId}`)
+        // 检查该书籍是否存在
+        const bookExists = books.value.some(b => b.book_id === newBookId)
+        if (bookExists) {
+          selectedBookId.value = newBookId
+          console.log(`已选中书籍ID: ${newBookId}`)
+        } else {
+          // 如果书籍不存在，等待数据加载完成后再次尝试
+          const unwatch = watch(() => books.value.length, (newLength) => {
+            if (newLength > 0) {
+              const bookExists = books.value.some(b => b.book_id === newBookId)
+              if (bookExists) {
+                selectedBookId.value = newBookId
+                console.log(`数据加载完成后已选中书籍ID: ${newBookId}`)
+                unwatch() // 找到后取消监听
+              } else {
+                console.warn(`数据加载完成后仍未找到书籍ID为${newBookId}的书籍`)
+                unwatch() // 无论是否找到都取消监听
+              }
+            }
+          })
+        }
+      }
+    })
+    
+    // 根据chapterId查找练习
+    const findPracticeByChapterId = (chapterId) => {
+      console.log('findPracticeByChapterId被调用，chapterId:', chapterId)
+      console.log('当前books数据:', books.value)
+      
+      // 遍历所有书籍和练习，查找匹配的chapterId
+      for (const book of books.value) {
+        console.log('检查书籍:', book.book_id, book.book_title)
+        if (book.practices && Array.isArray(book.practices)) {
+          console.log('书籍包含练习数量:', book.practices.length)
+          for (const practice of book.practices) {
+            console.log('检查练习:', practice.id, practice.title, practice.chapter_id)
+            if (practice.chapter_id === chapterId) {
+              console.log('找到匹配的练习:', practice)
+              return practice
+            }
+          }
+        }
+      }
+      console.log('未找到匹配的练习')
+      return null
+    }
+    
+    // 根据标题匹配练习（用于错题重做）
+    const findPracticeByTitle = (title, chapterId = null, bookId = null) => {
+      // 标准化标题：移除可能的后缀
+      const normalizeTitle = (t) => {
+        if (!t) return ''
+        return t
+          .replace(/-练习题-练习题集$/, '')
+          .replace(/- 练习题$/, '')
+          .replace(/-练习题集$/, '')
+          .replace(/-练习题$/, '')
+          .trim()
+      }
+      
+      const normalizedTargetTitle = normalizeTitle(title)
+      console.log('查找练习，目标标题:', normalizedTargetTitle, '原始标题:', title)
+      
+      // 遍历所有书籍和练习，查找匹配的标题
+      for (const book of books.value) {
+        // 如果指定了bookId，只在该书籍中查找
+        if (bookId && book.book_id !== bookId) {
+          continue
+        }
+        
+        if (book.practices && Array.isArray(book.practices)) {
+          for (const practice of book.practices) {
+            // 如果指定了chapterId，只在该章节中查找
+            if (chapterId && practice.chapter_id !== chapterId) {
+              continue
+            }
+            
+            const normalizedPracticeTitle = normalizeTitle(practice.title)
+            console.log('比较标题:', {
+              target: normalizedTargetTitle,
+              practice: normalizedPracticeTitle,
+              match: normalizedPracticeTitle === normalizedTargetTitle || 
+                     normalizedPracticeTitle.includes(normalizedTargetTitle) ||
+                     normalizedTargetTitle.includes(normalizedPracticeTitle)
+            })
+            
+            // 精确匹配或包含匹配
+            if (normalizedPracticeTitle === normalizedTargetTitle || 
+                normalizedPracticeTitle.includes(normalizedTargetTitle) ||
+                normalizedTargetTitle.includes(normalizedPracticeTitle)) {
+              console.log('找到匹配的练习:', practice)
+              return practice
+            }
+          }
+        }
+      }
+      return null
+    }
+    
+    // 监听URL中的practiceId参数，自动打开对应练习
+    watch(urlPracticeId, (newPracticeId, oldPracticeId) => {
+      if (newPracticeId && newPracticeId !== oldPracticeId) {
+        console.log(`检测到练习ID参数: ${newPracticeId}`)
+        // 先尝试直接查找练习
+        let foundPractice = findPracticeById(newPracticeId)
+        
+        if (foundPractice) {
+          console.log('找到对应的练习:', foundPractice)
+          startPractice(foundPractice)
+        } else {
+          console.log(`未找到练习ID为${newPracticeId}的练习，等待数据加载完成后重试`)
+          // 如果未找到，等待数据加载完成后再次尝试
+          const unwatch = watch(() => books.value.length, (newLength) => {
+            if (newLength > 0) {
+              foundPractice = findPracticeById(newPracticeId)
+              if (foundPractice) {
+                console.log('数据加载完成后找到对应的练习:', foundPractice)
+                startPractice(foundPractice)
+                unwatch() // 找到后取消监听
+              } else {
+                console.warn(`数据加载完成后仍未找到练习ID为${newPracticeId}的练习`)
+                unwatch() // 无论是否找到都取消监听
+              }
+            }
+          })
+        }
+      }
+    })
+    
+    // 监听URL中的chapterId参数，自动打开对应章节的练习
+    watch([urlChapterId, urlPracticeTitle], ([newChapterId, newPracticeTitle], [oldChapterId, oldPracticeTitle]) => {
+      if (newChapterId && newChapterId !== oldChapterId && !urlPracticeId.value) {
+        console.log(`检测到章节ID参数: ${newChapterId}，标题参数: ${newPracticeTitle}`)
+        console.log('当前urlBookId:', urlBookId.value)
+        
+        let foundPractice = null
+        
+        // 如果有标题，优先通过标题匹配
+        if (newPracticeTitle) {
+          console.log('通过标题匹配练习:', newPracticeTitle)
+          foundPractice = findPracticeByTitle(newPracticeTitle, newChapterId, urlBookId.value)
+        }
+        
+        // 如果标题匹配失败，使用chapterId查找第一个练习
+        if (!foundPractice) {
+          foundPractice = findPracticeByChapterId(newChapterId)
+        }
+        
+        if (foundPractice) {
+          console.log('找到对应章节的练习:', foundPractice)
+          startPractice(foundPractice)
+        } else {
+          console.log(`未找到章节ID为${newChapterId}的练习，等待数据加载完成后重试`)
+          // 如果未找到，等待数据加载完成后再次尝试
+          const unwatch = watch(() => books.value.length, (newLength) => {
+            if (newLength > 0) {
+              console.log('数据加载完成，books.length:', newLength)
+              // 再次尝试标题匹配
+              if (newPracticeTitle) {
+                foundPractice = findPracticeByTitle(newPracticeTitle, newChapterId, urlBookId.value)
+              }
+              
+              // 如果标题匹配失败，使用chapterId查找
+              if (!foundPractice) {
+                foundPractice = findPracticeByChapterId(newChapterId)
+              }
+              
+              if (foundPractice) {
+                console.log('数据加载完成后找到对应章节的练习:', foundPractice)
+                startPractice(foundPractice)
+                unwatch() // 找到后取消监听
+              } else {
+                console.warn(`数据加载完成后仍未找到章节ID为${newChapterId}的练习`)
+                unwatch() // 无论是否找到都取消监听
+              }
+            }
+          })
+        }
       }
     })
 
@@ -325,6 +513,32 @@ export default {
           if (!selectedBookId.value) {
             selectedBookId.value = filteredBooksData[0].book_id
           }
+          
+          // 数据加载完成后，检查URL参数并尝试打开对应的练习
+          setTimeout(() => {
+            console.log('数据加载完成，检查URL参数')
+            if (urlChapterId.value) {
+              console.log('存在urlChapterId，尝试打开练习:', urlChapterId.value)
+              let foundPractice = null
+              
+              // 如果有标题，优先通过标题匹配
+              if (urlPracticeTitle.value) {
+                foundPractice = findPracticeByTitle(urlPracticeTitle.value, urlChapterId.value, urlBookId.value)
+              }
+              
+              // 如果标题匹配失败，使用chapterId查找
+              if (!foundPractice) {
+                foundPractice = findPracticeByChapterId(urlChapterId.value)
+              }
+              
+              if (foundPractice) {
+                console.log('数据加载完成后找到对应章节的练习:', foundPractice)
+                startPractice(foundPractice)
+              } else {
+                console.warn('数据加载完成后仍未找到对应章节的练习')
+              }
+            }
+          }, 100)
         } else {
           books.value = []
           selectedBookId.value = null
@@ -350,11 +564,27 @@ export default {
       }
     }
     
+    // 根据ID查找练习
+    const findPracticeById = (practiceId) => {
+      // 遍历所有书籍和练习，查找匹配的practiceId
+      for (const book of books.value) {
+        if (book.practices && Array.isArray(book.practices)) {
+          for (const practice of book.practices) {
+            if (practice.id === practiceId) {
+              return practice
+            }
+          }
+        }
+      }
+      return null
+    }
+
     // 开始练习
     const startPractice = (practice) => {
       console.log('开始练习:', practice)
       console.log('练习ID:', practice.id)
       console.log('练习对象结构:', Object.keys(practice))
+      console.log('是否为重做模式:', urlRedo.value)
       currentPracticeId.value = practice.id
       currentPracticeName.value = practice.title
       
@@ -427,9 +657,23 @@ export default {
             blanks,
             testCases,
             correctAnswer,
-            order: q.order || index + 1
+            order: q.order || index + 1,
+            // 如果是重做模式，清除之前的作答记录
+            selectedOption: urlRedo.value ? undefined : q.selectedOption,
+            userAnswers: urlRedo.value ? undefined : q.userAnswers,
+            userCode: urlRedo.value ? undefined : q.userCode
           }
         })
+        
+        // 如果是重做模式，清除所有问题的作答记录
+        if (urlRedo.value) {
+          currentQuestions.value.forEach(q => {
+            delete q.selectedOption
+            delete q.userAnswers
+            delete q.userCode
+          })
+          console.log('重做模式：已清除所有问题的作答记录')
+        }
       } else {
         // 兼容旧格式 - 直接构建编程题
         currentQuestions.value = []
@@ -442,7 +686,9 @@ export default {
             stem: practice.question,
             code_template: practice.code_template || '',
             language: 'python', // 应该从chapter获取
-            testCases: practice.test_cases || []
+            testCases: practice.test_cases || [],
+            // 重做模式清除作答记录
+            userCode: urlRedo.value ? undefined : practice.userCode
           })
         }
       }

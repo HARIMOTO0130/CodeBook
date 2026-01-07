@@ -69,7 +69,8 @@ export default {
     // 跳转到指定章节
     const navigateToChapter = (chapterId) => {
       router.push({
-        path: `/books/${props.bookId}/chapter/${chapterId}`
+        name: 'StudentLearning',
+        params: { bookId: props.bookId, chapterId }
       })
     }
 
@@ -86,8 +87,8 @@ export default {
     // 打开练习题
     const openPractice = (chapterId) => {
       router.push({
-        path: `/books/${props.bookId}/chapter/${chapterId}`,
-        query: { openPractice: 'true' }
+        name: 'StudentPractice',
+        query: { bookId: props.bookId, chapterId }
       })
     }
 

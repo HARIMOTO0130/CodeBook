@@ -1,7 +1,26 @@
 <template>
   <div class="notes-component">
+    <!-- 左侧拖动手柄 - 在侧边栏外部，不受overflow限制 -->
+    <div 
+      class="resize-handle left"
+      :style="{ left: `${sidebarWidth - 3}px`, height: '100%' }"
+      @mousedown="startResize($event, 'left')"
+      @touchstart="startResize($event, 'left', true)"
+      title="拖动调整宽度"
+    ></div>
+    
     <!-- 笔记列表 -->
-    <div class="notes-sidebar">
+    <div 
+      class="notes-sidebar"
+      :style="{ width: `${sidebarWidth}px` }"
+    >
+      <!-- 右侧拖动手柄 -->
+      <div 
+        class="resize-handle right"
+        @mousedown="startResize($event, 'right')"
+        @touchstart="startResize($event, 'right', true)"
+        title="拖动调整宽度"
+      ></div>
       <div class="sidebar-header">
         <h3>我的笔记</h3>
         <button class="new-note-btn" @click="createNewNote">
@@ -51,43 +70,66 @@
     <!-- 笔记编辑器 -->
     <div class="notes-editor">
       <div v-if="activeNote" class="editor-content">
-        <input 
-          type="text" 
-          v-model="activeNote.title" 
-          class="note-title-input"
-          placeholder="笔记标题"
-          @input="saveNote"
-        />
-        
-        <!-- 笔记工具栏 -->
-        <div class="note-toolbar">
-          <div class="toolbar-group">
-            <button @click="format('bold')" class="toolbar-btn" title="加粗">B</button>
-            <button @click="format('italic')" class="toolbar-btn" title="斜体">I</button>
-            <button @click="format('underline')" class="toolbar-btn" title="下划线">U</button>
-            <button @click="format('strike')" class="toolbar-btn" title="删除线">S</button>
+        <div class="editor-content-scrollable">
+          <input 
+            type="text" 
+            v-model="activeNote.title" 
+            class="note-title-input"
+            placeholder="笔记标题"
+            @input="saveNote"
+          />
+          
+          <!-- 笔记工具栏 -->
+          <div class="note-toolbar">
+            <div class="toolbar-group">
+              <button @click="format('bold')" class="toolbar-btn" title="加粗">B</button>
+              <button @click="format('italic')" class="toolbar-btn" title="斜体">I</button>
+              <button @click="format('underline')" class="toolbar-btn" title="下划线">U</button>
+              <button @click="format('strike')" class="toolbar-btn" title="删除线">S</button>
+            </div>
+            <div class="toolbar-group">
+              <button @click="format('list', 'ordered')" class="toolbar-btn" title="有序列表">1.</button>
+              <button @click="format('list', 'bullet')" class="toolbar-btn" title="无序列表">•</button>
+              <button @click="format('code-block')" class="toolbar-btn" title="代码块">{ }</button>
+              <button @click="insertImage" class="toolbar-btn" title="插入图片">📷</button>
+            </div>
+            <div class="toolbar-group">
+              <button @click="toggleFavorite" class="toolbar-btn" :class="{ active: activeNote.is_favorite }" title="收藏">★</button>
+              <button @click="showVersions" class="toolbar-btn" title="版本历史">⏱</button>
+              <button @click="showTagsPanel" class="toolbar-btn" title="标签管理">🏷</button>
+            </div>
           </div>
-          <div class="toolbar-group">
-            <button @click="format('list', 'ordered')" class="toolbar-btn" title="有序列表">1.</button>
-            <button @click="format('list', 'bullet')" class="toolbar-btn" title="无序列表">•</button>
-            <button @click="format('code-block')" class="toolbar-btn" title="代码块">{ }</button>
-            <button @click="insertImage" class="toolbar-btn" title="插入图片">📷</button>
-          </div>
-          <div class="toolbar-group">
-            <button @click="toggleFavorite" class="toolbar-btn" :class="{ active: activeNote.is_favorite }" title="收藏">★</button>
-            <button @click="showVersions" class="toolbar-btn" title="版本历史">⏱</button>
-            <button @click="showTagsPanel" class="toolbar-btn" title="标签管理">🏷</button>
-          </div>
+          
+          <!-- 富文本编辑器 -->
+          <div ref="editor" class="note-content-editor"></div>
         </div>
         
-        <!-- 富文本编辑器 -->
-        <div ref="editor" class="note-content-editor"></div>
-        
         <div class="editor-footer">
-          <span class="note-status">{{ saveStatus }}</span>
+          <div class="footer-left">
+            <span class="note-status" :class="{ 'status-success': saveStatus === '已保存', 'status-error': saveStatus === '保存失败' }">
+              {{ saveStatus || '未保存' }}
+            </span>
+            <span v-if="activeNote?.id" class="note-id-hint">笔记ID: {{ activeNote.id }}</span>
+          </div>
           <div class="editor-actions">
-            <button class="btn btn-secondary btn-sm" @click="deleteNote">删除笔记</button>
-            <button class="btn btn-primary btn-sm" @click="saveNote">保存笔记</button>
+            <button 
+              class="btn btn-danger" 
+              @click="deleteNote"
+              :disabled="!activeNote || !activeNote.id || isLoading"
+              title="删除当前笔记"
+            >
+              <span v-if="isLoading && deleting">删除中...</span>
+              <span v-else>🗑️ 删除笔记</span>
+            </button>
+            <button 
+              class="btn btn-primary btn-save" 
+              @click="saveNote"
+              :disabled="!activeNote || isLoading"
+              title="保存当前笔记"
+            >
+              <span v-if="isLoading && saving">保存中...</span>
+              <span v-else>💾 保存笔记</span>
+            </button>
           </div>
         </div>
       </div>
@@ -211,6 +253,8 @@ export default {
     const activeNote = ref(null)
     const saveStatus = ref('')
     const isLoading = ref(false)
+    const saving = ref(false)
+    const deleting = ref(false)
     
     // 搜索和过滤
     const searchQuery = ref('')
@@ -225,6 +269,13 @@ export default {
     const showVersionHistory = ref(false)
     const versions = ref([])
     
+    // 拖动调整大小
+    const isResizing = ref(false)
+    const resizeData = ref({})
+    const sidebarWidth = ref(300) // 默认宽度
+    const minSidebarWidth = ref(200) // 最小宽度
+    const maxSidebarWidth = ref(500) // 最大宽度
+    
     // API配置
     const API_BASE_URL = '/api/learning'
     
@@ -232,8 +283,10 @@ export default {
     const fetchNotes = async () => {
       // 检查是否已登录
       const token = localStorage.getItem('token')
+      console.log('获取笔记列表 - Token存在:', !!token)
       if (!token) {
         // 未登录时静默处理，不显示错误
+        console.log('获取笔记列表 - 未登录，清空笔记列表')
         notes.value = []
         filteredNotes.value = []
         return
@@ -241,12 +294,21 @@ export default {
       
       try {
         isLoading.value = true
+        console.log('获取笔记列表 - 发送请求')
         const response = await api.getNotes()
+        console.log('获取笔记列表 - 收到响应:', response)
+        console.log('获取笔记列表 - 响应类型:', typeof response)
+        console.log('获取笔记列表 - 是否为数组:', Array.isArray(response))
+        
+        // 处理分页响应：如果响应有 results 字段，使用 results 数组；否则直接使用响应
+        const notesData = response.results || response;
         // 确保获取到的数据是数组格式
-        notes.value = Array.isArray(response) ? response : []
+        notes.value = Array.isArray(notesData) ? notesData : []
         filteredNotes.value = [...notes.value]
+        console.log('获取笔记列表 - 更新后的笔记数量:', notes.value.length)
       } catch (error) {
         // 401错误表示未授权，静默处理
+        console.error('获取笔记列表 - 请求失败:', error)
         if (error.message && error.message.includes('AUTH 401')) {
           notes.value = []
           filteredNotes.value = []
@@ -372,31 +434,76 @@ export default {
       console.log('保存笔记 - activeNote.id:', activeNote.value?.id)
       console.log('保存笔记 - activeNoteIndex:', activeNoteIndex.value)
       
-      if (!activeNote.value || activeNoteIndex.value < 0) return
+      if (!activeNote.value) {
+        alert('请先创建或选择笔记')
+        return
+      }
       
       try {
         isLoading.value = true
+        saving.value = true
         const content = quill ? quill.root.innerHTML : activeNote.value.content
         
-        const updatedNote = {
-          ...activeNote.value,
+        const noteData = {
           title: activeNote.value.title || '无标题笔记',
           content: content
         }
         
-        console.log('保存笔记 - 要发送的数据:', updatedNote)
+        // 只有在bookId和chapterId有值时才添加
+        if (props.bookId) {
+          noteData.book = props.bookId
+        }
+        if (props.chapterId) {
+          noteData.chapter = props.chapterId
+        }
+        
+        console.log('保存笔记 - 要发送的数据:', noteData)
         console.log('保存笔记 - 笔记ID:', activeNote.value.id)
         
-        const response = await api.updateNote(activeNote.value.id, updatedNote)
+        // 更严格地检查笔记ID：确保ID存在且有效（不为null、undefined或0）
+        const noteId = activeNote.value.id
+        const hasValidId = noteId != null && noteId !== undefined && noteId !== ''
         
-        console.log('保存笔记 - 成功，返回数据:', response)
-        
-        // 更新本地笔记列表
-        const noteIndex = notes.value.findIndex(n => n.id === activeNote.value.id)
-        if (noteIndex !== -1) {
-          notes.value[noteIndex] = response
+        let response
+        // 如果笔记有有效ID，使用更新接口；否则使用创建接口
+        if (hasValidId) {
+          console.log('保存笔记 - 使用更新接口，ID:', noteId)
+          response = await api.updateNote(noteId, noteData)
+          console.log('保存笔记 - 更新成功，返回数据:', response)
+          
+          // 确保返回的响应包含ID
+          if (!response.id) {
+            console.warn('更新接口返回的数据缺少ID，使用原始ID')
+            response.id = noteId
+          }
+          
+          // 更新本地笔记列表
+          const noteIndex = notes.value.findIndex(n => n.id === noteId)
+          if (noteIndex !== -1) {
+            notes.value[noteIndex] = response
+            filteredNotes.value = [...notes.value]
+            activeNote.value = { ...response }
+          } else {
+            // 如果在列表中找不到，直接更新activeNote
+            activeNote.value = { ...response }
+          }
+        } else {
+          // 新笔记，使用创建接口
+          console.log('保存笔记 - 使用创建接口（ID无效或不存在）')
+          response = await api.createNote(noteData)
+          console.log('保存笔记 - 创建成功，返回数据:', response)
+          
+          // 确保返回的响应包含ID
+          if (!response.id) {
+            console.error('创建接口返回的数据缺少ID')
+            throw new Error('创建笔记后未能获取笔记ID')
+          }
+          
+          // 更新本地笔记列表和activeNote
+          notes.value.unshift(response)
           filteredNotes.value = [...notes.value]
           activeNote.value = { ...response }
+          activeNoteIndex.value = 0
         }
         
         saveStatus.value = '已保存'
@@ -405,7 +512,12 @@ export default {
         }, 2000)
       } catch (error) {
         console.error('保存笔记失败:', error)
+        console.error('错误详情:', error.response?.data || error.message)
         saveStatus.value = '保存失败'
+        
+        // 显示详细错误信息
+        const errorMsg = error.response?.data?.error || error.response?.data?.detail || error.message || '未知错误'
+        alert(`保存笔记失败: ${errorMsg}`)
         
         // 5秒后自动清除失败状态
         setTimeout(() => {
@@ -413,18 +525,28 @@ export default {
         }, 5000)
       } finally {
         isLoading.value = false
+        saving.value = false
       }
     }
     
     // 删除笔记
     const deleteNote = async () => {
-      if (activeNoteIndex.value >= 0 && confirm('确定要删除这条笔记吗？')) {
+      if (!activeNote.value || activeNoteIndex.value < 0) return
+      
+      const noteId = activeNote.value.id
+      if (!isValidNoteId(noteId)) {
+        alert('笔记ID无效，无法删除')
+        return
+      }
+      
+      if (confirm(`确定要删除笔记"${activeNote.value.title || '无标题'}"吗？此操作不可恢复！`)) {
         try {
           isLoading.value = true
-          await api.deleteNote(activeNote.value.id)
+          deleting.value = true
+          await api.deleteNote(noteId)
           
           // 从列表中移除
-          const noteIndex = notes.value.findIndex(n => n.id === activeNote.value.id)
+          const noteIndex = notes.value.findIndex(n => n.id === noteId)
           if (noteIndex !== -1) {
             notes.value.splice(noteIndex, 1)
             filteredNotes.value = [...notes.value]
@@ -446,9 +568,11 @@ export default {
           }, 2000)
         } catch (error) {
           console.error('删除笔记失败:', error)
-          alert('删除笔记失败，请重试')
+          const errorMsg = error.response?.data?.error || error.response?.data?.detail || error.message || '未知错误'
+          alert(`删除笔记失败: ${errorMsg}`)
         } finally {
           isLoading.value = false
+          deleting.value = false
         }
       }
     }
@@ -470,6 +594,17 @@ export default {
     
     // 插入图片
     const insertImage = () => {
+      if (!activeNote.value) {
+        alert('请先创建或选择笔记')
+        return
+      }
+      
+      const noteId = activeNote.value.id
+      if (!isValidNoteId(noteId)) {
+        alert('笔记ID无效，请先保存笔记')
+        return
+      }
+      
       const input = document.createElement('input')
       input.type = 'file'
       input.accept = 'image/*'
@@ -477,12 +612,21 @@ export default {
         const file = e.target.files[0]
         if (file) {
           try {
-            const response = await api.addNoteAttachment(activeNote.value.id, file)
+            // 再次检查ID，确保在异步操作时仍然有效
+            const currentNoteId = activeNote.value?.id
+            if (!currentNoteId || currentNoteId === undefined || currentNoteId === null || currentNoteId === '') {
+              alert('笔记ID无效，请先保存笔记')
+              return
+            }
+            
+            const response = await api.addNoteAttachment(currentNoteId, file)
             
             // 在编辑器中插入图片
             const attachment = response[0]
             const imageUrl = attachment.file
-            quill.insertEmbed(quill.getSelection().index, 'image', imageUrl)
+            if (quill) {
+              quill.insertEmbed(quill.getSelection().index, 'image', imageUrl)
+            }
             
             autoSave()
           } catch (error) {
@@ -502,22 +646,126 @@ export default {
       }, 2000) // 2秒后自动保存
     }
     
+    // 检查笔记ID是否有效
+    const isValidNoteId = (noteId) => {
+      return noteId != null && noteId !== undefined && noteId !== ''
+    }
+    
+    // 开始调整大小
+    const startResize = (e, direction = 'right', isTouch = false) => {
+      if (isTouch && e.touches) {
+        e = e.touches[0]
+      }
+      
+      isResizing.value = true
+      
+      // 创建带方向参数的事件处理函数
+      const resizeHandler = isTouch 
+        ? (e) => resize(e.touches ? e.touches[0] : e, direction)
+        : (e) => resize(e, direction)
+      
+      const stopHandler = isTouch ? stopResize : stopResize
+      
+      document.addEventListener(isTouch ? 'touchmove' : 'mousemove', resizeHandler)
+      document.addEventListener(isTouch ? 'touchend' : 'mouseup', stopHandler)
+      
+      // 保存当前方向和处理函数，以便在stopResize中移除
+      resizeData.value = {
+        direction,
+        resizeHandler,
+        isTouch
+      }
+      
+      e.preventDefault()
+    }
+    
+    // 调整大小
+    const resize = (e, direction = 'right') => {
+      if (!isResizing.value) return
+      
+      const sidebar = document.querySelector('.notes-sidebar')
+      if (!sidebar) return
+      
+      const rect = sidebar.getBoundingClientRect()
+      const isMobile = window.innerWidth <= 768
+      
+      if (isMobile) {
+        // 移动设备上调整高度（右侧手柄）
+        if (direction === 'right') {
+          const newHeight = e.clientY - rect.top
+          // 限制最小和最大高度
+          const minHeight = 150
+          const maxHeight = 400
+          if (newHeight >= minHeight && newHeight <= maxHeight) {
+            sidebar.style.height = `${newHeight}px`
+          }
+        }
+      } else {
+        // 桌面设备上调整宽度
+        if (direction === 'right') {
+          // 右侧手柄：调整侧边栏宽度
+          const newWidth = e.clientX - rect.left
+          // 限制最小和最大宽度
+          const minWidth = Math.min(minSidebarWidth.value, 200)
+          const maxWidth = Math.min(maxSidebarWidth.value, window.innerWidth - 200)
+          if (newWidth >= minWidth && newWidth <= maxWidth) {
+            sidebarWidth.value = newWidth
+          }
+        } else if (direction === 'left') {
+          // 左侧手柄：调整侧边栏宽度
+          const component = document.querySelector('.notes-component')
+          if (!component) return
+          
+          const componentRect = component.getBoundingClientRect()
+          const newWidth = rect.right - e.clientX
+          const minWidth = Math.min(minSidebarWidth.value, 200)
+          const maxWidth = Math.min(maxSidebarWidth.value, window.innerWidth - 200)
+          
+          if (newWidth >= minWidth && newWidth <= maxWidth) {
+            sidebarWidth.value = newWidth
+          }
+        }
+      }
+    }
+    
+    // 停止调整大小
+    const stopResize = () => {
+      isResizing.value = false
+      
+      // 移除事件监听器
+      if (resizeData.value.resizeHandler) {
+        document.removeEventListener('mousemove', resizeData.value.resizeHandler)
+        document.removeEventListener('touchmove', resizeData.value.resizeHandler)
+        resizeData.value = {}
+      }
+      
+      document.removeEventListener('mouseup', stopResize)
+      document.removeEventListener('touchend', stopResize)
+    }
+    
     // 切换收藏状态
     const toggleFavorite = async () => {
       if (!activeNote.value) return
       
+      const noteId = activeNote.value.id
+      if (!isValidNoteId(noteId)) {
+        alert('笔记ID无效，请先保存笔记')
+        return
+      }
+      
       try {
-        const response = await api.toggleNoteFavorite(activeNote.value.id)
+        const response = await api.toggleNoteFavorite(noteId)
         activeNote.value.is_favorite = response.is_favorite
         
         // 更新本地笔记列表
-        const noteIndex = notes.value.findIndex(n => n.id === activeNote.value.id)
+        const noteIndex = notes.value.findIndex(n => n.id === noteId)
         if (noteIndex !== -1) {
           notes.value[noteIndex].is_favorite = response.is_favorite
           filteredNotes.value = [...notes.value]
         }
       } catch (error) {
         console.error('切换收藏状态失败:', error)
+        alert('切换收藏状态失败，请重试')
       }
     }
     
@@ -549,28 +797,38 @@ export default {
     const toggleTag = async (tagId) => {
       if (!activeNote.value) return
       
+      const noteId = activeNote.value.id
+      if (!isValidNoteId(noteId)) {
+        alert('笔记ID无效，请先保存笔记')
+        return
+      }
+      
       try {
         const isSelected = isTagSelected(tagId)
         if (isSelected) {
           // 移除标签
-          await api.removeNoteTag(activeNote.value.id, tagId)
+          await api.removeNoteTag(noteId, tagId)
         } else {
           // 添加标签
-          await api.addNoteTag(activeNote.value.id, tagId)
+          await api.addNoteTag(noteId, tagId)
         }
         
         // 刷新笔记数据
-        const response = await api.updateNote(activeNote.value.id, {}) // 获取最新笔记数据
+        const response = await api.updateNote(noteId, {}) // 获取最新笔记数据
+        if (!response.id) {
+          response.id = noteId // 确保响应包含ID
+        }
         activeNote.value = response
         
         // 更新本地笔记列表
-        const noteIndex = notes.value.findIndex(n => n.id === activeNote.value.id)
+        const noteIndex = notes.value.findIndex(n => n.id === noteId)
         if (noteIndex !== -1) {
           notes.value[noteIndex] = response
           filteredNotes.value = [...notes.value]
         }
       } catch (error) {
         console.error('更新标签失败:', error)
+        alert('更新标签失败，请重试')
       }
     }
     
@@ -622,11 +880,17 @@ export default {
     
     // 获取版本历史
     const fetchVersions = async (noteId) => {
+      if (!isValidNoteId(noteId)) {
+        versions.value = []
+        return
+      }
+      
       try {
         const response = await api.getNoteVersions(noteId)
         versions.value = response
       } catch (error) {
         console.error('获取版本历史失败:', error)
+        versions.value = []
       }
     }
     
@@ -639,11 +903,20 @@ export default {
     const restoreVersion = async (versionId) => {
       if (!activeNote.value) return
       
+      const noteId = activeNote.value.id
+      if (!isValidNoteId(noteId)) {
+        alert('笔记ID无效，请先保存笔记')
+        return
+      }
+      
       try {
-        await api.restoreNoteVersion(activeNote.value.id, versionId)
+        await api.restoreNoteVersion(noteId, versionId)
         
         // 重新获取笔记数据
-        const response = await api.updateNote(activeNote.value.id, {}) // 获取最新笔记数据
+        const response = await api.updateNote(noteId, {}) // 获取最新笔记数据
+        if (!response.id) {
+          response.id = noteId // 确保响应包含ID
+        }
         activeNote.value = response
         
         // 更新编辑器内容
@@ -652,7 +925,7 @@ export default {
         }
         
         // 更新本地笔记列表
-        const noteIndex = notes.value.findIndex(n => n.id === activeNote.value.id)
+        const noteIndex = notes.value.findIndex(n => n.id === noteId)
         if (noteIndex !== -1) {
           notes.value[noteIndex] = response
           filteredNotes.value = [...notes.value]
@@ -751,6 +1024,7 @@ export default {
       newTagColor,
       showVersionHistory,
       versions,
+      sidebarWidth,
       
       formatDate,
       createNewNote,
@@ -768,7 +1042,8 @@ export default {
       handleSearch,
       handleFilter,
       showVersions,
-      restoreVersion
+      restoreVersion,
+      startResize
     }
   }
 }
@@ -782,8 +1057,8 @@ export default {
 .notes-component {
   display: flex;
   height: 100%;
-  overflow: hidden;
   position: relative;
+  overflow: visible;
 }
 
 /* 笔记侧边栏 */
@@ -794,6 +1069,8 @@ export default {
   flex-direction: column;
   height: 100%;
   background-color: #fafafa;
+  transition: width 0.1s ease;
+  position: relative;
 }
 
 .sidebar-header {
@@ -937,6 +1214,36 @@ export default {
   background-color: #409EFF;
 }
 
+/* 可拖动边框 */
+.resize-handle {
+  width: 6px;
+  cursor: col-resize;
+  position: absolute;
+  z-index: 100;
+  transition: background-color 0.2s;
+}
+
+.resize-handle.left {
+  background-color: transparent;
+  top: 0;
+  transform: translateX(-50%);
+}
+
+.resize-handle.right {
+  background-color: transparent;
+  right: -3px;
+  top: 0;
+  height: 100%;
+}
+
+.resize-handle:hover {
+  background-color: rgba(64, 158, 255, 0.5);
+}
+
+.resize-handle:active {
+  background-color: #409EFF;
+}
+
 /* 笔记编辑器 */
 .notes-editor {
   flex: 1;
@@ -950,7 +1257,33 @@ export default {
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: 20px;
+  padding: 20px 20px 0;
+  overflow: hidden;
+}
+
+.editor-content-scrollable {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 20px;
+}
+
+/* 确保滚动条样式美观 */
+.editor-content-scrollable::-webkit-scrollbar {
+  width: 8px;
+}
+
+.editor-content-scrollable::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+.editor-content-scrollable::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 4px;
+}
+
+.editor-content-scrollable::-webkit-scrollbar-thumb:hover {
+  background: #a1a1a1;
 }
 
 .note-title-input {
@@ -1105,14 +1438,91 @@ export default {
   margin-top: 15px;
 }
 
+.footer-left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .note-status {
   font-size: 12px;
+  color: #909399;
+  font-weight: 500;
+}
+
+.note-status.status-success {
   color: #67C23A;
+}
+
+.note-status.status-error {
+  color: #F56C6C;
+}
+
+.note-id-hint {
+  font-size: 11px;
+  color: #C0C4CC;
 }
 
 .editor-actions {
   display: flex;
   gap: 10px;
+}
+
+.btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.3s;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 100px;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background-color: #409EFF;
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background-color: #66b1ff;
+}
+
+.btn-primary:active:not(:disabled) {
+  background-color: #3a8ee6;
+}
+
+.btn-primary.btn-save {
+  background-color: #67C23A;
+}
+
+.btn-primary.btn-save:hover:not(:disabled) {
+  background-color: #85ce61;
+}
+
+.btn-primary.btn-save:active:not(:disabled) {
+  background-color: #5daf34;
+}
+
+.btn-danger {
+  background-color: #F56C6C;
+  color: white;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background-color: #f78989;
+}
+
+.btn-danger:active:not(:disabled) {
+  background-color: #f56c6c;
 }
 
 .no-note-selected {
@@ -1179,6 +1589,182 @@ export default {
   flex: 1;
   padding: 15px;
   overflow-y: auto;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .notes-component {
+    flex-direction: column;
+  }
+  
+  .notes-sidebar {
+    width: 100% !important;
+    height: 200px;
+    border-right: none;
+    border-bottom: 1px solid #e0e0e0;
+  }
+  
+  .resize-handle.left {
+    display: none;
+  }
+  
+  .resize-handle.right {
+    width: 100%;
+    height: 4px;
+    cursor: row-resize;
+    right: 0;
+    bottom: -4px;
+    top: auto;
+    left: 0;
+    transform: none;
+  }
+  
+  .resize-handle:hover {
+    background-color: #409EFF;
+  }
+  
+  .resize-handle:active {
+    background-color: #3a8ee6;
+    cursor: row-resize;
+  }
+  
+  .editor-content {
+    padding: 15px 15px 0;
+  }
+  
+  .editor-footer {
+    padding: 12px 15px;
+  }
+  
+  .note-toolbar {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  
+  .toolbar-group {
+    margin-bottom: 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .sidebar-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  
+  .notes-filter {
+    padding: 8px 12px;
+  }
+  
+  .editor-content {
+    padding: 10px 10px 0;
+  }
+  
+  .note-title-input {
+    font-size: 16px;
+    padding: 8px 10px;
+  }
+  
+  .toolbar-btn {
+    padding: 6px 8px;
+    font-size: 12px;
+  }
+  
+  .editor-actions {
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+  }
+  
+  .editor-actions .btn {
+    width: 100%;
+    padding: 8px;
+    font-size: 12px;
+  }
+  
+  .footer-left {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 5px;
+  }
+}
+
+/* 元素间距和排版优化 */
+.note-item {
+  margin-bottom: 8px;
+  padding: 12px 14px;
+  transition: all 0.2s;
+}
+
+.note-title {
+  margin-bottom: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.note-meta {
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.3;
+}
+
+.note-tags {
+  margin-top: 8px;
+  gap: 4px;
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.note-tag {
+  padding: 2px 6px;
+  font-size: 10px;
+  border-radius: 3px;
+  color: #fff;
+  font-weight: 500;
+}
+
+.note-content-editor {
+  min-height: 300px;
+  margin-top: 15px;
+  line-height: 1.6;
+  font-size: 14px;
+}
+
+/* 滚动条样式优化 */
+.editor-content-scrollable::-webkit-scrollbar,
+.notes-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.editor-content-scrollable::-webkit-scrollbar-track,
+.notes-list::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+.editor-content-scrollable::-webkit-scrollbar-thumb,
+.notes-list::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+.editor-content-scrollable::-webkit-scrollbar-thumb:hover,
+.notes-list::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+/* 增强可访问性 */
+.note-item:focus-within {
+  outline: 2px solid #409EFF;
+  outline-offset: -2px;
+}
+
+.toolbar-btn:focus,
+.btn:focus {
+  outline: 2px solid #409EFF;
+  outline-offset: 2px;
 }
 
 .tags-list {

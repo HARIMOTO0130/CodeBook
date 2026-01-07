@@ -579,7 +579,7 @@ export default {
     // 计算得分
     const calculateScore = () => {
       let correctCount = 0
-      questions.value.forEach(q => {
+      props.questions.forEach(q => {
         if (q.type === 'choice' || q.type === 'judgment' || q.type === 'Judgment') {
           const correctAnswer = q.correctAnswer
           const userAnswer = q.selectedOption
@@ -603,12 +603,12 @@ export default {
         }
         // 代码题暂时不计分
       })
-      return Math.round((correctCount / questions.value.length) * 100)
+      return Math.round((correctCount / props.questions.length) * 100)
     }
     
     // 获取所有答案
     const getAllAnswers = () => {
-      return questions.value.map(q => ({
+      return props.questions.map(q => ({
         id: q.id || q.order,
         type: q.type,
         selectedOption: q.selectedOption,
@@ -628,19 +628,70 @@ export default {
     const loadQuestionState = () => {
       const question = currentQuestion.value
       
+      // 如果是重做模式，忽略之前保存的作答记录
+      const isRedo = question.selectedOption === undefined && 
+                     question.userAnswers === undefined && 
+                     question.userCode === undefined
+      
       if (question.type === 'choice' || question.type === 'judgment' || question.type === 'Judgment') {
-        selectedOptions.value = []
+        // 重做模式或没有保存的答案时，重置选项
+        selectedOptions.value = isRedo ? [] : (question.selectedOption !== undefined ? [question.selectedOption] : [])
       } else if (question.type === 'fill') {
         // 确保blanks数组存在且不为空
         const blanksCount = (question.blanks && question.blanks.length) || 0
-        userAnswers.value = new Array(blanksCount).fill('')
+        // 重做模式或没有保存的答案时，重置答案
+        userAnswers.value = isRedo ? new Array(blanksCount).fill('') : (question.userAnswers || new Array(blanksCount).fill(''))
       } else if (question.type === 'codeCompletion') {
-        // 用??替换需要补全的部分
-        codeCompletionAnswer.value = question.code_template || ''
+        // 重做模式时使用原始模板，否则使用保存的答案
+        codeCompletionAnswer.value = isRedo ? (question.code_template || '') : (question.userCode || question.code_template || '')
       } else if (question.type === 'programming') {
-        programmingAnswer.value = question.initial_code || ''
+        // 重做模式时使用初始代码，否则使用保存的答案
+        programmingAnswer.value = isRedo ? (question.code_template || question.initial_code || '') : (question.userCode || question.initial_code || question.code_template || '')
       }
     }
+    
+    // 重置所有作答状态（用于重做模式）
+    const resetAllAnswers = () => {
+      selectedOptions.value = []
+      userAnswers.value = []
+      codeCompletionAnswer.value = ''
+      programmingAnswer.value = ''
+      showFeedback.value = false
+      codeResult.value = null
+      submissionResult.value = null
+      currentIndex.value = 0
+      
+      // 清除所有问题的作答记录
+      if (props.questions && Array.isArray(props.questions)) {
+        props.questions.forEach(q => {
+          delete q.selectedOption
+          delete q.userAnswers
+          delete q.userCode
+        })
+      }
+    }
+    
+    // 监听 visible 属性，当打开时重置状态
+    watch(() => props.visible, (newVal) => {
+      if (newVal) {
+        // 检查是否有重做标志（通过检查第一个问题是否有作答记录）
+        const hasAnswers = props.questions && props.questions.length > 0 && 
+          props.questions.some(q => q.selectedOption !== undefined || q.userAnswers !== undefined || q.userCode !== undefined)
+        
+        // 如果没有作答记录，说明是重做模式，重置所有状态
+        if (!hasAnswers) {
+          resetAllAnswers()
+          console.log('检测到重做模式，已重置所有作答状态')
+        } else {
+          // 否则只重置当前题目的状态
+          resetQuestionState()
+          currentIndex.value = 0
+        }
+        
+        // 加载第一题的状态
+        loadQuestionState()
+      }
+    })
     
     // 选择题相关方法
     const isOptionSelected = (index) => {
@@ -856,14 +907,10 @@ export default {
           return
         }
         
-        await api.addWrongQuestionFromExercise(
-          null, // exerciseId
-          newWrongQuestion.value.errorReason,
-          knowledgePoints,
-          props.practiceId, // practiceId
-          questionIndex, // questionIndex
-          questionId // questionId
-        )
+        await api.addWrongQuestionFromExercise({
+          practiceId: props.practiceId,
+          questionType: question.questionType || question.type
+        })
         
         // 显示成功消息
         alert('题目已成功添加到错题本！')
@@ -912,7 +959,9 @@ export default {
       showAddToWrongQuestionsDialog,
       newWrongQuestion,
       hideAddToWrongQuestionsDialog,
-      addCurrentQuestionToWrongQuestions
+      addCurrentQuestionToWrongQuestions,
+      // 重做相关
+      resetAllAnswers
     }
   }
 }

@@ -72,11 +72,14 @@ class BookViewSet(viewsets.ModelViewSet):
     def perform_destroy(self, instance):
         """
         默认行为仍然是物理删除，但教材提供者端可以选择使用 is_archived 做软删除。
-        这里保留原有所有者检查逻辑。
+        这里保留原有所有者检查逻辑，但允许删除测试生成的书籍(owner为null)。
         """
-        # 确保只有书籍所有者可以删除
-        if instance.owner != self.request.user and not (
-            self.request.user.is_staff or self.request.user.is_superuser
+        # 确保只有书籍所有者、管理员、超级用户或删除owner为null的测试书籍可以删除
+        if not (
+            instance.owner == self.request.user or  # 书籍所有者
+            instance.owner is None or  # 测试生成的书籍(owner为null)
+            self.request.user.is_staff or  # 管理员
+            self.request.user.is_superuser  # 超级用户
         ):
             raise PermissionDenied("您没有权限删除这本教材")
         # 调用模型的delete方法，这将同时删除数据库记录和相关的PDF文件
@@ -1192,7 +1195,8 @@ class ChapterViewSet(viewsets.ReadOnlyModelViewSet):
     def by_book(self, request, book_id=None):
         """获取指定书籍的所有章节"""
         try:
-            chapters = Chapter.objects.filter(book_id=book_id).order_by('order')
+            # 排除practice类型的章节，只返回阅读和视频类型的章节
+            chapters = Chapter.objects.filter(book_id=book_id, type__in=['reading', 'video']).order_by('order')
             serializer = self.get_serializer(chapters, many=True)
             return Response(serializer.data)
         except Exception as e:
@@ -1239,8 +1243,15 @@ class ChapterViewSet(viewsets.ReadOnlyModelViewSet):
             if not practices:
                 return Response({'message': '该章节暂无练习题'}, status=status.HTTP_404_NOT_FOUND)
             
-            serializer = PracticeSerializer(practices, many=True)
-            return Response(serializer.data)
+            # 如果有多个练习题，返回第一个；否则返回单个练习题
+            if practices.count() == 1:
+                # 返回单个练习题对象
+                serializer = PracticeSerializer(practices.first())
+                return Response(serializer.data)
+            else:
+                # 返回练习题列表
+                serializer = PracticeSerializer(practices, many=True)
+                return Response(serializer.data)
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
     

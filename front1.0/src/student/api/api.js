@@ -65,7 +65,9 @@ export async function httpGet(path, requireAuth = false) {
 }
 
 async function httpPost(path, body, requireAuth = false, method = 'POST') {
-  const fullUrl = `${API_BASE_URL}${path}`;
+  // 确保API路径格式正确，避免重复的/api前缀
+  const apiPath = path.startsWith('/') ? path : `/${path}`;
+  const fullUrl = `${API_BASE_URL}${apiPath}`;
   
   const headers = {
     'Content-Type': 'application/json',
@@ -131,7 +133,9 @@ export async function httpPut(path, body, requireAuth = false) {
 }
 
 async function httpPostForm(path, formData, requireAuth = false) {
-  const fullUrl = `${API_BASE_URL}${path}`;
+  // 确保API路径格式正确，避免重复的/api前缀
+  const apiPath = path.startsWith('/') ? path : `/${path}`;
+  const fullUrl = `${API_BASE_URL}${apiPath}`;
   console.log(`[HTTP POST_FORM] 请求: ${fullUrl}`);
   
   const headers = {
@@ -582,6 +586,7 @@ export const api = {
         question_type: q.question_type,
         question_type_display: q.question_type_display,
         practiceId: q.practice || q.practice_id,
+        practice_id: q.practice_id || q.practice, // 保留原始字段名
         exerciseId: q.exercise,
         question_index: q.question_index,
         question_content: q.question_content,
@@ -593,8 +598,11 @@ export const api = {
         status: q.status,
         status_display: q.status_display,
         book_title: q.book_title,
+        book_id: q.book || q.book_id, // 添加book_id
         chapter_title: q.chapter_title,
-        practice_title: q.practice_title
+        chapter_id: q.chapter || q.chapter_id, // 添加chapter_id
+        practice_title: q.practice_title,
+        practice: q.practice // 保留原始practice对象（如果有）
       }))
     } catch (error) {
       console.error('获取错题列表失败:', error)
@@ -689,12 +697,27 @@ export const api = {
   // 从练习题直接添加错题
   // 支持两种模式：
   // 1. exerciseId模式：传递Exercise模型的ID
-  // 2. practiceId + questionIndex模式：传递Practice的ID和题目索引
-  async addWrongQuestionFromExercise(exerciseId, errorReason = '', knowledgePoints = [], practiceId = null, questionIndex = null, questionId = null) {
+  // 2. practiceId模式：传递Practice的ID
+  async addWrongQuestionFromExercise(options) {
     try {
+      const { 
+        practiceId, 
+        exerciseId, 
+        errorReason = '', 
+        knowledgePoints = [], 
+        questionIndex = null, 
+        questionId = null,
+        questionType = null
+      } = options
+      
       const data = {
         error_reason: errorReason,
         knowledge_points: knowledgePoints
+      }
+      
+      // 如果提供了question_type，添加到数据中
+      if (questionType) {
+        data.question_type = questionType
       }
       
       // 如果提供了practiceId且它是有效的值，使用Practice模式
@@ -766,7 +789,8 @@ export const api = {
       
       console.log(`[HTTP DELETE] 响应状态: ${res.status} ${res.statusText}`);
       
-      if (res.status === 401 || res.status === 403) {
+      if (res.status === 401) {
+        // 401表示未认证，仍然清除token并重定向
         console.warn('[HTTP] 认证失败，清除token');
         try { localStorage.removeItem('token') } catch {}
         // 仅在非登录页面时重定向，避免无限循环
@@ -775,6 +799,11 @@ export const api = {
           window.location.href = `/?redirect=${redirect}`
         }
         throw new Error(`AUTH ${res.status}`)
+      } else if (res.status === 403) {
+        // 403表示权限不足，不清除token，只显示错误
+        const errorData = await res.json().catch(() => ({ detail: '您没有权限执行此操作' }));
+        console.error('[HTTP] 权限不足:', errorData);
+        throw new Error(`PERMISSION ${res.status}: ${errorData.detail || '您没有权限删除这本教材'}`);
       }
       
       if (!res.ok) {
