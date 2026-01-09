@@ -1,6 +1,6 @@
 """学习记录序列化器"""
 from rest_framework import serializers
-from .models import LearningRecord, PracticeRecord, HeatmapData, WrongQuestion, UserLearningPath, RoadmapTemplate, RoadmapStage, RoadmapBook, UserPathStage, Note, NoteTag, NoteTagRelation, NoteAttachment, NoteVersion, NoteShare, JupyterDocument, LearningStyle, KnowledgeMastery, LearningRecommendation, LearningPreference
+from .models import LearningRecord, PracticeRecord, HeatmapData, WrongQuestion, UserLearningPath, RoadmapTemplate, RoadmapStage, RoadmapBook, UserPathStage, Note, NoteTag, NoteTagRelation, NoteAttachment, NoteVersion, NoteShare, JupyterDocument, LearningStyle, KnowledgeMastery, LearningRecommendation, LearningPreference, KnowledgeNode, KnowledgeRelation
 
 
 class LearningRecordSerializer(serializers.ModelSerializer):
@@ -616,3 +616,32 @@ class UpdateLearningPreferenceSerializer(serializers.Serializer):
     reminder_enabled = serializers.BooleanField(required=False)
     reminder_time = serializers.TimeField(required=False, allow_null=True)
     difficulty_preference = serializers.ChoiceField(choices=LearningPreference.difficulty_preference.field.choices, required=False)
+
+
+class KnowledgeNodeSerializer(serializers.ModelSerializer):
+    """知识节点序列化器"""
+    type_display = serializers.SerializerMethodField()
+    professional_group_display = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = KnowledgeNode
+        fields = ('id', 'title', 'type', 'type_display', 'level', 'difficulty', 'importance', 
+                  'description', 'professional_group', 'professional_group_display', 'tags')
+    
+    def get_type_display(self, obj):
+        return obj.get_type_display()
+    
+    def get_professional_group_display(self, obj):
+        return obj.get_professional_group_display()
+
+
+class KnowledgeRelationSerializer(serializers.ModelSerializer):
+    """知识关系序列化器"""
+    relation_type_display = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = KnowledgeRelation
+        fields = ('id', 'source', 'target', 'relation_type', 'relation_type_display', 'strength')
+    
+    def get_relation_type_display(self, obj):
+        return obj.get_relation_type_display()

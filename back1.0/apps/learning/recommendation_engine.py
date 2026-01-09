@@ -46,19 +46,182 @@ class RecommendationEngine:
     
     def build_user_profile(self):
         """构建和更新用户画像"""
-        # 基于学习行为分析学习风格
-        self._analyze_learning_style()
+        try:
+            # 基于学习行为分析学习风格
+            self._analyze_learning_style()
+            
+            # 更新知识掌握度
+            self._update_knowledge_mastery()
+            
+            # 计算总学习时间
+            total_learning_time = self._calculate_total_learning_time()
+            
+            # 获取已完成章节数
+            completed_chapters = self._get_completed_chapters_count()
+            
+            # 获取学习频率
+            learning_frequency = self._calculate_learning_frequency()
+            
+            # 获取平均练习成绩
+            avg_score = self._calculate_average_score()
+            
+            # 确定知识水平
+            knowledge_level = self._determine_knowledge_level()
+            
+            # 确定主要兴趣领域
+            interest_areas = self._determine_interest_areas()
+            
+            # 更新用户学习偏好
+            self._update_learning_preferences(total_learning_time, completed_chapters, avg_score, interest_areas)
+            
+            # 将LearningStyle对象转换为字典
+            learning_style_dict = {
+                'visual_score': self.learning_style.visual_score,
+                'auditory_score': self.learning_style.auditory_score,
+                'reading_score': self.learning_style.reading_score,
+                'kinesthetic_score': self.learning_style.kinesthetic_score,
+                'dominant_style': self._get_dominant_style()
+            }
+            
+            return {
+                'learning_style': learning_style_dict,
+                'learning_preference': self.learning_preference,
+                'knowledge_mastery': self.knowledge_mastery,
+                'total_learning_time': total_learning_time,
+                'completed_chapters': completed_chapters,
+                'learning_frequency': learning_frequency,
+                'average_score': avg_score,
+                'knowledge_level': knowledge_level,
+                'interest_areas': interest_areas,
+                'dominant_style': self._get_dominant_style()
+            }
+        except Exception as e:
+            print(f"构建用户画像失败: {e}")
+            # 返回基础用户画像
+            # 使用字典而不是LearningStyle对象
+            return {
+                'learning_style': {
+                    'visual_score': 0.5,
+                    'auditory_score': 0.5,
+                    'reading_score': 0.5,
+                    'kinesthetic_score': 0.5,
+                    'dominant_style': '综合型'
+                },
+                'learning_preference': self.learning_preference,
+                'knowledge_mastery': self.knowledge_mastery,
+                'total_learning_time': 0,
+                'completed_chapters': 0,
+                'learning_frequency': 0,
+                'average_score': 0,
+                'knowledge_level': '初级',
+                'interest_areas': [],
+                'dominant_style': '综合型'
+            }
+    
+    def _calculate_learning_frequency(self):
+        """计算学习频率（最近30天内的学习天数）"""
+        from .models import HeatmapData
+        from datetime import datetime, timedelta
         
-        # 更新知识掌握度
-        self._update_knowledge_mastery()
+        # 获取最近30天的学习数据
+        thirty_days_ago = datetime.now() - timedelta(days=30)
+        recent_data = HeatmapData.objects.filter(
+            user=self.user,
+            date__gte=thirty_days_ago,
+            minutes__gt=0
+        )
         
-        return {
-            'learning_style': self.learning_style,
-            'learning_preference': self.learning_preference,
-            'knowledge_mastery': self.knowledge_mastery,
-            'total_learning_time': self._calculate_total_learning_time(),
-            'completed_chapters': self._get_completed_chapters_count()
+        return recent_data.count()
+    
+    def _calculate_average_score(self):
+        """计算平均练习成绩"""
+        if self.practice_records.exists():
+            return self.practice_records.filter(completed=True).aggregate(Avg('score'))['score__avg'] or 0
+        return 0
+    
+    def _determine_knowledge_level(self):
+        """确定知识水平"""
+        # 基于已完成章节数和平均成绩确定知识水平
+        completed_chapters = self._get_completed_chapters_count()
+        avg_score = self._calculate_average_score()
+        
+        if completed_chapters >= 50 and avg_score >= 80:
+            return '高级'
+        elif completed_chapters >= 20 and avg_score >= 60:
+            return '中级'
+        else:
+            return '初级'
+    
+    def _determine_interest_areas(self):
+        """确定主要兴趣领域"""
+        # 基于学习记录和练习记录确定兴趣领域
+        from collections import Counter
+        
+        interests = []
+        
+        # 从学习记录中提取兴趣
+        for record in self.learning_records:
+            # 从书籍和章节标题中提取关键词
+            book_title = record.book.title.lower()
+            chapter_title = record.chapter.title.lower()
+            
+            # 简单的兴趣关键词提取
+            for keyword in ['python', '数据分析', '编程', 'web', '前端', '后端', 'java', '机器学习', 'ai']:
+                if keyword in book_title or keyword in chapter_title:
+                    interests.append(keyword)
+        
+        # 从练习记录中提取兴趣
+        for record in self.practice_records:
+            book_title = record.book.title.lower() if record.book else ''
+            chapter_title = record.chapter.title.lower() if record.chapter else ''
+            
+            for keyword in ['python', '数据分析', '编程', 'web', '前端', '后端', 'java', '机器学习', 'ai']:
+                if keyword in book_title or keyword in chapter_title:
+                    interests.append(keyword)
+        
+        # 统计兴趣关键词
+        interest_counts = Counter(interests)
+        
+        # 返回前3个主要兴趣领域
+        return [interest for interest, count in interest_counts.most_common(3)]
+    
+    def _get_dominant_style(self):
+        """获取主导学习风格"""
+        visual_score = self.learning_style.visual_score
+        auditory_score = self.learning_style.auditory_score
+        reading_score = self.learning_style.reading_score
+        kinesthetic_score = self.learning_style.kinesthetic_score
+        
+        # 确定主导学习风格
+        scores = {
+            '视觉型': visual_score,
+            '听觉型': auditory_score,
+            '读写型': reading_score,
+            '动觉型': kinesthetic_score
         }
+        
+        dominant_style = max(scores, key=scores.get)
+        
+        # 如果各风格分数差异不大，返回综合型
+        if max(scores.values()) - min(scores.values()) < 0.2:
+            dominant_style = '综合型'
+        
+        return dominant_style
+    
+    def _update_learning_preferences(self, total_learning_time, completed_chapters, avg_score, interest_areas):
+        """更新学习偏好"""
+        # 如果兴趣领域不为空，更新用户学习偏好
+        if interest_areas and not self.learning_preference.interest_areas:
+            self.learning_preference.interest_areas = interest_areas
+            self.learning_preference.save()
+        
+        # 根据平均成绩调整难度偏好
+        if avg_score >= 85:
+            self.learning_preference.difficulty_preference = 'challenging'
+            self.learning_preference.save()
+        elif avg_score < 60:
+            self.learning_preference.difficulty_preference = 'easy'
+            self.learning_preference.save()
     
     def _analyze_learning_style(self):
         """分析用户学习风格"""
@@ -127,6 +290,10 @@ class RecommendationEngine:
         # 1. 获取所有激活的路线图
         roadmaps = RoadmapTemplate.objects.filter(is_active=True)
         
+        # 如果没有路线图，返回模拟推荐
+        if not roadmaps.exists():
+            return []
+        
         # 2. 基于用户画像计算匹配度
         roadmap_scores = []
         for roadmap in roadmaps:
@@ -143,14 +310,23 @@ class RecommendationEngine:
             reason = self._generate_recommendation_reason(roadmap)
             
             # 创建推荐记录
-            recommendation = LearningRecommendation.objects.create(
-                user=self.user,
-                recommendation_type='roadmap',
-                roadmap=roadmap,
-                score=score,
-                reason=reason
-            )
-            recommendations.append(recommendation)
+            try:
+                recommendation = LearningRecommendation.objects.create(
+                    user=self.user,
+                    recommendation_type='roadmap',
+                    roadmap=roadmap,
+                    score=score,
+                    reason=reason
+                )
+                recommendations.append(recommendation)
+            except Exception as e:
+                # 如果创建推荐记录失败，仍然添加推荐
+                class MockRecommendation:
+                    def __init__(self, roadmap, score, reason):
+                        self.roadmap = roadmap
+                        self.score = score
+                        self.reason = reason
+                recommendations.append(MockRecommendation(roadmap, score, reason))
         
         return recommendations
     

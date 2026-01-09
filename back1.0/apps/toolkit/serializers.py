@@ -31,7 +31,7 @@ class ToolSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'title', 'description', 'icon', 'category', 'category_name',
             'book_id', 'book_title', 'chapter_number', 'first_section_id',
-            'params', 'is_active'
+            'params', 'is_active', 'implementation_class'
         ]
 
 
@@ -50,9 +50,13 @@ class ExecutionHistorySerializer(serializers.ModelSerializer):
 
 class ToolRunSerializer(serializers.Serializer):
     """工具运行参数序列化器"""
-    parameters = serializers.JSONField(required=True, help_text="工具执行参数")
+    parameters = serializers.JSONField(required=True, help_text="工具执行参数", allow_null=False)
     
     def validate_parameters(self, value):
+        """验证参数格式"""
+        if value is None:
+            raise serializers.ValidationError("参数不能为空")
         if not isinstance(value, dict):
             raise serializers.ValidationError("参数必须是JSON对象")
+        # 允许空字典，由工具引擎自己验证必需参数
         return value

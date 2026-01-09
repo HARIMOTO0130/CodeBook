@@ -632,35 +632,21 @@ export default {
       monaco.editor.setModelLanguage(editor.getModel(), newLanguage);
       updateLanguageInfo();
       
-      // 直接使用本地默认模板，绕过可能有问题的getCodeTemplate
+      // 使用getDefaultTemplate获取完整模板
       try {
-        console.log(`[模板获取] 直接使用本地getDefaultTemplate获取 ${newLanguage} 模板`);
+        console.log(`[模板获取] 使用getDefaultTemplate获取 ${newLanguage} 模板`);
         const defaultTemplate = getDefaultTemplate(newLanguage);
         console.log(`[模板获取] 获取到模板长度: ${defaultTemplate ? defaultTemplate.length : 0} 字符`);
         
-        // 验证模板是否为空或默认Python模板
-        if (!defaultTemplate || defaultTemplate.includes('print("Hello, World!")')) {
-          console.log(`[模板警告] 可能获取到Python模板或空模板，尝试手动设置`);
-          // 手动设置常见语言的模板
-          const manualTemplates = {
-            javascript: '// JavaScript 默认模板\nconsole.log("Hello, World!");',
-            python: '# Python 默认模板\nprint("Hello, World!")',
-            java: '// Java 默认模板\npublic class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello, World!");\n    }\n}',
-            cpp: '// C++ 默认模板\n#include <iostream>\n\nint main() {\n    std::cout << "Hello, World!" << std::endl;\n    return 0;\n}',
-            c: '// C 默认模板\n#include <stdio.h>\n\nint main() {\n    printf("Hello, World!\n");\n    return 0;\n}',
-            csharp: '// C# 默认模板\nusing System;\n\nclass Program {\n    static void Main() {\n        Console.WriteLine("Hello, World!");\n    }\n}',
-            php: '<?php\n// PHP 默认模板\necho "Hello, World!";\n?>',
-            ruby: '# Ruby 默认模板\nputs "Hello, World!"'
-          };
-          
-          const finalTemplate = manualTemplates[newLanguage.toLowerCase()] || `// ${newLanguage} 默认模板\n`;
-          console.log(`[模板设置] 使用手动模板: ${newLanguage}`);
-          editor.setValue(finalTemplate);
-          emit('update:modelValue', finalTemplate);
-        } else {
+        if (defaultTemplate) {
           console.log(`[模板设置] 设置 ${newLanguage} 模板到编辑器`);
           editor.setValue(defaultTemplate);
           emit('update:modelValue', defaultTemplate);
+        } else {
+          console.log(`[模板警告] 获取到空模板，使用基本模板`);
+          const basicTemplate = `// ${newLanguage} 默认模板\n`;
+          editor.setValue(basicTemplate);
+          emit('update:modelValue', basicTemplate);
         }
       } catch (error) {
         console.error(`[模板错误] 设置模板失败:`, error);

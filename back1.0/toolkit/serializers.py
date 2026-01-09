@@ -50,7 +50,7 @@ class ExecutionHistorySerializer(serializers.ModelSerializer):
 
 class ToolRunSerializer(serializers.Serializer):
     """工具运行参数序列化器"""
-    parameters = serializers.JSONField(required=True, help_text="工具执行参数")
+    parameters = serializers.DictField(required=True, help_text="工具执行参数")
     
     def validate_parameters(self, value):
         if not isinstance(value, dict):

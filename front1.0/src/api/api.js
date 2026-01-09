@@ -1,5 +1,6 @@
-// 使用绝对路径并正确导出
-export const API_BASE_URL = 'http://127.0.0.1:8000/api';
+// 使用相对路径，让Vite代理处理
+// export const API_BASE_URL = 'http://127.0.0.1:8000/api';
+export const API_BASE_URL = '';
 
 const getToken = () => {
   try {
@@ -75,12 +76,34 @@ async function httpPost(path, body, requireAuth = false, method = 'POST') {
   
   const requestBody = { ...body };
   
+  // 添加详细的请求日志
+  console.log(`[HTTP ${method}] 请求URL:`, fullUrl);
+  console.log(`[HTTP ${method}] 请求头:`, headers);
+  console.log(`[HTTP ${method}] 请求体:`, requestBody);
+  console.log(`[HTTP ${method}] 请求体JSON字符串:`, JSON.stringify(requestBody));
+  
   const res = await fetch(fullUrl, {
     method,
     headers,
     body: JSON.stringify(requestBody),
     credentials: 'omit'
   });
+  
+  // 添加详细的响应日志
+  console.log(`[HTTP ${method}] 响应状态:`, res.status, res.statusText);
+  console.log(`[HTTP ${method}] 响应头:`, res.headers);
+  const responseText = await res.text();
+  console.log(`[HTTP ${method}] 响应体文本:`, responseText);
+  
+  // 尝试解析响应体
+  let responseData;
+  try {
+    responseData = JSON.parse(responseText);
+    console.log(`[HTTP ${method}] 响应体JSON:`, responseData);
+  } catch (e) {
+    console.log(`[HTTP ${method}] 响应体不是JSON:`, e.message);
+    responseData = null;
+  }
   
   if ((res.status === 401 || res.status === 403) && requireAuth) {
     // 只在需要认证的请求中处理认证错误
@@ -92,24 +115,23 @@ async function httpPost(path, body, requireAuth = false, method = 'POST') {
       window.location.href = `/?redirect=${redirect}`;
     }
     
-    throw new Error(`AUTH ${res.status}`);
+    const error = new Error(`AUTH ${res.status}`);
+    error.response = { status: res.status, data: responseData || {} };
+    error.error = `AUTH ${res.status}`;
+    throw error;
   }
   
   if (!res.ok) {
-    // 尝试获取响应体中的错误信息
-    try {
-      const errorData = await res.json().catch(() => ({}));
-      // 创建一个包含更多信息的错误对象
-      const error = new Error(`${method} ${path} ${res.status}`);
-      error.response = { status: res.status, data: errorData };
-      throw error;
-    } catch (parseError) {
-      // 如果解析失败，抛出原始错误
-      throw new Error(`${method} ${path} ${res.status}`);
-    }
+    // 创建一个包含更多信息的错误对象
+    const error = new Error(`${method} ${path} ${res.status}`);
+    // 存储完整的响应信息，便于前端处理
+    error.response = { status: res.status, data: responseData || {} };
+    // 兼容前端错误处理代码，添加detail属性
+    error.error = responseData?.error || responseData?.message || responseData?.detail || error.message;
+    throw error;
   }
   
-  return res.json().catch(() => ({}));
+  return responseData || {};
 }
 
 // 添加缺失的httpDelete和httpPut函数
@@ -316,10 +338,12 @@ export const api = {
   async updateUserPreferences(preferences) {
     // 前端传入为 camelCase，转换成后端的 snake_case
     const payload = {
-      ...(preferences.default_language !== undefined ? { default_language: preferences.default_language } : {}),
-      ...(preferences.code_theme !== undefined ? { code_theme: preferences.code_theme } : {}),
-      ...(preferences.auto_play_video !== undefined ? { auto_play_video: preferences.auto_play_video } : {}),
-      ...(preferences.keyboard_shortcuts !== undefined ? { keyboard_shortcuts: preferences.keyboard_shortcuts } : {})
+      ...(preferences.defaultLanguage !== undefined ? { default_language: preferences.defaultLanguage } : {}),
+      ...(preferences.editorTheme !== undefined ? { code_theme: preferences.editorTheme } : {}),
+      ...(preferences.autoPlayVideo !== undefined ? { auto_play_video: preferences.autoPlayVideo } : {}),
+      ...(preferences.enableKeyboardShortcuts !== undefined ? { keyboard_shortcuts: preferences.enableKeyboardShortcuts } : {}),
+      ...(preferences.showLineNumbers !== undefined ? { show_line_numbers: preferences.showLineNumbers } : {}),
+      ...(preferences.useVimMode !== undefined ? { use_vim_mode: preferences.useVimMode } : {})
     };
     return httpPut('/student/users/preferences/', payload, true);
   },
@@ -515,11 +539,15 @@ export const api = {
 
   // 学习记录
   async getLearningRecords() {
-    return httpGet('/learning/records/', true);
+    const response = await httpGet('/learning/records/', true);
+    // 确保获取到的数据是数组
+    return Array.isArray(response) ? response : (response && response.data && Array.isArray(response.data) ? response.data : []);
   },
   async getPracticeRecords() {
     // 修改为学习模块下的练习记录API路径
-    return httpGet('/learning/practice-records/', true);
+    const response = await httpGet('/learning/practice-records/', true);
+    // 确保获取到的数据是数组
+    return Array.isArray(response) ? response : (response && response.results && Array.isArray(response.results) ? response.results : []);
   },
   
   // 获取练习题列表 - 直接从学习模块获取
@@ -629,6 +657,77 @@ export const api = {
     return httpGet(`/learning/roadmaps/?${params.toString()}`, false)
   },
   
+  // 个性化学习路径（基于知识图谱和大模型）
+  async generatePersonalizedPath(learningGoal, maxNodes = 10) {
+    // 对应后端 /learning/personalized-path/generate/
+    return httpPost(
+      '/learning/personalized-path/generate/',
+      {
+        learning_goal: learningGoal,
+        max_nodes: maxNodes
+      },
+      true
+    );
+  },
+
+  // 基于知识图谱 + LLM 的个性化学习建议
+  async generatePersonalizedSuggestions(payload) {
+    // 对应后端 /learning/recommendations/personalized-suggestions/
+    return httpPost(
+      '/learning/recommendations/personalized-suggestions/',
+      payload,
+      true
+    );
+  },
+
+  // 知识图谱节点列表
+  async getKnowledgeNodes(params = {}) {
+    // 对应后端 /learning/knowledge-graph/nodes/
+    const search = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        search.append(key, value);
+      }
+    });
+    const query = search.toString();
+    const url = query
+      ? `/learning/knowledge-graph/nodes/?${query}`
+      : '/learning/knowledge-graph/nodes/';
+    return httpGet(url, true);
+  },
+
+  // 知识关系全部列表（前端自行过滤）
+  async getKnowledgeRelationsAll(params = {}) {
+    // 对应后端 /learning/knowledge-graph/relations/
+    const search = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        search.append(key, value);
+      }
+    });
+    const query = search.toString();
+    const url = query
+      ? `/learning/knowledge-graph/relations/?${query}`
+      : '/learning/knowledge-graph/relations/';
+    return httpGet(url, true);
+  },
+
+  // 学习偏好（与学习推荐模块绑定，而不是用户基础信息）
+  async getLearningPreference() {
+    // 对应后端 /learning/recommendations/preference/
+    return httpGet('/learning/recommendations/preference/', true);
+  },
+
+  async updateLearningPreference(preference) {
+    // 对应后端 /learning/recommendations/update_preference/
+    // 这里直接按后端 serializer 需要的 snake_case 字段传递
+    return httpPost(
+      '/learning/recommendations/update_preference/',
+      preference,
+      true
+    );
+  },
+
   // 删除书籍
   async deleteBook(bookId) {
     const fullUrl = `${API_BASE_URL}/books/${bookId}/`;
@@ -807,6 +906,18 @@ export const api = {
   
   async restoreNoteVersion(noteId, versionId) {
     return httpPost(`/student/learning/notes/${noteId}/restore_version/`, { version_id: versionId }, true);
+  },
+  
+  // 工具包相关API
+  async getTools() {
+    console.log('[API] 调用getTools，URL: /api/toolkit/tools/');
+    return httpGet('/api/toolkit/tools/', false);
+  },
+  
+  async runTool(toolId, params) {
+    const url = `/api/toolkit/tools/${toolId}/run/`;
+    console.log('[API] 调用runTool，URL:', url, '参数:', { parameters: params });
+    return httpPost(url, { parameters: params }, false);
   },
   
   async addNoteAttachment(noteId, file) {

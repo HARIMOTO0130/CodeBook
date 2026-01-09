@@ -74,8 +74,6 @@ class FileRenameTool(BaseToolEngine):
         
         if not params.get('folderPath'):
             errors.append("请输入文件夹路径")
-        elif not os.path.exists(params['folderPath']):
-            errors.append("文件夹路径不存在")
         
         if not params.get('pattern'):
             errors.append("请输入命名模式")
@@ -187,8 +185,6 @@ class ExcelMergeTool(BaseToolEngine):
         
         if not params.get('folderPath'):
             errors.append("请输入Excel文件所在文件夹")
-        elif not os.path.exists(params['folderPath']):
-            errors.append("文件夹路径不存在")
         
         if not params.get('outputFileName'):
             errors.append("请输入输出文件名")

@@ -39,7 +39,7 @@ def note_permission_required(action_name):
 from bs4 import BeautifulSoup
 from django.utils import timezone
 from apps.books.models import Book, Chapter
-from .models import LearningRecord, PracticeRecord, HeatmapData, WrongQuestion, RoadmapTemplate, RoadmapStage, UserLearningPath, UserPathStage, Note, NoteTag, Exercise, JupyterDocument, LearningStyle, KnowledgeMastery, LearningRecommendation, LearningPreference
+from .models import LearningRecord, PracticeRecord, HeatmapData, WrongQuestion, RoadmapTemplate, RoadmapStage, UserLearningPath, UserPathStage, Note, NoteTag, Exercise, JupyterDocument, LearningStyle, KnowledgeMastery, LearningRecommendation, LearningPreference, KnowledgeNode, KnowledgeRelation
 from .serializers import (
     LearningRecordSerializer, 
     LearningActivitySerializer,
@@ -69,7 +69,9 @@ from .serializers import (
     LearningRecommendationSerializer,
     FeedbackRecommendationSerializer, 
     LearningPreferenceSerializer,
-    UpdateLearningPreferenceSerializer
+    UpdateLearningPreferenceSerializer,
+    KnowledgeNodeSerializer,
+    KnowledgeRelationSerializer
 )
 from .recommendation_engine import RecommendationEngine
 from datetime import datetime as dt_datetime
@@ -1179,6 +1181,707 @@ class WrongQuestionViewSet(viewsets.ModelViewSet):
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
+# 个性化学习路径相关视图
+class PersonalizedLearningPathAPIView(APIView):
+    """个性化学习路径API"""
+    permission_classes = [IsAuthenticated]
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # 初始化个性化学习路径生成器
+        from .personalized_learning_path import PersonalizedLearningPathGenerator
+        self.path_generator = PersonalizedLearningPathGenerator()
+    
+    @decorators.api_view(['POST'])
+    @decorators.permission_classes([IsAuthenticated])
+    def generate_path(request):
+        """生成个性化学习路径
+        
+        请求参数：
+        - learning_goal: 学习目标
+        - max_nodes: 最大节点数量（可选，默认10）
+        
+        返回：
+        - path: 学习路径节点列表
+        - explanation: 学习路径解释
+        - suggestions: 个性化学习建议
+        - user_profile: 用户画像
+        """
+        from .personalized_learning_path import PersonalizedLearningPathGenerator
+        path_generator = PersonalizedLearningPathGenerator()
+        
+        learning_goal = request.data.get('learning_goal', '')
+        max_nodes = request.data.get('max_nodes', 10)
+        
+        if not learning_goal:
+            return Response({'error': '学习目标不能为空'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            result = path_generator.generate_learning_path(request.user, learning_goal, max_nodes)
+            # 如果生成结果中只包含错误信息，回退到简化路径而不是返回500
+            if isinstance(result, dict) and result.get('error'):
+                raise Exception(result.get('error'))
+            return Response(result)
+        except Exception as e:
+            # 避免前端直接收到500，这里提供一个简化的兜底学习路径
+            print(f"[PersonalizedLearningPathAPIView] generate_path 出错，使用回退方案: {e}")
+            fallback_path = [
+                {
+                    "id": 1,
+                    "title": "明确学习目标",
+                    "type": "concept",
+                    "level": 1,
+                    "difficulty": 1.0,
+                    "description": f"根据您的目标「{learning_goal}」梳理核心知识点。"
+                },
+                {
+                    "id": 2,
+                    "title": "打牢基础知识",
+                    "type": "concept",
+                    "level": 1,
+                    "difficulty": 1.5,
+                    "description": "通过基础教材和示例练习，建立对关键概念的初步理解。"
+                },
+                {
+                    "id": 3,
+                    "title": "结合案例进行实践",
+                    "type": "skill",
+                    "level": 2,
+                    "difficulty": 2.0,
+                    "description": "选择1-2个与目标相关的小项目，将知识应用到实际问题中。"
+                }
+            ][: max_nodes]
+            
+            fallback_suggestions = [
+                "建议先用 1-2 天时间明确学习目标，并拆解为可执行的小任务。",
+                "建议每天保持至少 30 分钟的学习时间，形成稳定节奏。",
+                "建议在实践过程中主动记录问题，并及时查阅资料或向老师/同学请教。"
+            ]
+            
+            return Response(
+                {
+                    "path": fallback_path,
+                    "explanation": "由于智能路径生成服务暂时不可用，系统为您生成了一条基础学习路径，帮助您循序渐进地开展学习。",
+                    "suggestions": fallback_suggestions,
+                    "user_profile": {}
+                },
+                status=status.HTTP_200_OK,
+            )
+    
+    @decorators.api_view(['POST'])
+    @decorators.permission_classes([IsAuthenticated])
+    def update_path(request):
+        """更新学习路径
+        
+        请求参数：
+        - path: 当前学习路径
+        - performance: 学习表现数据
+        
+        返回：
+        - updated_path: 更新后的学习路径
+        """
+        from .personalized_learning_path import PersonalizedLearningPathGenerator
+        path_generator = PersonalizedLearningPathGenerator()
+        
+        path = request.data.get('path', [])
+        performance = request.data.get('performance', {})
+        
+        if not path:
+            return Response({'error': '学习路径不能为空'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            updated_path = path_generator.update_learning_path(request.user, path, performance)
+            return Response({'updated_path': updated_path})
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @decorators.api_view(['POST'])
+    @decorators.permission_classes([IsAuthenticated])
+    def generate_feedback(request):
+        """生成学习反馈
+        
+        请求参数：
+        - performance: 学习表现数据
+        
+        返回：
+        - feedback: 学习反馈
+        - improvement_suggestions: 改进建议
+        """
+        from .personalized_learning_path import PersonalizedLearningPathGenerator
+        path_generator = PersonalizedLearningPathGenerator()
+        
+        performance = request.data.get('performance', {})
+        
+        try:
+            result = path_generator.generate_learning_feedback(request.user, performance)
+            return Response(result)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @decorators.api_view(['POST'])
+    @decorators.permission_classes([IsAuthenticated])
+    def generate_smart_path(request):
+        """生成智能推荐学习路径图（类似mo平台）
+        
+        请求参数：
+        - learning_goal: 学习目标（可选，默认为"AI学习"）
+        - max_nodes: 最大节点数量（可选，默认10）
+        
+        返回：
+        - nodes: 路径节点列表，包含节点信息和位置坐标
+        - edges: 节点之间的连接关系
+        - explanation: 路径解释
+        - suggestions: 个性化学习建议
+        """
+        from .personalized_learning_path import PersonalizedLearningPathGenerator
+        path_generator = PersonalizedLearningPathGenerator()
+        
+        learning_goal = request.data.get('learning_goal', 'AI学习')
+        max_nodes = request.data.get('max_nodes', 10)
+        
+        try:
+            # 生成个性化学习路径
+            result = path_generator.generate_learning_path(request.user, learning_goal, max_nodes)
+            path_nodes = result.get('path', [])
+            
+            if not path_nodes:
+                return Response({
+                    'nodes': [],
+                    'edges': [],
+                    'explanation': '暂时无法生成学习路径，请稍后重试',
+                    'suggestions': []
+                }, status=status.HTTP_200_OK)
+            
+            # 构建节点数据（包含位置信息，用于可视化）
+            nodes = []
+            for i, node in enumerate(path_nodes):
+                # 计算节点位置（类似mo平台的布局）
+                # 使用层级布局：节点按顺序排列，每层可以有多个节点
+                level = node.get('level', i + 1)
+                nodes_in_level = sum(1 for n in path_nodes if n.get('level', 0) == level)
+                node_index_in_level = sum(1 for n in path_nodes[:i] if n.get('level', 0) == level)
+                
+                # 计算x坐标（水平位置）
+                x = 150 + level * 250  # 每层间隔250px
+                # 计算y坐标（垂直位置，同一层的节点垂直排列）
+                y = 200 + node_index_in_level * 120  # 每个节点间隔120px
+                
+                nodes.append({
+                    'id': node.get('id', i + 1),
+                    'title': node.get('title', f'节点{i+1}'),
+                    'type': node.get('type', 'concept'),
+                    'level': level,
+                    'difficulty': node.get('difficulty', 1.0),
+                    'importance': node.get('importance', 5.0),
+                    'description': node.get('description', ''),
+                    'professional_group': node.get('professional_group', 'science'),
+                    'tags': node.get('tags', []),
+                    'x': x,
+                    'y': y,
+                    'status': 'pending'  # pending, current, completed
+                })
+            
+            # 构建边数据（节点之间的连接）
+            edges = []
+            for i in range(len(nodes) - 1):
+                edges.append({
+                    'source': nodes[i]['id'],
+                    'target': nodes[i + 1]['id'],
+                    'type': 'next',  # next, prerequisite, related
+                    'strength': 1.0
+                })
+            
+            return Response({
+                'nodes': nodes,
+                'edges': edges,
+                'explanation': result.get('explanation', '为您生成了个性化学习路径'),
+                'suggestions': result.get('suggestions', []),
+                'user_profile': result.get('user_profile', {})
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            print(f"生成智能推荐路径失败: {e}")
+            # 返回一个简化的回退路径
+            fallback_nodes = [
+                {
+                    'id': 1,
+                    'title': 'Python基础',
+                    'type': 'concept',
+                    'level': 1,
+                    'difficulty': 1.0,
+                    'importance': 5.0,
+                    'description': '掌握Python编程基础',
+                    'x': 150,
+                    'y': 200,
+                    'status': 'pending'
+                },
+                {
+                    'id': 2,
+                    'title': '机器学习算法',
+                    'type': 'concept',
+                    'level': 2,
+                    'difficulty': 2.0,
+                    'importance': 4.5,
+                    'description': '学习经典机器学习算法',
+                    'x': 400,
+                    'y': 200,
+                    'status': 'pending'
+                },
+                {
+                    'id': 3,
+                    'title': '深度学习',
+                    'type': 'concept',
+                    'level': 3,
+                    'difficulty': 3.0,
+                    'importance': 4.0,
+                    'description': '深入学习神经网络和深度学习',
+                    'x': 650,
+                    'y': 200,
+                    'status': 'pending'
+                }
+            ]
+            fallback_edges = [
+                {'source': 1, 'target': 2, 'type': 'next', 'strength': 1.0},
+                {'source': 2, 'target': 3, 'type': 'next', 'strength': 1.0}
+            ]
+            
+            return Response({
+                'nodes': fallback_nodes,
+                'edges': fallback_edges,
+                'explanation': '由于智能路径生成服务暂时不可用，系统为您生成了一条基础学习路径',
+                'suggestions': [
+                    '建议按照从基础到高级的顺序学习',
+                    '定期复习已学内容，加深理解',
+                    '多做实践练习，巩固所学知识'
+                ],
+                'user_profile': {}
+            }, status=status.HTTP_200_OK)
+
+
+# 知识图谱相关视图
+class KnowledgeGraphAPIView(APIView):
+    """知识图谱API"""
+    permission_classes = [IsAuthenticated]
+    
+    @decorators.api_view(['GET'])
+    @decorators.permission_classes([IsAuthenticated])
+    def get_nodes(request):
+        """获取知识节点列表
+        
+        查询参数：
+        - graph_id: 知识图谱ID（可选）
+        - type: 节点类型（可选）
+        - level: 节点层级（可选）
+        - professional_group: 专业组（可选）
+        
+        返回：
+        - nodes: 知识节点列表
+        """
+        from .models import KnowledgeNode
+        
+        graph_id = request.query_params.get('graph_id')
+        node_type = request.query_params.get('type')
+        level = request.query_params.get('level')
+        professional_group = request.query_params.get('professional_group')
+        
+        queryset = KnowledgeNode.objects.all()
+        
+        if graph_id:
+            queryset = queryset.filter(graph_id=graph_id)
+        if node_type:
+            queryset = queryset.filter(type=node_type)
+        if level:
+            queryset = queryset.filter(level=level)
+        if professional_group:
+            queryset = queryset.filter(professional_group=professional_group)
+        
+        nodes = []
+        for node in queryset:
+            nodes.append({
+                "id": node.id,
+                "title": node.title,
+                "type": node.type,
+                "level": node.level,
+                "difficulty": node.difficulty,
+                "importance": node.importance,
+                "description": node.description,
+                "professional_group": node.professional_group,
+                "tags": node.tags
+            })
+        
+        return Response({'nodes': nodes})
+    
+    @decorators.api_view(['GET'])
+    @decorators.permission_classes([IsAuthenticated])
+    def get_relations(request):
+        """获取知识关系列表
+        
+        查询参数：
+        - graph_id: 知识图谱ID（可选）
+        - relation_type: 关系类型（可选）
+        
+        返回：
+        - relations: 知识关系列表
+        """
+        from .models import KnowledgeRelation
+        
+        graph_id = request.query_params.get('graph_id')
+        relation_type = request.query_params.get('relation_type')
+        
+        queryset = KnowledgeRelation.objects.all()
+        
+        if graph_id:
+            queryset = queryset.filter(graph_id=graph_id)
+        if relation_type:
+            queryset = queryset.filter(relation_type=relation_type)
+        
+        relations = []
+        for relation in queryset:
+            relations.append({
+                "id": relation.id,
+                "source": relation.source.id,
+                "target": relation.target.id,
+                "relation_type": relation.relation_type,
+                "strength": relation.strength,
+                "source_title": relation.source.title,
+                "target_title": relation.target.title
+            })
+        
+        return Response({'relations': relations})
+    
+    @decorators.api_view(['POST'])
+    @decorators.permission_classes([IsAuthenticated])
+    def add_node(request):
+        """添加知识节点
+        
+        请求参数：
+        - title: 节点标题
+        - type: 节点类型
+        - level: 节点层级
+        - difficulty: 难度系数
+        - importance: 重要程度
+        - description: 节点描述
+        - professional_group: 专业组
+        - tags: 节点标签
+        - graph_id: 知识图谱ID
+        
+        返回：
+        - node: 添加的知识节点
+        """
+        from .models import KnowledgeNode, KnowledgeGraph
+        
+        graph_id = request.data.get('graph_id')
+        title = request.data.get('title')
+        node_type = request.data.get('type')
+        level = request.data.get('level', 1)
+        difficulty = request.data.get('difficulty', 3.0)
+        importance = request.data.get('importance', 3.0)
+        description = request.data.get('description', '')
+        professional_group = request.data.get('professional_group', 'science')
+        tags = request.data.get('tags', [])
+        
+        if not graph_id or not title or not node_type:
+            return Response({'error': 'graph_id、title和type不能为空'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            graph = KnowledgeGraph.objects.get(id=graph_id)
+            node = KnowledgeNode.objects.create(
+                graph=graph,
+                title=title,
+                type=node_type,
+                level=level,
+                difficulty=difficulty,
+                importance=importance,
+                description=description,
+                professional_group=professional_group,
+                tags=tags
+            )
+            
+            return Response({
+                "id": node.id,
+                "title": node.title,
+                "type": node.type,
+                "level": node.level,
+                "difficulty": node.difficulty,
+                "importance": node.importance,
+                "description": node.description,
+                "professional_group": node.professional_group,
+                "tags": node.tags
+            })
+        except KnowledgeGraph.DoesNotExist:
+            return Response({'error': '知识图谱不存在'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @decorators.api_view(['POST'])
+    @decorators.permission_classes([IsAuthenticated])
+    def add_relation(request):
+        """添加知识关系
+        
+        请求参数：
+        - graph_id: 知识图谱ID
+        - source_id: 源节点ID
+        - target_id: 目标节点ID
+        - relation_type: 关系类型
+        - strength: 关系强度（可选，默认1.0）
+        
+        返回：
+        - relation: 添加的知识关系
+        """
+        from .models import KnowledgeRelation, KnowledgeGraph, KnowledgeNode
+        
+        graph_id = request.data.get('graph_id')
+        source_id = request.data.get('source_id')
+        target_id = request.data.get('target_id')
+        relation_type = request.data.get('relation_type')
+        strength = request.data.get('strength', 1.0)
+        
+        if not graph_id or not source_id or not target_id or not relation_type:
+            return Response({'error': 'graph_id、source_id、target_id和relation_type不能为空'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            graph = KnowledgeGraph.objects.get(id=graph_id)
+            source = KnowledgeNode.objects.get(id=source_id)
+            target = KnowledgeNode.objects.get(id=target_id)
+            
+            relation = KnowledgeRelation.objects.create(
+                graph=graph,
+                source=source,
+                target=target,
+                relation_type=relation_type,
+                strength=strength
+            )
+            
+            return Response({
+                "id": relation.id,
+                "source": relation.source.id,
+                "target": relation.target.id,
+                "relation_type": relation.relation_type,
+                "strength": relation.strength,
+                "source_title": relation.source.title,
+                "target_title": relation.target.title
+            })
+        except KnowledgeGraph.DoesNotExist:
+            return Response({'error': '知识图谱不存在'}, status=status.HTTP_404_NOT_FOUND)
+        except KnowledgeNode.DoesNotExist:
+            return Response({'error': '源节点或目标节点不存在'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @decorators.api_view(['POST'])
+    @decorators.permission_classes([IsAuthenticated])
+    def auto_build(request):
+        """自动构建知识图谱
+        
+        请求参数：
+        - documents: 文档列表，每个文档包含 title 和 content
+        - graph_name: 知识图谱名称（可选）
+        - merge_existing: 是否与现有图谱合并（可选，默认True）
+        - use_llm: 是否使用大模型辅助（可选，默认True）
+        
+        返回：
+        - graph_id: 新建或更新的知识图谱ID
+        - stats: 构建统计信息
+        """
+        from .knowledge_graph_auto_builder import KnowledgeGraphAutoBuilder
+        
+        documents = request.data.get('documents', [])
+        graph_name = request.data.get('graph_name')
+        merge_existing = request.data.get('merge_existing', True)
+        use_llm = request.data.get('use_llm', True)
+        
+        if not documents:
+            return Response({'error': '文档列表不能为空'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            # 初始化自动构建器
+            builder = KnowledgeGraphAutoBuilder(use_llm=use_llm)
+            
+            # 执行构建
+            stats = builder.build_from_documents(
+                documents=documents,
+                graph_name=graph_name,
+                merge_existing=merge_existing
+            )
+            
+            return Response({
+                'graph_id': builder.graph_id,
+                'stats': stats,
+                'message': '知识图谱自动构建完成'
+            })
+        except Exception as e:
+            logger.error(f"自动构建知识图谱失败: {e}")
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @decorators.api_view(['POST'])
+    @decorators.permission_classes([IsAuthenticated])
+    def incremental_build(request):
+        """增量构建知识图谱
+        
+        请求参数：
+        - graph_id: 知识图谱ID
+        - new_documents: 新增文档列表
+        
+        返回：
+        - stats: 构建统计信息
+        """
+        from .knowledge_graph_auto_builder import KnowledgeGraphAutoBuilder
+        
+        graph_id = request.data.get('graph_id')
+        new_documents = request.data.get('new_documents', [])
+        
+        if not graph_id:
+            return Response({'error': 'graph_id不能为空'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not new_documents:
+            return Response({'error': '新增文档列表不能为空'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            # 初始化自动构建器
+            builder = KnowledgeGraphAutoBuilder(graph_id=graph_id, use_llm=True)
+            
+            # 执行增量构建
+            stats = builder.build_from_documents(
+                documents=new_documents,
+                merge_existing=True
+            )
+            
+            return Response({
+                'stats': stats,
+                'message': '知识图谱增量构建完成'
+            })
+        except Exception as e:
+            logger.error(f"增量构建知识图谱失败: {e}")
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @decorators.api_view(['GET'])
+    @decorators.permission_classes([IsAuthenticated])
+    def check_quality(request):
+        """检查知识图谱质量
+        
+        查询参数：
+        - graph_id: 知识图谱ID
+        
+        返回：
+        - quality_report: 质量报告
+        """
+        from .knowledge_graph_auto_builder import KnowledgeGraphQualityChecker
+        
+        graph_id = request.query_params.get('graph_id')
+        
+        if not graph_id:
+            # 使用默认图谱
+            graph = KnowledgeGraph.objects.filter(is_active=True).first()
+            if graph:
+                graph_id = graph.id
+            else:
+                return Response({'error': '没有可用的知识图谱'}, status=status.HTTP_404_NOT_FOUND)
+        
+        try:
+            checker = KnowledgeGraphQualityChecker(int(graph_id))
+            report = checker.generate_quality_report()
+            return Response(report)
+        except Exception as e:
+            logger.error(f"检查知识图谱质量失败: {e}")
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @decorators.api_view(['POST'])
+    @decorators.permission_classes([IsAuthenticated])
+    def build_from_texts(request):
+        """从文本语料库构建知识图谱（简化接口）
+        
+        请求参数：
+        - texts: 文本列表
+        - graph_name: 知识图谱名称（可选）
+        
+        返回：
+        - graph_id: 新建知识图谱ID
+        - stats: 构建统计信息
+        """
+        from .knowledge_graph_auto_builder import build_knowledge_graph_from_texts
+        
+        texts = request.data.get('texts', [])
+        graph_name = request.data.get('graph_name')
+        
+        if not texts:
+            return Response({'error': '文本列表不能为空'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            stats = build_knowledge_graph_from_texts(texts, graph_name)
+            return Response({
+                'stats': stats,
+                'message': '知识图谱构建完成'
+            })
+        except Exception as e:
+            logger.error(f"从文本构建知识图谱失败: {e}")
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# 大模型相关视图
+class LLMAPIView(APIView):
+    """大模型API"""
+    permission_classes = [IsAuthenticated]
+    
+    @decorators.api_view(['POST'])
+    @decorators.permission_classes([IsAuthenticated])
+    def generate_response(request):
+        """调用大模型生成响应
+        
+        请求参数：
+        - prompt: 提示词
+        - temperature: 温度参数（可选，默认0.7）
+        - max_tokens: 最大tokens数（可选，默认1000）
+        - context: 上下文信息（可选）
+        
+        返回：
+        - response: 大模型生成的响应
+        """
+        from .llm_integration import LLMService
+        
+        prompt = request.data.get('prompt', '')
+        temperature = request.data.get('temperature', 0.7)
+        max_tokens = request.data.get('max_tokens', 1000)
+        context = request.data.get('context', {})
+        
+        if not prompt:
+            return Response({'error': '提示词不能为空'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            llm_service = LLMService()
+            response = llm_service.generate_response(prompt, temperature, max_tokens, context)
+            return Response({'response': response})
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @decorators.api_view(['POST'])
+    @decorators.permission_classes([IsAuthenticated])
+    def extract_knowledge(request):
+        """从文本中提取知识节点
+        
+        请求参数：
+        - text: 输入文本
+        
+        返回：
+        - nodes: 提取的知识节点列表
+        - relations: 提取的知识关系列表
+        """
+        from .llm_integration import LLMService
+        
+        text = request.data.get('text', '')
+        
+        if not text:
+            return Response({'error': '文本不能为空'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            llm_service = LLMService()
+            result = llm_service.extract_knowledge_nodes(text)
+            return Response(result)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
 class RoadmapTemplateViewSet(viewsets.ReadOnlyModelViewSet):
     """路线图模板视图集"""
     queryset = RoadmapTemplate.objects.filter(is_active=True).prefetch_related('stages__roadmap_books__book')
@@ -1498,8 +2201,17 @@ class UserLearningPathViewSet(viewsets.GenericViewSet, viewsets.mixins.ListModel
         """生成个性化推荐理由"""
         # 根据学习风格生成推荐理由
         learning_style = user_profile.get('learning_style', {})
-        visual_score = learning_style.get('visual_score', 0)
-        auditory_score = learning_style.get('auditory_score', 0)
+        
+        # 检查learning_style是对象还是字典
+        visual_score = 0
+        auditory_score = 0
+        
+        if hasattr(learning_style, 'visual_score'):  # 如果是LearningStyle对象
+            visual_score = getattr(learning_style, 'visual_score', 0)
+            auditory_score = getattr(learning_style, 'auditory_score', 0)
+        else:  # 如果是字典
+            visual_score = learning_style.get('visual_score', 0)
+            auditory_score = learning_style.get('auditory_score', 0)
         
         if visual_score > auditory_score:
             return f"此路线图包含丰富的视觉学习资源，非常适合您的视觉学习风格"
@@ -1514,11 +2226,26 @@ class UserLearningPathViewSet(viewsets.GenericViewSet, viewsets.mixins.ListModel
         
         # 基于学习风格添加特征
         learning_style = user_profile.get('learning_style', {})
-        if learning_style.get('visual_score', 0) > 0.7:
+        
+        # 检查learning_style是对象还是字典
+        visual_score = 0
+        auditory_score = 0
+        kinesthetic_score = 0
+        
+        if hasattr(learning_style, 'visual_score'):  # 如果是LearningStyle对象
+            visual_score = getattr(learning_style, 'visual_score', 0)
+            auditory_score = getattr(learning_style, 'auditory_score', 0)
+            kinesthetic_score = getattr(learning_style, 'kinesthetic_score', 0)
+        else:  # 如果是字典
+            visual_score = learning_style.get('visual_score', 0)
+            auditory_score = learning_style.get('auditory_score', 0)
+            kinesthetic_score = learning_style.get('kinesthetic_score', 0)
+        
+        if visual_score > 0.7:
             features.append("视觉学习优化")
-        if learning_style.get('auditory_score', 0) > 0.7:
+        if auditory_score > 0.7:
             features.append("听觉学习优化")
-        if learning_style.get('kinesthetic_score', 0) > 0.7:
+        if kinesthetic_score > 0.7:
             features.append("实践导向")
         
         # 基于难度偏好添加特征
@@ -1799,7 +2526,8 @@ class LearningRecommendationViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         # 只返回当前用户的推荐
-        return LearningRecommendation.objects.filter(user=self.request.user).order_by('-created_at')
+        # 使用模型中实际存在的排序字段，避免无效字段导致的错误
+        return LearningRecommendation.objects.filter(user=self.request.user).order_by('-recommended_at')
     
     @action(detail=False, methods=['post'])
     def update_preference(self, request):
@@ -1877,63 +2605,276 @@ class LearningRecommendationViewSet(viewsets.ModelViewSet):
             'completed_chapters': profile_data['completed_chapters']
         }, status=status.HTTP_200_OK)
     
+    @action(detail=False, methods=['post'])
+    def generate_personalized_suggestions(self, request):
+        """生成基于知识图谱和豆包的个性化学习建议
+        
+        请求参数：
+        - knowledge_node_ids: 相关知识节点ID列表（可选）
+        - learning_goal: 学习目标（可选）
+        - context: 上下文信息（可选）
+        
+        返回：
+        - suggestions: 个性化学习建议列表
+        - explanation: 建议生成说明
+        """
+        from .llm_integration import LLMService
+        from .personalized_learning_path import PersonalizedLearningPathGenerator
+        
+        try:
+            # 获取请求参数
+            knowledge_node_ids = request.data.get('knowledge_node_ids', [])
+            learning_goal = request.data.get('learning_goal', '')
+            context = request.data.get('context', {})
+            
+            # 初始化服务
+            path_generator = PersonalizedLearningPathGenerator()
+            llm_service = LLMService()
+            
+            # 获取用户画像
+            user_profile = path_generator._get_user_profile(request.user)
+            
+            # 获取相关知识节点信息
+            knowledge_nodes = []
+            if knowledge_node_ids:
+                from .models import KnowledgeNode
+                knowledge_nodes = KnowledgeNode.objects.filter(id__in=knowledge_node_ids)
+            
+            # 构建上下文信息
+            context_info = {
+                'user_profile': user_profile,
+                'knowledge_nodes': [{
+                    'id': node.id,
+                    'title': node.title,
+                    'type': node.type,
+                    'difficulty': node.difficulty,
+                    'description': node.description
+                } for node in knowledge_nodes],
+                'learning_goal': learning_goal
+            }
+            
+            # 构建知识图谱
+            professional_group = user_profile.get('professional_group', 'science')
+            path_generator.kg_engine.build_knowledge_graph(professional_group=professional_group)
+            
+            # 生成学习路径
+            max_nodes = 10
+            learning_path = path_generator.kg_engine.get_recommended_path(user_profile, learning_goal, max_nodes)
+            
+            # 如果没有生成路径，使用默认路径
+            if not learning_path:
+                learning_path = path_generator._create_default_path(learning_goal, max_nodes)
+            
+            # 生成个性化建议
+            suggestions = path_generator._generate_personalized_suggestions(learning_path, user_profile)
+            
+            # 确保建议数量足够
+            if len(suggestions) < 5:
+                # 构建详细的提示词
+                prompt = f"""你是一位专业的教育顾问，请根据用户的学习情况生成个性化学习建议：
+                
+                用户画像：
+                - 专业：{user_profile.get('professional_group', '未指定')}
+                - 知识水平：{user_profile.get('knowledge_level', '中级')}
+                - 学习风格：{user_profile.get('learning_style', {})}
+                - 兴趣领域：{user_profile.get('interest_areas', [])}
+                - 当前知识：{user_profile.get('current_knowledge', [])}
+                - 薄弱知识点：{user_profile.get('weak_knowledge', [])}
+                
+                学习路径：
+                {chr(10).join([f"{i+1}. {node['title']}（{node['type']}，难度：{node['difficulty']}）：{node['description']}" for i, node in enumerate(learning_path)])}
+                
+                学习目标：{learning_goal}
+                
+                请生成8条具体、可操作的个性化学习建议，每条建议以"建议"开头，涵盖不同方面（学习方法、资源选择、时间管理等）。
+                """
+                
+                # 调用豆包大模型
+                llm_suggestions = llm_service.generate_response(prompt, temperature=0.7, max_tokens=1500)
+                
+                # 解析建议
+                llm_suggestions_list = []
+                for line in llm_suggestions.strip().split('\n'):
+                    if line.startswith('建议'):
+                        llm_suggestions_list.append(line.strip())
+                
+                # 合并建议
+                suggestions = list(set(suggestions + llm_suggestions_list))[:8]
+            
+            return Response({
+                'suggestions': suggestions,
+                'explanation': '基于您的知识图谱和学习情况，结合AI生成的个性化学习建议',
+                'user_profile': user_profile
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            print(f"生成个性化建议失败: {e}")
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    def _get_personalized_features(self, roadmap, user_profile):
+        """获取路线图的个性化特征"""
+        features = []
+        
+        # 基于学习风格推荐特征
+        learning_style = user_profile.get('learning_style', {})
+        
+        # 检查learning_style是对象还是字典
+        visual_score = 0
+        auditory_score = 0
+        reading_score = 0
+        kinesthetic_score = 0
+        
+        if hasattr(learning_style, 'visual_score'):  # 如果是LearningStyle对象
+            visual_score = getattr(learning_style, 'visual_score', 0)
+            auditory_score = getattr(learning_style, 'auditory_score', 0)
+            reading_score = getattr(learning_style, 'reading_score', 0)
+            kinesthetic_score = getattr(learning_style, 'kinesthetic_score', 0)
+        else:  # 如果是字典
+            visual_score = learning_style.get('visual_score', 0)
+            auditory_score = learning_style.get('auditory_score', 0)
+            reading_score = learning_style.get('reading_score', 0)
+            kinesthetic_score = learning_style.get('kinesthetic_score', 0)
+        
+        if visual_score > 0.7:
+            features.append('视觉化学习资源')
+        if auditory_score > 0.7:
+            features.append('音频讲解材料')
+        if reading_score > 0.7:
+            features.append('详细文字教程')
+        if kinesthetic_score > 0.7:
+            features.append('动手实践项目')
+        
+        # 基于专业推荐特征
+        professional_group = user_profile.get('professional_group', 'science')
+        if professional_group == 'business':
+            features.append('商业案例分析')
+        elif professional_group == 'humanities':
+            features.append('人文素养拓展')
+        elif professional_group == 'arts':
+            features.append('创意实践结合')
+        elif professional_group == 'science':
+            features.append('科学实验验证')
+        
+        # 基于难度推荐特征
+        knowledge_level = user_profile.get('knowledge_level', '中级')
+        if knowledge_level == '初级':
+            features.append('入门基础课程')
+        elif knowledge_level == '中级':
+            features.append('进阶提升课程')
+        elif knowledge_level == '高级':
+            features.append('高级挑战课程')
+        
+        return features if features else ['个性化推荐', '适合您当前水平']
+    
     @action(detail=False, methods=['get'], url_path='roadmap')
     def recommend_roadmap(self, request):
         """推荐初始学习路线图，返回增强的推荐信息"""
         try:
             # 获取或构建用户画像
-            engine = RecommendationEngine(request.user)
-            user_profile = engine.build_user_profile()
-            
-            # 调用推荐引擎获取推荐路线图
-            recommended_roadmaps = engine.recommend_roadmaps(limit=5)
+            try:
+                engine = RecommendationEngine(request.user)
+                user_profile = engine.build_user_profile()
+                # 调用推荐引擎获取推荐路线图
+                recommended_roadmaps = engine.recommend_roadmaps(limit=5)
+            except Exception as e:
+                # 如果智能推荐引擎出错，则回退到简单的基于模板的推荐，避免直接返回500
+                print(f"[LearningRecommendationViewSet] 推荐引擎出错，使用回退方案: {e}")
+                # 确保user_profile是一个字典，其中learning_style也是字典格式
+                user_profile = {
+                    "learning_style": {
+                        "dominant_style": "综合型"
+                    },
+                    "knowledge_level": "中级",
+                    "interest_areas": [],
+                    "dominant_style": "综合型"
+                }
+                from .models import RoadmapTemplate
+                roadmaps_qs = RoadmapTemplate.objects.filter(is_active=True)[:5]
+                # 用路线路径本身作为“推荐结果”进行后续增强处理
+                recommended_roadmaps = list(roadmaps_qs)
             
             # 增强推荐结果，添加可视化所需的额外信息
             enhanced_roadmaps = []
             for idx, recommendation in enumerate(recommended_roadmaps):
                 # 获取基础推荐数据
-                roadmap = recommendation.roadmap if hasattr(recommendation, 'roadmap') else recommendation
+                roadmap = getattr(recommendation, 'roadmap', None) or recommendation
                 
                 # 构建增强的路线图数据
                 enhanced_roadmap = {
-                    'id': roadmap.id if hasattr(roadmap, 'id') else f'recommended-{idx}',
-                    'title': roadmap.title if hasattr(roadmap, 'title') else '智能推荐学习路线',
-                    'description': roadmap.description if hasattr(roadmap, 'description') else '根据您的学习风格和偏好定制',
-                    'difficulty_level': roadmap.difficulty_level if hasattr(roadmap, 'difficulty_level') else 'intermediate',
+                    'id': getattr(roadmap, 'id', f'recommended-{idx}'),
+                    'title': getattr(roadmap, 'title', '智能推荐学习路线'),
+                    'description': getattr(roadmap, 'description', '根据您的学习风格和偏好定制'),
+                    'difficulty_level': getattr(roadmap, 'difficulty_level', 'intermediate'),
                     'estimated_hours': getattr(roadmap, 'estimated_hours', 80),
                     'stages': getattr(roadmap, 'stages', []),
                     'tags': getattr(roadmap, 'tags', []),
                     
                     # 添加个性化推荐信息
                     'is_recommended': True,
-                    'matching_score': recommendation.score if hasattr(recommendation, 'score') else 85 + (idx * 5),  # 模拟匹配度分数
+                    # 如果有score字段则使用，否则给一个递减/递增的模拟匹配度
+                    'matching_score': getattr(recommendation, 'score', 90 - idx * 3),
                     'recommendation_reason': '基于您的学习风格、知识掌握度和偏好生成的智能推荐',
-                    'personalized_features': self._generate_personalized_features(roadmap, user_profile)
+                    'personalized_features': self._get_personalized_features(roadmap, user_profile)
                 }
                 
                 # 根据学习风格添加特定的推荐理由
                 learning_style = user_profile.get('learning_style', {})
-                if learning_style.get('visual_score', 0) > learning_style.get('auditory_score', 0):
-                    enhanced_roadmap['recommendation_reason'] = f"此路线图包含丰富的视觉学习资源，非常适合您的{learning_style.get('dominant_style', '视觉')}学习风格"
-                elif learning_style.get('auditory_score', 0) > learning_style.get('visual_score', 0):
-                    enhanced_roadmap['recommendation_reason'] = f"此路线图提供多种听觉学习材料，与您的{learning_style.get('dominant_style', '听觉')}学习风格高度匹配"
+                
+                # 检查learning_style是对象还是字典
+                visual_score = 0
+                auditory_score = 0
+                dominant_style = '综合型'
+                
+                if hasattr(learning_style, 'visual_score'):  # 如果是LearningStyle对象
+                    visual_score = getattr(learning_style, 'visual_score', 0)
+                    auditory_score = getattr(learning_style, 'auditory_score', 0)
+                    dominant_style = getattr(learning_style, 'dominant_style', '综合型')
+                else:  # 如果是字典
+                    visual_score = learning_style.get('visual_score', 0)
+                    auditory_score = learning_style.get('auditory_score', 0)
+                    dominant_style = learning_style.get('dominant_style', '综合型')
+                
+                if visual_score > auditory_score:
+                    enhanced_roadmap['recommendation_reason'] = f"此路线图包含丰富的视觉学习资源，非常适合您的{dominant_style}学习风格"
+                elif auditory_score > visual_score:
+                    enhanced_roadmap['recommendation_reason'] = f"此路线图提供多种听觉学习材料，与您的{dominant_style}学习风格高度匹配"
                 
                 enhanced_roadmaps.append(enhanced_roadmap)
+            
+            # 准备用户画像摘要
+            user_learning_style = user_profile.get('learning_style', {})
+            summary_dominant_style = '综合型'
+            
+            if hasattr(user_learning_style, 'dominant_style'):  # 如果是LearningStyle对象
+                summary_dominant_style = getattr(user_learning_style, 'dominant_style', '综合型')
+            else:  # 如果是字典
+                summary_dominant_style = user_learning_style.get('dominant_style', '综合型')
             
             # 返回增强的推荐结果
             return Response({
                 'roadmaps': enhanced_roadmaps,
                 'message': '智能推荐成功',
                 'user_profile_summary': {
-                    'learning_style': user_profile.get('learning_style', {}).get('dominant_style', '综合型'),
+                    'learning_style': summary_dominant_style,
                     'knowledge_level': user_profile.get('knowledge_level', '中级'),
-                    'interests': user_profile.get('interests', ['基础学习'])
+                    'interests': user_profile.get('interest_areas', ['基础学习'])
                 }
             })
         except Exception as e:
+            # 最终兜底：如果仍然出错，则返回空列表，让前端走静态数据回退逻辑，而不是500
+            print(f"[LearningRecommendationViewSet] recommend_roadmap 最终兜底错误: {e}")
             return Response(
-                {'error': str(e)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {
+                    'roadmaps': [],
+                    'message': '暂时无法生成智能推荐，已返回空结果',
+                    'error': str(e),
+                    'user_profile_summary': {
+                        'learning_style': '综合型',
+                        'knowledge_level': '中级',
+                        'interests': ['基础学习']
+                    }
+                },
+                status=status.HTTP_200_OK,
             )
     
     @action(detail=False, methods=['get'])
@@ -2161,3 +3102,42 @@ def update_jupyter_document(request):
         return Response({'error': '文档不存在'}, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class KnowledgeNodeViewSet(viewsets.ModelViewSet):
+    """知识节点视图集"""
+    queryset = KnowledgeNode.objects.all()
+    serializer_class = KnowledgeNodeSerializer
+    permission_classes = [AllowAny]  # 允许匿名访问，便于开发和测试
+    
+    def list(self, request, *args, **kwargs):
+        """获取知识节点列表"""
+        queryset = self.get_queryset()
+        
+        # 根据查询参数过滤
+        professional_group = request.query_params.get('professional_group')
+        if professional_group:
+            queryset = queryset.filter(professional_group=professional_group)
+        
+        type = request.query_params.get('type')
+        if type:
+            queryset = queryset.filter(type=type)
+        
+        serializer = self.get_serializer(queryset, many=True)
+        # 返回前端期望的格式
+        return Response({'nodes': serializer.data})
+
+
+class KnowledgeRelationViewSet(viewsets.ModelViewSet):
+    """知识关系视图集"""
+    queryset = KnowledgeRelation.objects.all()
+    serializer_class = KnowledgeRelationSerializer
+    permission_classes = [AllowAny]  # 允许匿名访问，便于开发和测试
+    
+    def list(self, request, *args, **kwargs):
+        """获取知识关系列表"""
+        queryset = self.get_queryset()
+        
+        serializer = self.get_serializer(queryset, many=True)
+        # 返回前端期望的格式
+        return Response({'relations': serializer.data})

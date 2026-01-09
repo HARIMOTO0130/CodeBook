@@ -69,7 +69,13 @@
         <div class="tool-icon">{{ tool.icon }}</div>
         <h3 class="tool-title">{{ tool.title }}</h3>
         <p class="tool-description">{{ tool.description }}</p>
-        <div class="tool-category">{{ getCategoryText(tool.category) }}</div>
+        <div 
+          class="tool-category"
+          :style="{ backgroundColor: `${getCategoryInfo(tool.category).color}22`, color: getCategoryInfo(tool.category).color }"
+        >
+          <span class="category-icon">{{ getCategoryInfo(tool.category).icon }}</span>
+          <span class="category-text">{{ getCategoryInfo(tool.category).text }}</span>
+        </div>
         <div class="tool-book-info">
           <span class="book-label">基于教材：</span>
           <span class="book-title">{{ tool.bookTitle }}</span>
@@ -91,18 +97,21 @@
         <div class="tool-modal-content">
           <!-- 工具信息 -->
           <div class="tool-info">
-            <p>{{ selectedTool.description }}</p>
-            <div class="tool-meta">
-              <span class="meta-item">分类：{{ getCategoryText(selectedTool.category) }}</span>
-              <span class="meta-item">基于：{{ selectedTool.bookTitle }} 第{{ selectedTool.chapterNumber }}章</span>
-              <router-link 
-                :to="`/books/${selectedTool.bookId}/chapter/${selectedTool.firstSectionId}`" 
-                class="learn-link"
-              >
-                学习原理 →
-              </router-link>
-            </div>
+          <p>{{ selectedTool.description }}</p>
+          <div class="tool-meta">
+            <span class="meta-item" :style="{ color: getCategoryInfo(selectedTool.category).color }">
+              <span class="category-icon">{{ getCategoryInfo(selectedTool.category).icon }}</span>
+              分类：{{ getCategoryInfo(selectedTool.category).text }}
+            </span>
+            <span class="meta-item">基于：{{ selectedTool.bookTitle }} 第{{ selectedTool.chapterNumber }}章</span>
+            <router-link 
+              :to="`/books/${selectedTool.bookId}/chapter/${selectedTool.firstSectionId}`" 
+              class="learn-link"
+            >
+              学习原理 →
+            </router-link>
           </div>
+        </div>
 
           <!-- 工具参数表单 -->
           <div class="tool-form">
@@ -112,8 +121,40 @@
                 {{ param.label }}
                 <span v-if="param.required" class="required-mark">*</span>
               </label>
+              
+              <!-- 文件上传类型：支持选择文件或文件夹 -->
+              <div v-if="param.type === 'file' || param.name.toLowerCase().includes('path') || param.name.toLowerCase().includes('folder')" class="file-upload-container">
+                <div class="file-input-wrapper">
+                  <input 
+                    type="text" 
+                    :id="param.name"
+                    v-model="toolParams[param.name]"
+                    :placeholder="param.placeholder || '请选择文件或文件夹'"
+                    class="input file-input-text"
+                    :class="{ 'input-error': errorMessage && !toolParams[param.name] && param.required }"
+                    readonly
+                  />
+                  <label class="file-upload-btn" :for="`file-${param.name}`">
+                    📁 选择文件
+                  </label>
+                  <input 
+                    type="file" 
+                    :id="`file-${param.name}`"
+                    class="file-upload-hidden"
+                    @change="handleFileUpload($event, param.name)"
+                    :multiple="param.multiple || false"
+                    :webkitdirectory="param.directory || param.name.includes('folder')"
+                    :directory="param.directory || param.name.includes('folder')"
+                  />
+                </div>
+                <p class="file-upload-hint" v-if="param.hint">{{ param.hint }}</p>
+                <p class="file-upload-hint" v-else-if="param.name.includes('folder')">支持选择文件夹，会处理文件夹内所有符合条件的文件</p>
+                <p class="file-upload-hint" v-else>支持选择单个或多个文件</p>
+              </div>
+              
+              <!-- 文本和数字类型输入框 -->
               <input 
-                v-if="param.type === 'text' || param.type === 'number'" 
+                v-else-if="param.type === 'text' || param.type === 'number'" 
                 :type="param.type"
                 :id="param.name"
                 v-model="toolParams[param.name]"
@@ -121,6 +162,8 @@
                 class="input"
                 :class="{ 'input-error': errorMessage && !toolParams[param.name] && param.required }"
               />
+              
+              <!-- 文本域类型 -->
               <textarea 
                 v-else-if="param.type === 'textarea'"
                 :id="param.name"
@@ -130,6 +173,8 @@
                 :class="{ 'input-error': errorMessage && !toolParams[param.name] && param.required }"
                 :rows="selectedTool && selectedTool.id === 6 ? 8 : 4"
               ></textarea>
+              
+              <!-- 下拉选择类型 -->
               <select 
                 v-else-if="param.type === 'select'"
                 :id="param.name"
@@ -142,6 +187,8 @@
                   {{ option.label }}
                 </option>
               </select>
+              
+              <!-- 输入提示 -->
               <div v-if="param.type === 'number' && param.name === 'indentSize'" class="input-hint">
                 建议值：2-4（默认：2）
               </div>
@@ -428,15 +475,21 @@ export default {
       }, 5000)
     }
 
-    // 获取分类文本
-    const getCategoryText = (category) => {
+    // 获取分类文本和图标
+    const getCategoryInfo = (category) => {
       const categoryMap = {
-        'file': '文件处理',
-        'data': '数据处理',
-        'image': '图片处理',
-        'text': '文本处理'
+        'file': { text: '文件处理', icon: '📁', color: '#409EFF' },
+        'data': { text: '数据处理', icon: '📊', color: '#67C23A' },
+        'image': { text: '图片处理', icon: '🖼️', color: '#E6A23C' },
+        'text': { text: '文本处理', icon: '📝', color: '#F56C6C' },
+        'other': { text: '其他', icon: '🔧', color: '#909399' }
       }
-      return categoryMap[category] || '其他'
+      return categoryMap[category] || categoryMap['other']
+    }
+    
+    // 获取分类文本（兼容原有调用）
+    const getCategoryText = (category) => {
+      return getCategoryInfo(category).text
     }
 
     // 打开工具
@@ -489,10 +542,20 @@ export default {
       try {
         clearMessages()
         
-        // 参数验证
-        const requiredParams = selectedTool.value.params.filter(param => 
-          param.required !== false && param.required !== undefined
-        );
+        // 参数验证 - 检查必填参数
+        // 如果required为true或undefined（默认必填），则认为是必填项
+        const requiredParams = selectedTool.value.params.filter(param => {
+          // 如果明确设置为false，则不是必填
+          if (param.required === false) {
+            return false
+          }
+          // 如果明确设置为true，则是必填
+          if (param.required === true) {
+            return true
+          }
+          // 如果未设置，默认认为是必填（向后兼容）
+          return true
+        });
         
         const validationErrors = []
         for (const param of requiredParams) {
@@ -529,13 +592,43 @@ export default {
           toolParams.value.indentSize = 2
         }
         
-        // 转换参数类型
-        const processedParams = { ...toolParams.value }
+        // 转换参数类型并处理值
+        const processedParams = {}
         selectedTool.value.params.forEach(param => {
-          if (param.type === 'number' && processedParams[param.name] !== undefined) {
-            processedParams[param.name] = Number(processedParams[param.name])
+          let value = toolParams.value[param.name]
+          
+          // 处理默认值
+          if ((value === undefined || value === null || value === '') && param.default !== undefined && param.default !== null && param.default !== '') {
+            value = param.default
+          }
+          
+          // 处理不同类型的参数
+          if (value !== undefined && value !== null && value !== '') {
+            if (param.type === 'number') {
+              const numValue = Number(value)
+              if (!isNaN(numValue)) {
+                processedParams[param.name] = numValue
+              }
+            } else if (param.type === 'select' && value) {
+              // 下拉选择的值直接使用
+              processedParams[param.name] = value
+            } else if (typeof value === 'string') {
+              // 字符串值去除首尾空格后使用
+              const trimmed = value.trim()
+              if (trimmed !== '') {
+                processedParams[param.name] = trimmed
+              }
+            } else {
+              // 其他类型直接使用
+              processedParams[param.name] = value
+            }
           }
         })
+        
+        // 记录处理后的参数，便于调试
+        console.log('处理后的参数:', processedParams)
+        console.log('参数数量:', Object.keys(processedParams).length)
+        console.log('参数键:', Object.keys(processedParams))
         
         running.value = true
         showResult.value = false
@@ -544,13 +637,76 @@ export default {
         // 调用后端API，传递工具参数
         let result
         try {
+          // 添加详细的调试日志
+          console.log('调用工具API详情:', {
+            toolId: selectedTool.value.id,
+            toolName: selectedTool.value.title,
+            params: processedParams,
+            paramsStringified: JSON.stringify(processedParams),
+            timestamp: new Date().toISOString()
+          })
+          
+          // 保存请求数据到本地存储，便于调试
+          localStorage.setItem('lastToolRequest', JSON.stringify({
+            toolId: selectedTool.value.id,
+            params: processedParams,
+            timestamp: new Date().toISOString()
+          }))
+          
           result = await api.runTool(selectedTool.value.id, processedParams)
+          
+          console.log('API返回结果详情:', {
+            result: result,
+            timestamp: new Date().toISOString()
+          })
         } catch (apiError) {
           // 处理API调用异常
           running.value = false
-          const errorMsg = apiError.error || apiError.message || '网络错误，请检查连接后重试'
+          
+          // 添加详细的错误日志
+          const errorData = apiError.response?.data || {}
+          console.error('API调用异常详情:', {
+            error: apiError,
+            response: apiError.response,
+            responseData: errorData,
+            errorMessage: apiError.message,
+            debugInfo: errorData.debug_info,
+            timestamp: new Date().toISOString()
+          })
+          
+          // 提取更详细的错误信息
+          let errorMsg = '网络错误，请检查连接后重试'
+          let errorDetails = ''
+          
+          if (apiError.response) {
+            // 服务器返回了错误响应
+            errorDetails = JSON.stringify(errorData, null, 2)
+            
+            // 优先显示details数组中的错误信息
+            if (errorData.details && Array.isArray(errorData.details) && errorData.details.length > 0) {
+              errorMsg = errorData.details.join('；')
+            } else if (errorData.details && typeof errorData.details === 'string') {
+              errorMsg = errorData.details
+            } else if (errorData.error) {
+              errorMsg = errorData.error
+            } else if (errorData.message) {
+              errorMsg = errorData.message
+            } else if (errorData['detail']) {
+              errorMsg = errorData['detail']
+            } else {
+              errorMsg = `服务器返回错误：${JSON.stringify(errorData)}`
+            }
+            
+            // 如果有debug_info，添加到详细信息中
+            if (errorData.debug_info) {
+              errorDetails += '\n\n调试信息：\n' + JSON.stringify(errorData.debug_info, null, 2)
+            }
+          } else if (apiError.message) {
+            errorMsg = apiError.message
+          }
+          
           showError(errorMsg)
-          toolResult.value = `❌ 工具运行异常！\n\n异常信息：${errorMsg}`
+          toolResult.value = `❌ 工具运行异常！\n\n异常信息：${errorMsg}\n\n详细信息：${errorDetails}`
           showResult.value = true
           return
         }
@@ -653,6 +809,35 @@ export default {
       }
     }
     
+    // 处理文件上传
+    const handleFileUpload = (event, paramName) => {
+      const fileInput = event.target
+      if (fileInput.files && fileInput.files.length > 0) {
+        const files = Array.from(fileInput.files)
+        
+        // 如果是文件夹选择，获取文件夹路径
+        if (fileInput.webkitdirectory || fileInput.directory) {
+          // 获取第一个文件的路径，然后截取到文件夹部分
+          const firstFilePath = files[0].webkitRelativePath || files[0].path
+          const folderPath = firstFilePath.substring(0, firstFilePath.indexOf('/'))
+          toolParams.value[paramName] = folderPath
+        } 
+        // 如果是文件选择，获取文件名列表或单个文件路径
+        else if (fileInput.multiple) {
+          // 对于多文件选择，保存文件列表
+          toolParams.value[paramName] = files.map(file => file.name).join(', ')
+          // 保存实际文件对象，用于后续处理
+          toolParams.value[`${paramName}_files`] = files
+        } 
+        else {
+          // 单个文件选择，保存文件路径
+          toolParams.value[paramName] = files[0].name
+          // 保存实际文件对象
+          toolParams.value[`${paramName}_file`] = files[0]
+        }
+      }
+    }
+
     // 保存结果
     const saveResult = () => {
       try {
@@ -690,29 +875,98 @@ export default {
       
       try {
         // 组件挂载时加载真实工具数据
-        const realTools = await api.getTools()
+        const realToolsResponse = await api.getTools()
+        // 处理后端返回的分页数据结构
+        const realTools = realToolsResponse.results || realToolsResponse
         if (realTools && realTools.length > 0) {
           // 转换后端数据格式为前端需要的格式
-          tools.value = realTools.map(tool => ({
-            id: tool.id,
-            title: tool.title,
-            description: tool.description,
-            icon: tool.icon || '🔧',
-            category: tool.category_name?.toLowerCase() || tool.category?.slug || 'other',
-            bookId: tool.book_id,
-            bookTitle: tool.book_title || '未指定教材',
-            chapterNumber: tool.chapter_number || 0,
-            firstSectionId: tool.first_section_id,
-            params: (tool.params || []).map(param => ({
-              name: param.name,
-              label: param.label,
-              type: param.type,
-              placeholder: param.placeholder || '',
-              required: param.is_required !== false,
-              default: param.default_value || (param.type === 'number' ? (param.name === 'indentSize' ? 2 : 0) : ''),
-              options: param.options || []
-            }))
-          }))
+          tools.value = realTools.map(tool => {
+            // 处理分类信息，兼容category_name和category字段
+            let category = 'other';
+            
+            // 分类ID到分类名称的映射
+            const categoryIdMap = {
+              1: 'file',
+              2: 'data',
+              3: 'image',
+              4: 'text'
+            };
+            
+            // 分类名称到分类标识的映射（支持中文和英文）
+            const categoryNameMap = {
+              '文件处理': 'file',
+              '数据处理': 'data',
+              '图片处理': 'image',
+              '文本处理': 'text',
+              '文件': 'file',
+              '数据': 'data',
+              '图片': 'image',
+              '文本': 'text',
+              'file': 'file',
+              'data': 'data',
+              'image': 'image',
+              'text': 'text'
+            };
+            
+            // 处理category_id（如果存在）
+            if (tool.category_id) {
+              category = categoryIdMap[tool.category_id] || 'other';
+            }
+            // 处理category（如果存在，可能是数字或字符串）
+            else if (tool.category) {
+              if (typeof tool.category === 'number') {
+                category = categoryIdMap[tool.category] || 'other';
+              } else {
+                category = categoryNameMap[tool.category] || 'other';
+              }
+            }
+            // 处理category_name（如果存在）
+            else if (tool.category_name) {
+              category = categoryNameMap[tool.category_name] || 'other';
+            }
+            
+            // 图标映射：将后端返回的图标名称映射到对应的emoji
+            const iconMap = {
+              'file-text': '📄',
+              'file': '📁',
+              'file-excel': '📊',
+              'file-image': '🖼️',
+              'text': '📝',
+              'code': '💻',
+              'tool': '🔧',
+              'settings': '⚙️',
+              'database': '🗄️',
+              'image': '🖼️',
+              'file-json': '📋'
+            };
+            
+            // 处理图标
+            let icon = '🔧'; // 默认图标
+            if (tool.icon) {
+              icon = iconMap[tool.icon] || '🔧';
+            }
+            
+            return {
+              id: tool.id,
+              title: tool.title || tool.name || '未命名工具', // 兼容后端可能返回的name字段
+              description: tool.description || '无描述',
+              icon: icon,
+              category: category,
+              bookId: tool.book_id,
+              bookTitle: tool.book_title || '未指定教材',
+              chapterNumber: tool.chapter_number || 0,
+              firstSectionId: tool.first_section_id,
+              params: (tool.params || []).map(param => ({
+        name: param.name,
+        label: param.label,
+        type: param.type,
+        placeholder: param.placeholder || '',
+        required: param.is_required === true || param.is_required === '1' || param.is_required === 1,
+        default: param.default_value || (param.type === 'number' ? (param.name === 'indentSize' ? 2 : 0) : ''),
+        options: param.options || []
+      }))
+            };
+          })
         } else {
           showError('未找到可用工具，请稍后重试')
         }
@@ -753,13 +1007,15 @@ export default {
       errorMessage,
       successMessage,
       getCategoryText,
+      getCategoryInfo,
       openTool,
       closeTool,
       runTool,
       saveResult,
       getFormattedJson,
       copyJson,
-      clearMessages
+      clearMessages,
+      handleFileUpload
     }
   }
 }
@@ -899,13 +1155,36 @@ export default {
 }
 
 .tool-category {
-  display: inline-block;
-  padding: 4px 12px;
-  background: #ecf5ff;
-  color: #409EFF;
-  border-radius: 15px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 20px;
   font-size: 12px;
+  font-weight: 500;
   margin-bottom: 15px;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+}
+
+.tool-category:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 6px rgba(0,0,0,0.12);
+}
+
+.category-icon {
+  font-size: 14px;
+  vertical-align: middle;
+}
+
+.category-text {
+  vertical-align: middle;
+}
+
+/* 工具详情弹窗中的分类图标样式 */
+.tool-meta .category-icon {
+  margin-right: 4px;
+  font-size: 16px;
 }
 
 .tool-book-info {
@@ -1320,6 +1599,52 @@ export default {
   color: #999;
   margin-top: 4px;
   margin-left: 2px;
+}
+
+/* 文件上传组件样式 */
+.file-upload-container {
+  margin-bottom: 20px;
+}
+
+.file-input-wrapper {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.file-input-text {
+  flex: 1;
+  cursor: not-allowed;
+  background-color: #fafafa;
+}
+
+.file-upload-btn {
+  background: #409EFF;
+  color: white;
+  border: none;
+  padding: 10px 15px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.3s;
+  white-space: nowrap;
+}
+
+.file-upload-btn:hover {
+  background: #66b1ff;
+}
+
+.file-upload-hidden {
+  display: none;
+}
+
+.file-upload-hint {
+  margin: 5px 0 0 0;
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.4;
 }
 
 /* 响应式设计 */

@@ -103,7 +103,7 @@ class ToolViewSet(viewsets.ReadOnlyModelViewSet):
                 "execution_id": execution.id,
                 "error": result.get('error'),
                 "message": "工具执行失败"
-            }, status=status.HTTP_400_BAD_REQUEST)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class ExecutionHistoryViewSet(viewsets.ReadOnlyModelViewSet):

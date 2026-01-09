@@ -104,6 +104,12 @@ class UserPreferences(models.Model):
     
     # 新增学习信息字段
     learning_goals = models.JSONField(default=list, verbose_name='学习目标')
+    major_category = models.CharField(
+        max_length=50, 
+        choices=[('business', '经管类'), ('humanities', '文史类'), ('arts', '艺术类'), ('science', '理工科')],
+        blank=True, null=True,
+        verbose_name='专业类别'
+    )
     major = models.CharField(max_length=100, blank=True, null=True, verbose_name='专业方向')
     learning_stage = models.CharField(
         max_length=20, 

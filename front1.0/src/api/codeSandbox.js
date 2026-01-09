@@ -183,21 +183,38 @@ fn main() {
 </body>
 </html>`,
     css: `/* CSS 默认模板 */
+/* 欢迎使用CSS编程! */
+
+/* 这里是一些示例代码: */
 body {
     font-family: Arial, sans-serif;
-    background-color: #f5f5f5;
     margin: 0;
-    padding: 20px;
+    padding: 0;
+    background-color: #f0f0f0;
 }
 
 h1 {
     color: #333;
+    text-align: center;
+    padding: 20px 0;
 }
 
 p {
     color: #666;
-    line-height: 1.6;
-}`
+    font-size: 16px;
+    line-height: 1.5;
+    margin: 0 20px 20px;
+}
+
+.container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+    background-color: white;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+}
+
+/* 尝试修改这段代码，体验CSS的强大功能! */`
   };
   
   // 如果找不到指定语言的模板，返回一个通用模板

@@ -6,7 +6,11 @@ from rest_framework.authtoken.models import Token
 from rest_framework.views import APIView
 from django.contrib.auth import authenticate
 from .models import User, UserPreferences
-from .serializers import UserSerializer, RegisterSerializer, LoginSerializer, UserPreferencesSerializer
+from apps.learning.models import LearningStyle, KnowledgeMastery, LearningPreference
+from .serializers import (
+    UserSerializer, RegisterSerializer, LoginSerializer, 
+    UserPreferencesSerializer, UserProfileSerializer
+)
 
 
 class TestAPIView(APIView):
@@ -193,3 +197,40 @@ class UserViewSet(viewsets.ModelViewSet):
         request.user.save()
         
         return Response({'message': '密码修改成功'}, status=status.HTTP_200_OK)
+    
+    @action(detail=False, methods=['get'], url_path='profile')
+    def user_profile(self, request):
+        """获取用户画像数据，包括多维度特征提取、知识状态评估和专业倾向性分析"""
+        if not request.user.is_authenticated:
+            return Response({'error': '未登录'}, status=status.HTTP_401_UNAUTHORIZED)
+        
+        # 获取当前用户
+        user = request.user
+        
+        # 获取关联数据
+        learning_style, _ = LearningStyle.objects.get_or_create(user=user)
+        learning_preference, _ = LearningPreference.objects.get_or_create(user=user)
+        knowledge_mastery = KnowledgeMastery.objects.filter(user=user).all()
+        
+        # 获取学习情况数据
+        from apps.learning.models import LearningRecord, PracticeRecord, HeatmapData, WrongQuestion
+        learning_records = LearningRecord.objects.filter(user=user).all()
+        practice_records = PracticeRecord.objects.filter(user=user).all()
+        heatmap_data = HeatmapData.objects.filter(user=user).all()
+        wrong_questions = WrongQuestion.objects.filter(user=user).all()
+        
+        # 构建用户画像数据
+        profile_data = {
+            'user': user,
+            'learning_style': learning_style,
+            'learning_preference': learning_preference,
+            'knowledge_mastery': knowledge_mastery,
+            'learning_records': learning_records,
+            'practice_records': practice_records,
+            'heatmap_data': heatmap_data,
+            'wrong_questions': wrong_questions
+        }
+        
+        # 序列化并返回
+        serializer = UserProfileSerializer(profile_data)
+        return Response(serializer.data)

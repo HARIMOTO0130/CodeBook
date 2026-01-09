@@ -94,8 +94,6 @@ class ImageCompressTool(BaseToolEngine):
         
         if not params.get('folderPath'):
             errors.append("请输入图片文件夹路径")
-        elif not os.path.exists(params['folderPath']):
-            errors.append("文件夹路径不存在")
         
         try:
             quality = int(params.get('quality', 70))

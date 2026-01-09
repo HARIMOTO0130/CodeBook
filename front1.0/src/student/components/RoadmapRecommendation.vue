@@ -102,6 +102,9 @@
 </template>
 
 <script>
+// 导入API模块
+import { api } from '../api/api.js'
+
 export default {
   name: 'RoadmapRecommendation',
   props: {
@@ -114,257 +117,38 @@ export default {
     return {
       roadmaps: [],
       loading: false,
-      currentMajor: this.major,
-      // 静态学习路线图数据
-      staticRoadmaps: {
-        business: [
-          {
-            id: 'business-1',
-            title: '办公自动化与数据处理',
-            description: '为经管类学生打造的计算机基础能力提升路径，掌握办公软件高级应用和数据处理技能',
-            difficulty_level: 'beginner',
-            estimated_hours: 60,
-            stages: [
-              { name: '办公软件高级应用', books: [{}, {}, {}] },
-              { name: '数据分析入门', books: [{}, {}, {}] },
-              { name: '商业数据可视化', books: [{}, {}] }
-            ],
-            tags: ['Excel高级', '数据分析', '办公自动化'],
-            svg: {
-              viewBox: '0 0 300 150',
-              background: { fill: '#f6ffed', rx: 8 },
-              paths: [
-                { d: 'M50,75 L100,75 L150,75 L200,75 L250,75', stroke: '#52c41a', strokeWidth: 3 }
-              ],
-              nodes: [
-                { x: 50, y: 75, r: 15, fill: '#52c41a', text: '1' },
-                { x: 100, y: 75, r: 15, fill: '#52c41a', text: '2' },
-                { x: 150, y: 75, r: 15, fill: '#52c41a', text: '3' },
-                { x: 200, y: 75, r: 15, fill: '#52c41a', text: '4' },
-                { x: 250, y: 75, r: 15, fill: '#52c41a', text: '5' }
-              ]
-            }
-          },
-          {
-            id: 'business-2',
-            title: '电子商务技术基础',
-            description: '帮助商科学生了解电商平台运营背后的技术原理，提升数字化营销能力',
-            difficulty_level: 'intermediate',
-            estimated_hours: 80,
-            stages: [
-              { name: '电商平台基础', books: [{}, {}, {}] },
-              { name: '网络营销技术', books: [{}, {}, {}] },
-              { name: '客户数据分析', books: [{}, {}] }
-            ],
-            tags: ['电子商务', '网络营销', '数据分析'],
-            svg: {
-              viewBox: '0 0 300 150',
-              background: { fill: '#e6f7ff', rx: 8 },
-              paths: [
-                { d: 'M50,100 L100,50 L150,100 L200,50 L250,100', stroke: '#1890ff', strokeWidth: 3 }
-              ],
-              nodes: [
-                { x: 50, y: 100, r: 15, fill: '#1890ff', text: '1' },
-                { x: 100, y: 50, r: 15, fill: '#1890ff', text: '2' },
-                { x: 150, y: 100, r: 15, fill: '#1890ff', text: '3' },
-                { x: 200, y: 50, r: 15, fill: '#1890ff', text: '4' },
-                { x: 250, y: 100, r: 15, fill: '#1890ff', text: '5' }
-              ]
-            }
-          }
-        ],
-        humanities: [
-          {
-            id: 'humanities-1',
-            title: '数字人文与信息检索',
-            description: '为文科学生设计的数字技能提升路径，掌握文献检索和数字人文工具应用',
-            difficulty_level: 'beginner',
-            estimated_hours: 65,
-            stages: [
-              { name: '学术文献检索', books: [{}, {}, {}] },
-              { name: '数字人文工具', books: [{}, {}, {}] },
-              { name: '文献管理软件', books: [{}, {}, {}] }
-            ],
-            tags: ['信息检索', '文献管理', '数字人文'],
-            svg: {
-              viewBox: '0 0 300 150',
-              background: { fill: '#fff7e6', rx: 8 },
-              paths: [
-                { d: 'M50,40 L150,40 L150,110 L250,110', stroke: '#fa8c16', strokeWidth: 3 }
-              ],
-              nodes: [
-                { x: 50, y: 40, r: 15, fill: '#fa8c16', text: '1' },
-                { x: 150, y: 40, r: 15, fill: '#fa8c16', text: '2' },
-                { x: 150, y: 110, r: 15, fill: '#fa8c16', text: '3' },
-                { x: 250, y: 110, r: 15, fill: '#fa8c16', text: '4' }
-              ]
-            }
-          },
-          {
-            id: 'humanities-2',
-            title: '多媒体内容创作',
-            description: '帮助文科学生学习数字媒体创作技能，提升学术表达和内容传播能力',
-            difficulty_level: 'intermediate',
-            estimated_hours: 75,
-            stages: [
-              { name: '数字写作基础', books: [{}, {}, {}] },
-              { name: '多媒体制作', books: [{}, {}, {}] },
-              { name: '数字出版入门', books: [{}, {}, {}] }
-            ],
-            tags: ['数字写作', '多媒体', '内容创作'],
-            svg: {
-              viewBox: '0 0 300 150',
-              background: { fill: '#f9f0ff', rx: 8 },
-              paths: [
-                { d: 'M50,75 L150,30 L150,120 L250,75', stroke: '#722ed1', strokeWidth: 3 }
-              ],
-              nodes: [
-                { x: 50, y: 75, r: 15, fill: '#722ed1', text: '1' },
-                { x: 150, y: 30, r: 15, fill: '#722ed1', text: '2' },
-                { x: 150, y: 120, r: 15, fill: '#722ed1', text: '3' },
-                { x: 250, y: 75, r: 15, fill: '#722ed1', text: '4' }
-              ]
-            }
-          }
-        ],
-        arts: [
-          {
-            id: 'arts-1',
-            title: '数字艺术创作基础',
-            description: '为艺术类学生提供的数字化创作技能培养，掌握设计软件和数字艺术基础',
-            difficulty_level: 'beginner',
-            estimated_hours: 70,
-            stages: [
-              { name: '设计软件入门', books: [{}, {}, {}] },
-              { name: '数字图像编辑', books: [{}, {}] },
-              { name: '创意设计基础', books: [{}, {}, {}] }
-            ],
-            tags: ['Photoshop', '数字设计', '创意软件'],
-            svg: {
-              viewBox: '0 0 300 150',
-              background: { fill: '#fff2e8', rx: 8 },
-              paths: [
-                { d: 'M50,100 C100,30 200,30 250,100', stroke: '#fa541c', strokeWidth: 3, fill: 'none' }
-              ],
-              nodes: [
-                { x: 50, y: 100, r: 15, fill: '#fa541c', text: '1' },
-                { x: 100, y: 50, r: 15, fill: '#fa541c', text: '2' },
-                { x: 200, y: 50, r: 15, fill: '#fa541c', text: '3' },
-                { x: 250, y: 100, r: 15, fill: '#fa541c', text: '4' }
-              ]
-            }
-          },
-          {
-            id: 'arts-2',
-            title: '数字媒体设计',
-            description: '帮助艺术类学生学习数字媒体设计技能，提升跨媒体创作能力',
-            difficulty_level: 'intermediate',
-            estimated_hours: 85,
-            stages: [
-              { name: 'UI设计基础', books: [{}, {}] },
-              { name: '数字排版设计', books: [{}, {}, {}] },
-              { name: '互动媒体设计', books: [{}, {}, {}] }
-            ],
-            tags: ['UI设计', '数字排版', '互动媒体'],
-            svg: {
-              viewBox: '0 0 300 150',
-              background: { fill: '#f0f5ff', rx: 8 },
-              paths: [
-                { d: 'M50,50 L50,100 L125,100 L125,50 L200,50 L200,100 L275,100', stroke: '#40a9ff', strokeWidth: 3 }
-              ],
-              nodes: [
-                { x: 50, y: 50, r: 15, fill: '#40a9ff', text: '1' },
-                { x: 50, y: 100, r: 15, fill: '#40a9ff', text: '2' },
-                { x: 125, y: 100, r: 15, fill: '#40a9ff', text: '3' },
-                { x: 125, y: 50, r: 15, fill: '#40a9ff', text: '4' },
-                { x: 200, y: 50, r: 15, fill: '#40a9ff', text: '5' },
-                { x: 200, y: 100, r: 15, fill: '#40a9ff', text: '6' }
-              ]
-            }
-          }
-        ],
-        science: [
-          {
-            id: 'science-1',
-            title: '编程基础与应用',
-            description: '为非计算机专业学生设计的编程入门路径，掌握实用编程技能解决专业问题',
-            difficulty_level: 'beginner',
-            estimated_hours: 90,
-            stages: [
-              { name: '计算机基础概念', books: [{}, {}] },
-              { name: 'Python编程入门', books: [{}, {}, {}] },
-              { name: '实用编程应用', books: [{}, {}, {}] }
-            ],
-            tags: ['Python', '编程入门', '实用技能'],
-            svg: {
-              viewBox: '0 0 300 150',
-              background: { fill: '#f0fdf4', rx: 8 },
-              paths: [
-                { d: 'M50,75 L100,75 L150,30 L150,120 L200,75 L250,75', stroke: '#22c55e', strokeWidth: 3 }
-              ],
-              nodes: [
-                { x: 50, y: 75, r: 15, fill: '#22c55e', text: '1' },
-                { x: 100, y: 75, r: 15, fill: '#22c55e', text: '2' },
-                { x: 150, y: 30, r: 15, fill: '#22c55e', text: '3' },
-                { x: 150, y: 120, r: 15, fill: '#22c55e', text: '4' },
-                { x: 200, y: 75, r: 15, fill: '#22c55e', text: '5' },
-                { x: 250, y: 75, r: 15, fill: '#22c55e', text: '6' }
-              ]
-            }
-          },
-          {
-            id: 'science-2',
-            title: '数据科学与可视化',
-            description: '帮助学生学习数据科学基础技能，提升数据分析和可视化能力',
-            difficulty_level: 'intermediate',
-            estimated_hours: 100,
-            stages: [
-              { name: '数据分析基础', books: [{}, {}, {}] },
-              { name: '数据可视化技术', books: [{}, {}, {}] },
-              { name: '实用数据项目', books: [{}, {}, {}] }
-            ],
-            tags: ['数据科学', '数据可视化', 'Python应用'],
-            svg: {
-              viewBox: '0 0 300 150',
-              background: { fill: '#f0f9ff', rx: 8 },
-              paths: [
-                { d: 'M75,30 L150,30 L150,90 L225,90 L225,120', stroke: '#06b6d4', strokeWidth: 3 }
-              ],
-              nodes: [
-                { x: 75, y: 30, r: 15, fill: '#06b6d4', text: '1' },
-                { x: 150, y: 30, r: 15, fill: '#06b6d4', text: '2' },
-                { x: 150, y: 90, r: 15, fill: '#06b6d4', text: '3' },
-                { x: 225, y: 90, r: 15, fill: '#06b6d4', text: '4' },
-                { x: 225, y: 120, r: 15, fill: '#06b6d4', text: '5' }
-              ]
-            }
-          }
-        ]
-      }
+      currentMajor: this.major
     }
   },
   watch: {
     major: function(newVal) {
       this.currentMajor = newVal
-      this.loadStaticRoadmaps()
+      this.loadRecommendedRoadmaps()
     }
   },
   mounted() {
-    this.loadStaticRoadmaps()
+    this.loadRecommendedRoadmaps()
   },
   methods: {
-    loadStaticRoadmaps() {
+    // 从后端API获取推荐的学习路线
+    async loadRecommendedRoadmaps() {
       this.loading = true
-      
-      // 使用setTimeout模拟异步加载
-      setTimeout(() => {
-        // 获取当前专业的静态路线图数据，如果没有则使用默认数据
-        this.roadmaps = this.staticRoadmaps[this.currentMajor] || 
-                        this.staticRoadmaps.business || 
-                        []
+      try {
+        // 调用后端API获取基于知识图谱和大模型生成的学习路线
+        const response = await api.getRecommendedRoadmaps({
+          major: this.currentMajor
+        })
+        
+        // 如果API返回数据，则使用API数据，否则使用空数组
+        this.roadmaps = response.roadmaps || []
+        console.log(`Loaded recommended roadmaps for major: ${this.currentMajor}`, this.roadmaps)
+      } catch (error) {
+        console.error('Failed to load recommended roadmaps:', error)
+        // 出错时使用空数组，避免显示静态数据
+        this.roadmaps = []
+      } finally {
         this.loading = false
-        console.log(`Loaded static roadmaps for major: ${this.currentMajor}`, this.roadmaps)
-      }, 300)
+      }
     },
     getDifficultyText(difficulty) {
       const difficultyMap = {
@@ -378,8 +162,8 @@ export default {
       return roadmap.stages.reduce((total, stage) => total + (stage.books ? stage.books.length : 0), 0)
     },
     goToRoadmapDetail(roadmapId) {
-      // 可以根据需要实现详情页跳转逻辑
-      console.log('Navigate to roadmap detail:', roadmapId)
+      // 跳转到学习路线详情页
+      this.$router.push(`/learning-paths?roadmap=${roadmapId}&major=${this.currentMajor}`)
     }
   }
 }

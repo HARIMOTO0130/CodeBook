@@ -14,6 +14,9 @@ from .views import (
     create_jupyter_document,
     update_jupyter_document,
     LearningRecommendationViewSet,
+    PersonalizedLearningPathAPIView,
+    KnowledgeGraphAPIView,
+    LLMAPIView,
 )
 from .views_ai_assistant import AIAssistantView, CodeCompletionView
 from .views_code_sandbox import get_languages, get_code_template, validate_language
@@ -54,4 +57,23 @@ urlpatterns = [
         WrongQuestionViewSet.as_view({'post': 'add_from_exercise'}),
         name='wrong-question-add-from-exercise',
     ),
+    # 个性化学习路径相关路由
+    path('personalized-path/generate/', PersonalizedLearningPathAPIView.generate_path, name='generate-personalized-path'),
+    path('personalized-path/update/', PersonalizedLearningPathAPIView.update_path, name='update-personalized-path'),
+    path('personalized-path/feedback/', PersonalizedLearningPathAPIView.generate_feedback, name='generate-learning-feedback'),
+    path('personalized-path/smart-path/', PersonalizedLearningPathAPIView.generate_smart_path, name='generate-smart-path'),
+    # 知识图谱相关路由
+    path('knowledge-graph/nodes/', KnowledgeGraphAPIView.get_nodes, name='get-knowledge-nodes'),
+    path('knowledge-graph/relations/', KnowledgeGraphAPIView.get_relations, name='get-knowledge-relations'),
+    path('knowledge-graph/nodes/add/', KnowledgeGraphAPIView.add_node, name='add-knowledge-node'),
+    path('knowledge-graph/relations/add/', KnowledgeGraphAPIView.add_relation, name='add-knowledge-relation'),
+    # 大模型相关路由
+    path('llm/generate/', LLMAPIView.generate_response, name='generate-llm-response'),
+    path('llm/extract-knowledge/', LLMAPIView.extract_knowledge, name='extract-knowledge-nodes'),
+    
+    # 智能推荐路由
+    path('recommendations/roadmap/', LearningRecommendationViewSet.as_view({'get': 'recommend_roadmap'}), name='recommend-roadmap'),
+    path('recommendations/personalized-suggestions/', LearningRecommendationViewSet.as_view({'post': 'generate_personalized_suggestions'}), name='generate-personalized-suggestions'),
+    path('recommendations/next-content/', LearningRecommendationViewSet.as_view({'get': 'next_content'}), name='recommend-next-content'),
+    path('recommendations/user-profile/', LearningRecommendationViewSet.as_view({'get': 'build_profile'}), name='build-user-profile'),
 ]

@@ -7,11 +7,13 @@ import pymysql
 # Use pymysql as MySQL driver
 pymysql.install_as_MySQLdb()
 
-# Load environment variables
-load_dotenv()
-
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Load environment variables from .env file
+# 确保加载项目根目录下的.env文件
+env_path = BASE_DIR / '.env'
+load_dotenv(dotenv_path=str(env_path))
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-default-key')
@@ -90,6 +92,11 @@ DATABASES = {
         },
     }
 }
+
+# 豆包大模型API配置 (Doubao/火山引擎)
+DOUBao_API_KEY = os.getenv('DOUBao_API_KEY', '9511e57c-7838-415d-8225-fdf89678c631')
+DOUBao_API_BASE_URL = os.getenv('DOUBao_API_BASE_URL', 'https://ark.cn-beijing.volces.com/api/v3')
+DOUBao_MODEL_ID = os.getenv('DOUBao_MODEL_ID', 'doubao-seed-1-6-251015')
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [

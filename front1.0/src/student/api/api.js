@@ -64,7 +64,7 @@ export async function httpGet(path, requireAuth = false) {
   }
 }
 
-async function httpPost(path, body, requireAuth = false, method = 'POST') {
+export async function httpPost(path, body, requireAuth = false, method = 'POST') {
   // 确保API路径格式正确，避免重复的/api前缀
   const apiPath = path.startsWith('/') ? path : `/${path}`;
   const fullUrl = `${API_BASE_URL}${apiPath}`;
@@ -76,6 +76,13 @@ async function httpPost(path, body, requireAuth = false, method = 'POST') {
   
   const requestBody = { ...body };
   
+  // 添加请求日志（仅在开发环境）
+  if (process.env.NODE_ENV === 'development' || !process.env.NODE_ENV) {
+    console.log(`[HTTP ${method}] 请求URL:`, fullUrl);
+    console.log(`[HTTP ${method}] 请求头:`, headers);
+    console.log(`[HTTP ${method}] 请求体:`, requestBody);
+  }
+  
   try {
     const res = await fetch(fullUrl, {
       method,
@@ -83,6 +90,11 @@ async function httpPost(path, body, requireAuth = false, method = 'POST') {
       body: JSON.stringify(requestBody),
       credentials: 'omit'
     });
+    
+    // 添加响应日志
+    if (process.env.NODE_ENV === 'development' || !process.env.NODE_ENV) {
+      console.log(`[HTTP ${method}] 响应状态:`, res.status, res.statusText);
+    }
     
     if ((res.status === 401 || res.status === 403) && requireAuth) {
       // 只在需要认证的请求中处理认证错误
@@ -112,9 +124,20 @@ async function httpPost(path, body, requireAuth = false, method = 'POST') {
     
     return responseData;
   } catch (error) {
+    // 添加详细的错误日志
+    if (process.env.NODE_ENV === 'development' || !process.env.NODE_ENV) {
+      console.error(`[HTTP ${method}] 请求失败:`, error);
+      console.error(`[HTTP ${method}] 请求URL:`, fullUrl);
+    }
+    
+    // 处理网络错误
+    if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
+      error.message = '无法连接到服务器，请确保后端服务已启动（运行 python manage.py runserver）';
+    }
+    
     if (!error.response) {
       // 如果没有response属性，添加一个基本的response对象
-      error.response = { status: 0, data: { message: '网络请求失败' } };
+      error.response = { status: 0, data: { message: error.message || '网络请求失败' } };
     }
     throw error;
   }
@@ -312,10 +335,25 @@ export const api = {
   async updateUserPreferences(preferences) {
         // 前端传入为 camelCase，转换成后端的 snake_case
         const payload = {
+            // 学习偏好设置
             ...(preferences.defaultLanguage !== undefined ? { default_language: preferences.defaultLanguage } : {}),
             ...(preferences.codeTheme !== undefined ? { code_theme: preferences.codeTheme } : {}),
             ...(preferences.autoPlayVideo !== undefined ? { auto_play_video: preferences.autoPlayVideo } : {}),
-            ...(preferences.keyboardShortcuts !== undefined ? { keyboard_shortcuts: preferences.keyboardShortcuts } : {})
+            ...(preferences.keyboardShortcuts !== undefined ? { keyboard_shortcuts: preferences.keyboardShortcuts } : {}),
+            ...(preferences.showLineNumbers !== undefined ? { show_line_numbers: preferences.showLineNumbers } : {}),
+            ...(preferences.useVimMode !== undefined ? { use_vim_mode: preferences.useVimMode } : {}),
+            
+            // 学习信息
+            ...(preferences.learning_goals !== undefined ? { learning_goals: preferences.learning_goals } : {}),
+            ...(preferences.major !== undefined ? { major: preferences.major } : {}),
+            ...(preferences.learning_stage !== undefined ? { learning_stage: preferences.learning_stage } : {}),
+            ...(preferences.interests !== undefined ? { interests: preferences.interests } : {}),
+            
+            // 通知设置
+            ...(preferences.enable_learning_reminders !== undefined ? { enable_learning_reminders: preferences.enable_learning_reminders } : {}),
+            ...(preferences.reminder_time !== undefined ? { reminder_time: preferences.reminder_time } : {}),
+            ...(preferences.daily_reminder !== undefined ? { daily_reminder: preferences.daily_reminder } : {}),
+            ...(preferences.deadline_reminder !== undefined ? { deadline_reminder: preferences.deadline_reminder } : {})
         };
         return httpPut('/users/preferences/', payload, true);
   },
@@ -968,5 +1006,92 @@ export const api = {
     const formData = new FormData();
     formData.append('files', file);
     return httpPostForm(`/learning/notes/${noteId}/add_attachment/`, formData, true);
+  },
+  
+  // 个性化学习路径相关API
+  async generatePersonalizedPath(learningGoal, maxNodes = 10) {
+    try {
+      return await httpPost('/learning/personalized-path/generate/', {
+        learning_goal: learningGoal,
+        max_nodes: maxNodes
+      }, true);
+    } catch (error) {
+      console.error('生成个性化学习路径失败:', error);
+      throw error;
+    }
+  },
+  
+  async updatePersonalizedPath(path, performance) {
+    try {
+      return await httpPost('/learning/personalized-path/update/', {
+        path: path,
+        performance: performance
+      }, true);
+    } catch (error) {
+      console.error('更新个性化学习路径失败:', error);
+      throw error;
+    }
+  },
+  
+  async generateLearningFeedback(performance) {
+    try {
+      return await httpPost('/learning/personalized-path/feedback/', {
+        performance: performance
+      }, true);
+    } catch (error) {
+      console.error('生成学习反馈失败:', error);
+      throw error;
+    }
+  },
+  
+  // 知识图谱相关API
+  async getKnowledgeNodes(filters = {}) {
+    try {
+      const params = new URLSearchParams();
+      if (filters.graph_id) params.append('graph_id', filters.graph_id);
+      if (filters.type) params.append('type', filters.type);
+      if (filters.level) params.append('level', filters.level);
+      if (filters.professional_group) params.append('professional_group', filters.professional_group);
+      
+      const url = `/learning/knowledge-graph/nodes/${params.toString() ? '?' + params.toString() : ''}`;
+      return await httpGet(url, true);
+    } catch (error) {
+      console.error('获取知识节点失败:', error);
+      throw error;
+    }
+  },
+  
+  async getKnowledgeRelations(sourceId, targetId) {
+    try {
+      const params = new URLSearchParams();
+      if (sourceId) params.append('source_id', sourceId);
+      if (targetId) params.append('target_id', targetId);
+      
+      const url = `/learning/knowledge-graph/relations/${params.toString() ? '?' + params.toString() : ''}`;
+      return await httpGet(url, true);
+    } catch (error) {
+      console.error('获取知识关系失败:', error);
+      throw error;
+    }
+  },
+  
+  async getKnowledgeRelationsAll() {
+    try {
+      const url = `/learning/knowledge-graph/relations/`;
+      return await httpGet(url, true);
+    } catch (error) {
+      console.error('获取所有知识关系失败:', error);
+      throw error;
+    }
+  },
+  
+  // 个性化学习建议API
+  async generatePersonalizedSuggestions(data = {}) {
+    try {
+      return await httpPost('/learning/recommendations/personalized-suggestions/', data, true);
+    } catch (error) {
+      console.error('生成个性化学习建议失败:', error);
+      throw error;
+    }
   }
 };

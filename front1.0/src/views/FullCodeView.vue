@@ -22,7 +22,13 @@
               <option value="html">HTML</option>
             </select>
           </div>
-          <span class="file-name">{{ fileName }}</span>
+          <input 
+              v-model="fileName" 
+              class="file-name-input" 
+              @blur="validateFileName" 
+              @keyup.enter="validateFileName"
+              placeholder="文件名"
+            />
           <span v-if="loadingTemplate" class="loading-indicator">加载模板中...</span>
         </div>
       </div>
@@ -144,7 +150,6 @@
 import { ref, computed, onMounted, watch, onBeforeUnmount, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import * as monaco from 'monaco-editor'
-import { getSupportedLanguages, getCodeTemplate } from '../api/codeSandbox'
 
 // 配置Monaco Environment以使用正确版本的worker
 import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
@@ -242,11 +247,20 @@ export default {
       let initialCode = '';
       try {
         loadingTemplate.value = true;
+        // 动态导入getCodeTemplate
+        const { getCodeTemplate } = await import('../api/codeSandbox.js');
         const templateData = await getCodeTemplate(codeLanguage.value);
         initialCode = templateData.template;
       } catch (error) {
         console.error('获取初始代码模板失败:', error);
-        initialCode = '// 在这里编写你的代码';
+        // 使用默认模板函数作为备选
+        try {
+          const { getDefaultTemplate } = await import('../api/codeSandbox.js');
+          initialCode = getDefaultTemplate(codeLanguage.value);
+        } catch (defaultError) {
+          console.error('获取默认模板失败:', defaultError);
+          initialCode = '// 在这里编写你的代码';
+        }
       } finally {
         loadingTemplate.value = false;
       }
@@ -406,20 +420,19 @@ export default {
       // 获取并设置对应语言的代码模板
       try {
         loadingTemplate.value = true;
-        // 直接使用本地模板映射，避免API调用可能的问题
-        const languageTemplates = {
-          javascript: '// JavaScript 默认模板\nconsole.log("Hello, World!");',
-          python: '# Python 默认模板\nprint("Hello, World!")',
-          java: '// Java 默认模板\npublic class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello, World!");\n    }\n}',
-          cpp: '// C++ 默认模板\n#include <iostream>\n\nint main() {\n    std::cout << "Hello, World!" << std::endl;\n    return 0;\n}',
-          c: '// C 默认模板\n#include <stdio.h>\n\nint main() {\n    printf("Hello, World!\n");\n    return 0;\n}',
-          csharp: '// C# 默认模板\nusing System;\n\nclass Program {\n    static void Main() {\n        Console.WriteLine("Hello, World!");\n    }\n}',
-          php: '<?php\n// PHP 默认模板\necho "Hello, World!";\n?>',
-          ruby: '# Ruby 默认模板\nputs "Hello, World!"'
-        };
         
-        // 优先使用本地模板
-        const template = languageTemplates[codeLanguage.value.toLowerCase()] || '// 在这里编写你的代码';
+        // 尝试从后端获取模板
+        let template = '';
+        try {
+          // 使用codeSandbox.js中的getDefaultTemplate函数获取完整模板
+          const { getDefaultTemplate } = await import('../api/codeSandbox.js');
+          template = getDefaultTemplate(codeLanguage.value);
+        } catch (importError) {
+          console.error('导入getDefaultTemplate失败:', importError);
+          // 使用API获取模板
+          const templateData = await getCodeTemplate(codeLanguage.value);
+          template = templateData.template;
+        }
         
         if (model) {
           console.log(`更新为${codeLanguage.value}模板`);
@@ -454,7 +467,42 @@ export default {
       };
       
       const extension = extensions[codeLanguage.value] || 'txt';
-      fileName.value = `untitled.${extension}`;
+      const nameWithoutExt = fileName.value.split('.')[0] || 'untitled';
+      fileName.value = `${nameWithoutExt}.${extension}`;
+    }
+    
+    // 验证文件名
+    const validateFileName = () => {
+      if (!fileName.value.trim()) {
+        // 文件名不能为空，使用默认值
+        updateFileName();
+        return;
+      }
+      
+      // 获取当前语言对应的扩展名
+      const extensions = {
+        javascript: 'js',
+        python: 'py',
+        java: 'java',
+        cpp: 'cpp',
+        c: 'c',
+        csharp: 'cs',
+        php: 'php',
+        ruby: 'rb',
+        go: 'go',
+        rust: 'rs',
+        html: 'html',
+        css: 'css'
+      };
+      
+      const expectedExt = extensions[codeLanguage.value] || 'txt';
+      const currentExt = fileName.value.split('.').pop().toLowerCase();
+      
+      // 确保文件名有正确的扩展名
+      if (currentExt !== expectedExt) {
+        const nameWithoutExt = fileName.value.split('.')[0] || 'untitled';
+        fileName.value = `${nameWithoutExt}.${expectedExt}`;
+      }
     }
     
     // 格式化代码
@@ -1122,6 +1170,8 @@ export default {
       try {
         console.log('开始获取支持的编程语言列表...');
         console.log('API基础URL:', import.meta.env.VITE_APP_API_BASE_URL);
+        // 动态导入getSupportedLanguages
+        const { getSupportedLanguages } = await import('../api/codeSandbox.js');
         const languagesData = await getSupportedLanguages();
         console.log('获取到的语言列表数据:', languagesData);
         supportedLanguages.value = languagesData.languages;
@@ -1133,14 +1183,14 @@ export default {
         // 确保至少有默认语言选项
         if (!supportedLanguages.value || supportedLanguages.value.length === 0) {
           console.log('语言列表为空，使用默认语言列表');
-          supportedLanguages.value = ['javascript', 'python', 'java', 'c', 'html'];
+          supportedLanguages.value = ['javascript', 'python', 'java', 'c', 'cpp', 'html'];
         }
       } catch (error) {
           console.error('加载支持的编程语言列表失败:', error);
           console.error('错误详情:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
           // 出现错误时设置默认语言列表
           console.log('出现错误，设置默认语言列表');
-          supportedLanguages.value = ['javascript', 'python', 'java', 'c', 'html'];
+          supportedLanguages.value = ['javascript', 'python', 'java', 'c', 'cpp', 'html'];
         } finally {
           isLanguagesLoading.value = false;
         }
@@ -1204,7 +1254,8 @@ export default {
       applyFix,
       triggerCompletion,
       updateLanguage,
-      formatCode
+      formatCode,
+      validateFileName
     }
   }
 }
@@ -1273,10 +1324,32 @@ export default {
 }
 
 .file-name {
-  color: #999;
-  font-size: 14px;
-  white-space: nowrap;
-}
+      color: #999;
+      font-size: 14px;
+      white-space: nowrap;
+    }
+    
+    .file-name-input {
+      background: transparent;
+      border: 1px solid transparent;
+      border-bottom: 1px solid #555;
+      color: #fff;
+      font-size: 14px;
+      padding: 2px 5px;
+      margin: 0 5px;
+      width: 150px;
+      transition: all 0.2s;
+    }
+    
+    .file-name-input:focus {
+      outline: none;
+      border-bottom: 1px solid #4CAF50;
+      background: rgba(76, 175, 80, 0.1);
+    }
+    
+    .file-name-input::placeholder {
+      color: #666;
+    }
 
 .loading-indicator {
   font-size: 12px;

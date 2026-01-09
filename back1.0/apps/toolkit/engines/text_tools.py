@@ -89,8 +89,6 @@ class TextExtractTool(BaseToolEngine):
         
         if not params.get('filePath'):
             errors.append("请输入文件路径")
-        elif not os.path.exists(params['filePath']):
-            errors.append("文件不存在")
         
         supported_formats = ['txt', 'md']
         output_format = params.get('outputFormat', 'txt')

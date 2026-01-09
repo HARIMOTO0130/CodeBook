@@ -47,8 +47,10 @@
           @click="goToTool(scene.toolId)"
         >
           <div class="scene-icon">{{ scene.icon }}</div>
-          <h4 class="scene-title">{{ scene.title }}</h4>
-          <p class="scene-desc">{{ scene.description }}</p>
+          <div class="scene-info">
+            <h4 class="scene-title">{{ scene.title }}</h4>
+            <p class="scene-desc">{{ scene.description }}</p>
+          </div>
         </div>
       </div>
     </div>
@@ -262,22 +264,22 @@ export default {
     const popularScenes = ref([
       {
         id: 1,
-        title: '数据可视化',
-        description: '将复杂数据转化为直观图表',
+        title: 'Excel表格合并',
+        description: '将多个Excel文件合并为一个，自动处理表头和数据',
         icon: '📊',
-        toolId: 6  // 关联到数据统计分析工具
+        toolId: 2  // 关联到Excel表格合并工具
       },
       {
         id: 2,
         title: '文本内容提取',
-        description: '一键提取长文档关键信息',
+        description: '从PDF、Word等文档中提取文本内容',
         icon: '📝',
         toolId: 4  // 关联到文本内容提取工具
       },
       {
         id: 3,
         title: '手机照片批量处理',
-        description: '一键优化、压缩和整理手机照片',
+        description: '批量压缩图片文件，可设置压缩质量和尺寸',
         icon: '📱',
         toolId: 3  // 关联到图片批量压缩工具
       }
@@ -288,9 +290,9 @@ export default {
       {
         id: 1,
         title: '数据统计分析',
-        description: '快速分析数据，生成统计报告',
+        description: '合并Excel文件，进行数据统计和分析',
         icon: '📈',
-        toolId: 6  // 关联到数据统计分析工具
+        toolId: 2  // 关联到Excel表格合并工具
       },
       {
         id: 2,
@@ -916,7 +918,7 @@ export default {
 
 .scenes-container {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: 20px;
 }
 
@@ -927,6 +929,9 @@ export default {
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
   cursor: pointer;
   transition: transform 0.2s, box-shadow 0.2s;
+  display: flex;
+  gap: 15px;
+  min-height: 120px;
 }
 
 .scene-card:hover {
@@ -936,7 +941,15 @@ export default {
 
 .scene-icon {
   font-size: 2.5rem;
-  margin-bottom: 10px;
+  flex-shrink: 0;
+  margin-bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.scene-info {
+  flex: 1;
 }
 
 .scene-title {
@@ -949,6 +962,7 @@ export default {
   color: #666;
   font-size: 0.9rem;
   line-height: 1.5;
+  margin: 0;
 }
 
 /* 智能推荐样式 */
@@ -974,11 +988,21 @@ export default {
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
   display: flex;
   gap: 15px;
+  min-height: 120px;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.recommendation-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15);
 }
 
 .rec-icon {
-  font-size: 2rem;
+  font-size: 2.5rem;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .rec-info {
@@ -986,15 +1010,15 @@ export default {
 }
 
 .rec-title {
-  font-size: 1.1rem;
-  margin-bottom: 5px;
+  font-size: 1.2rem;
+  margin-bottom: 8px;
   font-weight: 600;
 }
 
 .rec-desc {
   color: #666;
   font-size: 0.9rem;
-  margin-bottom: 10px;
+  margin-bottom: 0;
   line-height: 1.5;
 }
 
@@ -1002,10 +1026,7 @@ export default {
   color: #1976d2;
   text-decoration: none;
   font-size: 0.9rem;
-}
-
-.rec-link:hover {
-  text-decoration: underline;
+  display: none;
 }
 
 /* 练习题样式 */

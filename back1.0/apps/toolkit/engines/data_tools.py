@@ -100,8 +100,6 @@ class DataAnalysisTool(BaseToolEngine):
         
         if not params.get('filePath'):
             errors.append("请输入Excel文件路径")
-        elif not os.path.exists(params['filePath']):
-            errors.append("文件不存在")
         elif not params['filePath'].lower().endswith(('.xlsx', '.xls')):
             errors.append("请输入有效的Excel文件")
         

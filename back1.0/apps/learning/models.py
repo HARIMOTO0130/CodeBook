@@ -540,3 +540,129 @@ class LearningPreference(models.Model):
     
     def __str__(self):
         return f"{self.user.username}的学习偏好"
+
+
+# 知识图谱相关模型
+class KnowledgeGraph(models.Model):
+    """知识图谱模型"""
+    id = models.AutoField(primary_key=True)
+    name = models.CharField(max_length=100, verbose_name='图谱名称')
+    description = models.TextField(verbose_name='图谱描述')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
+    is_active = models.BooleanField(default=True, verbose_name='是否激活')
+    
+    class Meta:
+        verbose_name = '知识图谱'
+        verbose_name_plural = '知识图谱'
+    
+    def __str__(self):
+        return self.name
+
+
+class KnowledgeNode(models.Model):
+    """知识节点模型"""
+    id = models.AutoField(primary_key=True)
+    graph = models.ForeignKey(KnowledgeGraph, on_delete=models.CASCADE, related_name='nodes', verbose_name='所属图谱')
+    title = models.CharField(max_length=200, verbose_name='节点标题')
+    type = models.CharField(max_length=50, choices=[
+        ('concept', '概念层'),
+        ('professional_integration', '专业融合层'),
+        ('skill', '技能层'),
+        ('resource', '资源层')
+    ], verbose_name='节点类型')
+    level = models.IntegerField(default=1, verbose_name='节点层级')
+    difficulty = models.FloatField(default=3.0, verbose_name='难度系数')
+    importance = models.FloatField(default=3.0, verbose_name='重要程度')
+    description = models.TextField(verbose_name='节点描述')
+    professional_group = models.CharField(max_length=50, choices=[
+        ('business', '经管类'),
+        ('humanities', '文史类'),
+        ('arts', '艺术类'),
+        ('science', '理工科')
+    ], verbose_name='专业组')
+    tags = models.JSONField(default=list, verbose_name='节点标签')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
+    
+    class Meta:
+        verbose_name = '知识节点'
+        verbose_name_plural = '知识节点'
+        ordering = ['level', 'importance', 'difficulty']
+    
+    def __str__(self):
+        return f"{self.title} ({self.get_type_display()})"
+
+
+class KnowledgeRelation(models.Model):
+    """知识关系模型"""
+    id = models.AutoField(primary_key=True)
+    graph = models.ForeignKey(KnowledgeGraph, on_delete=models.CASCADE, related_name='relations', verbose_name='所属图谱')
+    source = models.ForeignKey(KnowledgeNode, on_delete=models.CASCADE, related_name='outgoing_relations', verbose_name='源节点')
+    target = models.ForeignKey(KnowledgeNode, on_delete=models.CASCADE, related_name='incoming_relations', verbose_name='目标节点')
+    relation_type = models.CharField(max_length=50, choices=[
+        ('prerequisite', '前置依赖'),
+        ('related', '相关知识'),
+        ('application', '应用场景'),
+        ('advanced', '进阶知识'),
+        ('professional', '专业关联')
+    ], verbose_name='关系类型')
+    strength = models.FloatField(default=1.0, verbose_name='关系强度')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
+    
+    class Meta:
+        verbose_name = '知识关系'
+        verbose_name_plural = '知识关系'
+        unique_together = ('source', 'target', 'relation_type')
+    
+    def __str__(self):
+        return f"{self.source.title} - {self.get_relation_type_display()} - {self.target.title}"
+
+
+# 大模型相关模型
+class LLMIntegration(models.Model):
+    """大模型集成配置"""
+    id = models.AutoField(primary_key=True)
+    name = models.CharField(max_length=100, verbose_name='配置名称')
+    provider = models.CharField(max_length=50, choices=[
+        ('openai', 'OpenAI'),
+        ('anthropic', 'Anthropic'),
+        ('baidu', '百度文心一言'),
+        ('alibaba', '阿里云通义千问'),
+        ('doubao', '豆包(Doubao)')
+    ], verbose_name='大模型提供商')
+    api_key = models.CharField(max_length=255, verbose_name='API密钥')
+    model_name = models.CharField(max_length=100, verbose_name='模型名称')
+    is_active = models.BooleanField(default=True, verbose_name='是否激活')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
+    
+    class Meta:
+        verbose_name = '大模型配置'
+        verbose_name_plural = '大模型配置'
+    
+    def __str__(self):
+        return self.name
+
+
+class PromptTemplate(models.Model):
+    """大模型Prompt模板"""
+    id = models.AutoField(primary_key=True)
+    name = models.CharField(max_length=100, verbose_name='模板名称')
+    template = models.TextField(verbose_name='模板内容')
+    type = models.CharField(max_length=50, choices=[
+        ('knowledge_extraction', '知识提取'),
+        ('path_generation', '路径生成'),
+        ('content_explanation', '内容解释'),
+        ('feedback_generation', '反馈生成'),
+        ('question_answering', '问答')
+    ], verbose_name='模板类型')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
+    
+    class Meta:
+        verbose_name = 'Prompt模板'
+        verbose_name_plural = 'Prompt模板'
+    
+    def __str__(self):
+        return self.name
