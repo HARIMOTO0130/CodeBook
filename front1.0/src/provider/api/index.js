@@ -1,58 +1,174 @@
-// 教材提供者端 API 封装
-import { API_BASE_URL, api as studentApi } from '../../student/api/api.js'
+// 教材提供者端 API 封装（自行处理鉴权与基址）
+const PROVIDER_BASE = 'http://127.0.0.1:8000/api/provider/books'
 
-// 统一以 /api/provider/books 为前缀
-const PROVIDER_BASE = API_BASE_URL.replace('/student', '/provider/books')
-
-// 复用学生端的 request 封装
-const request = studentApi.request || studentApi._request || null
-
-// 简单兜底：如果没有暴露 request，就直接用 fetch
-async function rawRequest(url, options = {}) {
-  const resp = await fetch(url, options)
-  if (!resp.ok) {
-    const text = await resp.text()
-    throw new Error(text || resp.statusText)
+const getToken = () => {
+  try {
+    return localStorage.getItem('token') || ''
+  } catch {
+    return ''
   }
-  return resp.json()
 }
 
-const doRequest = request || rawRequest
+const buildHeaders = (auth = false, isFormData = false) => {
+  const headers = {}
+  if (auth) {
+    const token = getToken()
+    if (token) headers['Authorization'] = `Token ${token}`
+  }
+  // 如果是FormData，不设置Content-Type，让浏览器自动设置
+  if (!isFormData) {
+    headers['Content-Type'] = 'application/json'
+  }
+  return headers
+}
+
+async function request(path, { method = 'GET', body = null, auth = false, isFormData = false } = {}) {
+  const url = path.startsWith('http') ? path : `${PROVIDER_BASE}${path}`
+  
+  // 处理body：如果是FormData，直接使用；否则转换为JSON字符串
+  let requestBody = body
+  if (body && !isFormData && typeof body === 'object') {
+    requestBody = JSON.stringify(body)
+  }
+  
+  const resp = await fetch(url, {
+    method,
+    headers: buildHeaders(auth, isFormData),
+    body: requestBody,
+  })
+  if (!resp.ok) {
+    let detail = ''
+    try { 
+      const text = await resp.text()
+      try {
+        detail = JSON.parse(text)
+      } catch {
+        detail = text
+      }
+    } catch {}
+    throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail))
+  }
+  return resp.json().catch(() => ({}))
+}
 
 export const providerApi = {
+  // 书籍列表
   async listBooks(params = {}) {
     const query = new URLSearchParams(params).toString()
-    const url = query ? `${PROVIDER_BASE}/?${query}` : `${PROVIDER_BASE}/`
-    return doRequest(url)
+    // 使用认证，获取用户可访问的书籍
+    return request(query ? `/?${query}` : '/', { auth: true })
   },
 
+  // 创建书籍
+  async createBook(payload) {
+    const isFormData = payload instanceof FormData
+    return request('/', { method: 'POST', body: payload, auth: true, isFormData })
+  },
+
+  // 上传PDF文件
+  async uploadPDF(payload) {
+    return request('/import-pdf/', { method: 'POST', body: payload, auth: true, isFormData: true })
+  },
+
+  // 上传DOCX文件
+  async uploadDOCX(payload) {
+    return request('/import-docx/', { method: 'POST', body: payload, auth: true, isFormData: true })
+  },
+
+  // 上传MD文件
+  async uploadMD(payload) {
+    return request('/import-md/', { method: 'POST', body: payload, auth: true, isFormData: true })
+  },
+
+  // 上传EPUB文件
+  async uploadEPUB(payload) {
+    return request('/import-epub/', { method: 'POST', body: payload, auth: true, isFormData: true })
+  },
+
+  // 从GitHub导入
+  async importFromGitHub(payload) {
+    return request('/import-github/', { method: 'POST', body: payload, auth: true })
+  },
+
+  // 分类
   async listCategories() {
-    return doRequest(`${PROVIDER_BASE}/categories/`)
+    return request('/categories/', { auth: true })
   },
-
   async createCategory(payload) {
-    return doRequest(`${PROVIDER_BASE}/categories/`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
+    return request('/categories/', { method: 'POST', body: payload, auth: true })
   },
 
+  // 标签
   async listTags() {
-    return doRequest(`${PROVIDER_BASE}/tags/`)
+    return request('/tags/', { auth: true })
   },
-
   async createTag(payload) {
-    return doRequest(`${PROVIDER_BASE}/tags/`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
+    return request('/tags/', { method: 'POST', body: payload, auth: true })
   },
 
+  // 版本
   async listVersions(bookId) {
-    const url = `${PROVIDER_BASE}/versions/?book=${bookId}`
-    return doRequest(url)
+    const raw = await request(`http://127.0.0.1:8000/api/provider/versions/?book=${bookId}`, { auth: true })
+    // 统一处理分页和非分页两种返回格式
+    if (Array.isArray(raw)) {
+      return raw
+    }
+    if (raw && Array.isArray(raw.results)) {
+      return raw.results
+    }
+    return []
+  },
+  
+  // 获取版本详情
+  async getVersionDetail(versionId) {
+    return request(`http://127.0.0.1:8000/api/provider/versions/${versionId}/`, { auth: true })
+  },
+  
+  // 对比书籍版本
+  async compareBookVersions(version1Id, version2Id) {
+    return request(`http://127.0.0.1:8000/api/provider/versions/compare/?version1=${version1Id}&version2=${version2Id}`, { auth: true })
+  },
+  
+  // 对比章节版本
+  async compareChapterVersions(version1Id, version2Id) {
+    return request(`http://127.0.0.1:8000/api/provider/chapter-versions/compare/?version1=${version1Id}&version2=${version2Id}`, { auth: true })
+  },
+  
+  // 章节版本列表
+  async listChapterVersions(chapterId) {
+    return request(`http://127.0.0.1:8000/api/provider/chapter-versions/?chapter=${chapterId}`, { auth: true })
+  },
+
+  // 删除书籍
+  async deleteBook(bookId) {
+    return request(`/${bookId}/`, { method: 'DELETE', auth: true })
+  },
+  
+  // 获取书籍详情
+  async getBookDetail(bookId) {
+    return request(`/${bookId}/`, { auth: true })
+  },
+  
+  // 完整更新书籍信息
+  async updateBook(bookId, payload) {
+    const isFormData = payload instanceof FormData
+    return request(`/${bookId}/`, { method: 'PUT', body: payload, auth: true, isFormData })
+  },
+  
+  // 部分更新书籍信息
+  async patchBook(bookId, payload) {
+    const isFormData = payload instanceof FormData
+    return request(`/${bookId}/`, { method: 'PATCH', body: payload, auth: true, isFormData })
+  },
+  
+  // 获取书籍统计数据
+  async getBookStats(bookId) {
+    return request(`/${bookId}/stats/`, { auth: true })
+  },
+  
+  // 更新书籍设置
+  async updateBookSettings(bookId, payload) {
+    return request(`/${bookId}/settings/`, { method: 'PUT', body: payload, auth: true })
   },
 }
 

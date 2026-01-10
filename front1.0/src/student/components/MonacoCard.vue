@@ -60,31 +60,47 @@
 
 <script>
 import { ref, onMounted, watch, nextTick, onBeforeUnmount } from 'vue'
-import * as monaco from 'monaco-editor'
 import { getCodeTemplate, getDefaultTemplate } from '../api/codeSandbox.js'
 
-// 配置Monaco Environment以使用正确版本的worker
-import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
-import JsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker'
-import CssWorker from 'monaco-editor/esm/vs/language/css/css.worker?worker'
-import HtmlWorker from 'monaco-editor/esm/vs/language/html/html.worker?worker'
-import TsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker'
+// 动态导入Monaco Editor和Worker配置
+let monaco = null
+let isMonacoLoaded = false
 
+// 配置Monaco Environment以使用正确版本的worker - 改为动态加载
 window.MonacoEnvironment = {
-  getWorker(_, label) {
+  async getWorker(_, label) {
     if (label === 'json') {
+      const { default: JsonWorker } = await import('monaco-editor/esm/vs/language/json/json.worker?worker')
       return new JsonWorker()
     }
     if (label === 'css' || label === 'scss' || label === 'less') {
+      const { default: CssWorker } = await import('monaco-editor/esm/vs/language/css/css.worker?worker')
       return new CssWorker()
     }
     if (label === 'html' || label === 'handlebars' || label === 'razor') {
+      const { default: HtmlWorker } = await import('monaco-editor/esm/vs/language/html/html.worker?worker')
       return new HtmlWorker()
     }
     if (label === 'typescript' || label === 'javascript') {
+      const { default: TsWorker } = await import('monaco-editor/esm/vs/language/typescript/ts.worker?worker')
       return new TsWorker()
     }
+    const { default: EditorWorker } = await import('monaco-editor/esm/vs/editor/editor.worker?worker')
     return new EditorWorker()
+  }
+}
+
+// 加载Monaco Editor的函数
+const loadMonacoEditor = async () => {
+  if (isMonacoLoaded) return monaco
+  try {
+    const importedMonaco = await import('monaco-editor')
+    monaco = importedMonaco.default || importedMonaco
+    isMonacoLoaded = true
+    return monaco
+  } catch (error) {
+    console.error('加载Monaco Editor失败:', error)
+    throw error
   }
 }
 
@@ -162,100 +178,104 @@ export default {
     const isCompletionLoading = ref(false)
     
     // 初始化编辑器
-    const initMonaco = () => {
+    const initMonaco = async () => {
       if (!monacoContainer.value || editor) return
       
-      // 配置编辑器选项
-      const options = {
-        value: props.modelValue,
-        language: props.language,
-        theme: currentTheme,
-        readOnly: localReadOnly,
-        minimap: { enabled: true },
-        fontSize: props.fontSize,
-        lineNumbers: props.showLineNumbers ? 'on' : 'off',
-        automaticLayout: true,
-        scrollBeyondLastLine: false,
-        tabSize: 2,
-        wordWrap: 'on',
-        cursorBlinking: 'smooth',
-        contextmenu: true,
-        scrollbar: {
-          useShadows: false,
-          verticalScrollbarSize: 10,
-          horizontalScrollbarSize: 10
-        },
-        suggest: {
-          // 确保自动显示建议
-          quickSuggestions: {
-            other: true,
-            comments: true,
-            strings: true
+      try {
+        // 先加载Monaco Editor
+        await loadMonacoEditor()
+      
+        // 配置编辑器选项
+        const options = {
+          value: props.modelValue,
+          language: props.language,
+          theme: currentTheme,
+          readOnly: localReadOnly,
+          minimap: { enabled: true },
+          fontSize: props.fontSize,
+          lineNumbers: props.showLineNumbers ? 'on' : 'off',
+          automaticLayout: true,
+          scrollBeyondLastLine: false,
+          tabSize: 2,
+          wordWrap: 'on',
+          cursorBlinking: 'smooth',
+          contextmenu: true,
+          scrollbar: {
+            useShadows: false,
+            verticalScrollbarSize: 10,
+            horizontalScrollbarSize: 10
           },
-          quickSuggestionsDelay: 0, // 立即显示建议
-          // 禁用代码片段下拉列表
-          showSnippets: false,
-          snippetsPreventQuickSuggestions: true,
-          // 保留必要的代码建议功能
-          showMethods: true,
-          showFunctions: true,
-          showConstructors: true,
-          showFields: true,
-          showVariables: true,
-          showClasses: true,
-          showModules: true,
-          showProperties: true,
-          showKeywords: true,
-          // 其他优化设置
-          filterGraceful: true,
-          maxVisibleSuggestions: 10,
-          shareSuggestSelections: true,
-          acceptSuggestionOnEnter: 'on'
-        }
-      }
-      
-      // 如果启用Vim模式
-      if (props.useVimMode) {
-        // 注意：实际使用vim模式需要引入额外的插件
-        console.log('Vim模式已启用')
-      }
-      
-      // 创建编辑器实例
-      editor = monaco.editor.create(monacoContainer.value, options)
-      
-      // 注册自定义补全提供者
-      registerCustomCompletion()
-      
-      // 监听内容变化
-      let lastContentChangeTime = 0;
-      const CONTENT_CHANGE_DEBOUNCE_TIME = 300; // 300ms延迟
-      
-      editor.onDidChangeModelContent(() => {
-        const content = editor.getValue()
-        emit('update:modelValue', content)
-        updateStats(content)
-        
-        // 自动提供上下文感知的代码建议
-        const currentTime = Date.now();
-        const position = editor.getPosition();
-        
-        // 使用防抖确保不会频繁触发，只有在用户停止输入短暂时间后才提供建议
-        if (currentTime - lastContentChangeTime >= CONTENT_CHANGE_DEBOUNCE_TIME) {
-          // 检查是否应该提供上下文感知建议
-          const model = editor.getModel();
-          const currentLine = model.getLineContent(position.lineNumber);
-          
-          // 根据当前行的内容决定是否提供智能建议
-          // 例如，如果用户正在输入表达式、变量名或函数调用，我们提供建议
-          if (shouldProvideContextSuggestions(currentLine, position.column)) {
-            // 不直接触发显示，而是预先加载上下文感知建议到缓存
-            // 这样当编辑器自动显示建议列表时，上下文感知的建议也会包含在内
-            preloadContextAwareSuggestions();
+          suggest: {
+            // 确保自动显示建议
+            quickSuggestions: {
+              other: true,
+              comments: true,
+              strings: true
+            },
+            quickSuggestionsDelay: 0, // 立即显示建议
+            // 禁用代码片段下拉列表
+            showSnippets: false,
+            snippetsPreventQuickSuggestions: true,
+            // 保留必要的代码建议功能
+            showMethods: true,
+            showFunctions: true,
+            showConstructors: true,
+            showFields: true,
+            showVariables: true,
+            showClasses: true,
+            showModules: true,
+            showProperties: true,
+            showKeywords: true,
+            // 其他优化设置
+            filterGraceful: true,
+            maxVisibleSuggestions: 10,
+            shareSuggestSelections: true,
+            acceptSuggestionOnEnter: 'on'
           }
         }
         
-        lastContentChangeTime = currentTime;
-      })
+        // 如果启用Vim模式
+        if (props.useVimMode) {
+          // 注意：实际使用vim模式需要引入额外的插件
+          console.log('Vim模式已启用')
+        }
+        
+        // 创建编辑器实例
+        editor = monaco.editor.create(monacoContainer.value, options)
+        
+        // 注册自定义补全提供者
+        registerCustomCompletion()
+        
+        // 监听内容变化
+        let lastContentChangeTime = 0;
+        const CONTENT_CHANGE_DEBOUNCE_TIME = 300; // 300ms延迟
+        
+        editor.onDidChangeModelContent(() => {
+          const content = editor.getValue()
+          emit('update:modelValue', content)
+          updateStats(content)
+          
+          // 自动提供上下文感知的代码建议
+          const currentTime = Date.now();
+          const position = editor.getPosition();
+          
+          // 使用防抖确保不会频繁触发，只有在用户停止输入短暂时间后才提供建议
+          if (currentTime - lastContentChangeTime >= CONTENT_CHANGE_DEBOUNCE_TIME) {
+            // 检查是否应该提供上下文感知建议
+            const model = editor.getModel();
+            const currentLine = model.getLineContent(position.lineNumber);
+            
+            // 根据当前行的内容决定是否提供智能建议
+            // 例如，如果用户正在输入表达式、变量名或函数调用，我们提供建议
+            if (shouldProvideContextSuggestions(currentLine, position.column)) {
+              // 不直接触发显示，而是预先加载上下文感知建议到缓存
+              // 这样当编辑器自动显示建议列表时，上下文感知的建议也会包含在内
+              preloadContextAwareSuggestions();
+            }
+          }
+          
+          lastContentChangeTime = currentTime;
+        })
       
       // 判断是否应该提供上下文感知建议的辅助函数
       const shouldProvideContextSuggestions = (currentLine, column) => {
@@ -362,6 +382,9 @@ export default {
       // 初始化语言信息
       updateLanguageInfo()
       updateStats(props.modelValue)
+      } catch (error) {
+        console.error('初始化Monaco编辑器失败:', error);
+      }
     }
     
     // 更新语言信息

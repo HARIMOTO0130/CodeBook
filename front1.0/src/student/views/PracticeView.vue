@@ -194,16 +194,22 @@ export default {
         // 直接使用标准化后的标题作为键，确保每组只保留一个
         if (!chaptersMap.has(chapterTitle)) {
           const chapterId = practice.chapter_id
+          const chapterOrder = practice.chapter_order || practice.chapter_id
           chaptersMap.set(chapterTitle, {
             chapter_id: chapterId,
             chapter_title: chapterTitle,
+            chapter_order: chapterOrder,
             practices: [practice] // 只添加当前练习作为第一个
           })
         }
       })
       
-      // 转换为数组并按章节ID排序
-      return Array.from(chaptersMap.values()).sort((a, b) => a.chapter_id - b.chapter_id)
+      // 转换为数组并按章节顺序排序（优先使用chapter_order，如果没有则使用chapter_id）
+      return Array.from(chaptersMap.values()).sort((a, b) => {
+        const orderA = a.chapter_order !== undefined ? a.chapter_order : a.chapter_id
+        const orderB = b.chapter_order !== undefined ? b.chapter_order : b.chapter_id
+        return orderA - orderB
+      })
     })
     
     const currentChapterPractices = computed(() => {
@@ -603,18 +609,33 @@ export default {
           const displayType = backendType.replace(/_([a-z])/g, (m, p1) => p1.toUpperCase())
 
           // 统一选项与正确答案
-          let options = Array.isArray(q.options) ? q.options : []
-          let correctAnswer = q.correctAnswer
+          // 转换选项格式：后端可能使用 text，前端使用 content
+          let options = Array.isArray(q.options) ? q.options.map(opt => ({
+            ...opt,
+            content: opt.content || opt.text || opt.label || '',
+            text: opt.text || opt.content || opt.label || ''
+          })) : []
+          let correctAnswer = q.correctAnswer || q.correct_answer
 
-          // 选择题：从 is_correct 推导正确选项索引
-          if (backendType === 'choice' && options.length > 0 && correctAnswer === undefined) {
-            const correctIndexes = options
-              .map((opt, optIdx) => (opt.is_correct ? optIdx : null))
-              .filter(v => v !== null)
-            if (correctIndexes.length === 1) {
-              correctAnswer = correctIndexes[0]
-            } else if (correctIndexes.length > 1) {
-              correctAnswer = correctIndexes
+          // 选择题：从 is_correct 推导正确选项索引，或从 correct_answer 字符串匹配
+          if (backendType === 'choice' && options.length > 0) {
+            if (correctAnswer === undefined) {
+              const correctIndexes = options
+                .map((opt, optIdx) => (opt.is_correct ? optIdx : null))
+                .filter(v => v !== null)
+              if (correctIndexes.length === 1) {
+                correctAnswer = correctIndexes[0]
+              } else if (correctIndexes.length > 1) {
+                correctAnswer = correctIndexes
+              }
+            } else if (typeof correctAnswer === 'string') {
+              // 如果 correctAnswer 是字符串（如 "A"），转换为索引
+              const optionIndex = options.findIndex(opt => 
+                opt.id === correctAnswer || opt.id === correctAnswer.toUpperCase()
+              )
+              if (optionIndex !== -1) {
+                correctAnswer = optionIndex
+              }
             }
           }
 
@@ -647,12 +668,13 @@ export default {
           return {
             id,
             type: displayType,
-            title: q.title,
-            description: q.description,
-            question: q.question,
-            code_template: q.code_template,
-            language: q.language || practice.language,
-            difficulty: q.difficulty || practice.difficulty,
+            title: q.title || `题目 ${id}`,
+            description: q.description || '',
+            // 确保 question 字段存在，优先使用 question，其次使用 stem
+            question: q.question || q.stem || q.title || `题目 ${id}`,
+            code_template: q.code_template || q.codeTemplate || '',
+            language: q.language || practice.language || 'python',
+            difficulty: q.difficulty || practice.difficulty || 2,
             options,
             blanks,
             testCases,

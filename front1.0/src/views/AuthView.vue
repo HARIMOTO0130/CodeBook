@@ -160,14 +160,20 @@ export default {
         if (result && result.token) {
           localStorage.setItem('token', result.token)
           
-          // 保存用户角色（优先使用后端返回的角色）
-          let userRole = result.role || 'student'
+          // 保存用户角色（优先使用后端返回的角色，其次使用用户选择的角色）
+          let userRole = result.role || selectedRole.value || 'student'
           localStorage.setItem('userRole', userRole)
           
           // 更新App.vue中的认证状态
           if (window.__updateAuthStatus) {
             window.__updateAuthStatus()
           }
+          
+          // 调试信息
+          console.log('登录成功，设置用户角色:', userRole)
+          console.log('localStorage中的userRole:', localStorage.getItem('userRole'))
+          console.log('用户选择的角色:', selectedRole.value)
+          console.log('后端返回的角色:', result.role)
           
           // 根据角色跳转（如果有redirect参数则使用，否则根据角色跳转）
           const redirect = route.query.redirect || getRedirectPath(userRole)

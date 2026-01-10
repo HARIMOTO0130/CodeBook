@@ -130,7 +130,24 @@ class BookViewSet(viewsets.ModelViewSet):
                     stats = book_id_to_stats.get(item['id'])
                     if stats:
                         item['progress'] = int(stats['avg_progress']) if stats['avg_progress'] is not None else 0
-                        item['last_learn_time'] = stats['last_time'].isoformat() if stats['last_time'] else None
+                        # 确保last_learn_time是datetime对象或None
+                        last_time = stats['last_time']
+                        if last_time is not None:
+                            if isinstance(last_time, str):
+                                # 如果是字符串，尝试转换为datetime对象
+                                try:
+                                    import dateutil.parser
+                                    import datetime
+                                    last_time = dateutil.parser.parse(last_time)
+                                    # 确保是datetime对象
+                                    if not isinstance(last_time, datetime.datetime):
+                                        last_time = None
+                                except (ImportError, ValueError, TypeError):
+                                    last_time = None
+                            elif not hasattr(last_time, 'utcoffset'):
+                                # 如果不是datetime对象，设置为None
+                                last_time = None
+                        item['last_learn_time'] = last_time
         
         return Response(serializer.data)
 
@@ -1181,10 +1198,34 @@ class BookViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
 
+    @action(detail=True, methods=['get'], url_path='stats', permission_classes=[IsAuthenticated])
+    def stats(self, request, pk=None):
+        """获取书籍统计数据"""
+        book = self.get_object()
+        
+        # 基本统计数据
+        stats = {
+            'book_id': book.id,
+            'title': book.title,
+            'chapter_count': book.chapters.count(),
+            'version_count': book.versions.count(),
+            'practice_count': Practice.objects.filter(chapter__book=book).count(),
+            'created_at': book.created_at,
+            'updated_at': book.updated_at,
+        }
+        
+        return Response(stats)
 
-class ChapterViewSet(viewsets.ReadOnlyModelViewSet):
+
+class ChapterViewSet(viewsets.ModelViewSet):
     """章节视图集"""
     queryset = Chapter.objects.all()
+    
+    def get_permissions(self):
+        # 仅允许认证用户进行更新操作
+        if self.action in ['update', 'partial_update']:
+            return [IsAuthenticated()]
+        return []
     
     def get_serializer_class(self):
         if self.action == 'retrieve':
@@ -1220,6 +1261,7 @@ class ChapterViewSet(viewsets.ReadOnlyModelViewSet):
                         practice_data = serializer.data
                         practice_data['chapter_title'] = chapter.title
                         practice_data['chapter_id'] = chapter.id
+                        practice_data['chapter_order'] = chapter.order
                         practices_data.append(practice_data)
                 
                 if practices_data:
@@ -1534,6 +1576,77 @@ class BookVersionViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = BookVersion.objects.select_related('book', 'created_by').all()
     serializer_class = BookVersionSerializer
     permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        """根据book参数过滤版本"""
+        queryset = super().get_queryset()
+        book_id = self.request.query_params.get('book', None)
+        if book_id:
+            queryset = queryset.filter(book_id=book_id)
+        return queryset.order_by('-version_number')
+    
+    @action(detail=False, methods=['get'], url_path='compare')
+    def compare(self, request):
+        """对比两个书籍版本"""
+        version1_id = request.query_params.get('version1')
+        version2_id = request.query_params.get('version2')
+        
+        if not version1_id or not version2_id:
+            return Response(
+                {'error': '需要提供version1和version2参数'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            version1 = self.get_queryset().get(id=version1_id)
+            version2 = self.get_queryset().get(id=version2_id)
+        except BookVersion.DoesNotExist:
+            return Response(
+                {'error': '版本不存在'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # 对比结果
+        diff_result = {
+            'version1': BookVersionSerializer(version1).data,
+            'version2': BookVersionSerializer(version2).data,
+            'base_diff': {
+                'title': version1.title != version2.title,
+                'author': version1.author != version2.author,
+                'description': version1.description != version2.description,
+            },
+            'diff_details': {}
+        }
+        
+        # 详细对比描述字段
+        if version1.description != version2.description:
+            diff_result['diff_details']['description'] = self._diff_text(version1.description, version2.description)
+        
+        return Response(diff_result)
+    
+    def _diff_text(self, text1, text2):
+        """简单的文本差异对比"""
+        lines1 = text1.split('\n') if text1 else []
+        lines2 = text2.split('\n') if text2 else []
+        
+        # 简单的逐行对比
+        diff_lines = []
+        max_len = max(len(lines1), len(lines2))
+        
+        for i in range(max_len):
+            line1 = lines1[i] if i < len(lines1) else None
+            line2 = lines2[i] if i < len(lines2) else None
+            
+            if line1 != line2:
+                if line1:
+                    diff_lines.append(f"- {line1}")
+                if line2:
+                    diff_lines.append(f"+ {line2}")
+            else:
+                if line1:
+                    diff_lines.append(f"  {line1}")
+        
+        return diff_lines
 
 
 class ChapterVersionViewSet(viewsets.ReadOnlyModelViewSet):
@@ -1542,6 +1655,88 @@ class ChapterVersionViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = ChapterVersion.objects.select_related('chapter', 'created_by').all()
     serializer_class = ChapterVersionSerializer
     permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        """根据chapter参数过滤版本"""
+        queryset = super().get_queryset()
+        chapter_id = self.request.query_params.get('chapter', None)
+        if chapter_id:
+            queryset = queryset.filter(chapter_id=chapter_id)
+        return queryset.order_by('-version_number')
+    
+    @action(detail=False, methods=['get'], url_path='compare')
+    def compare(self, request):
+        """对比两个章节版本"""
+        version1_id = request.query_params.get('version1')
+        version2_id = request.query_params.get('version2')
+        
+        if not version1_id or not version2_id:
+            return Response(
+                {'error': '需要提供version1和version2参数'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            version1 = self.get_queryset().get(id=version1_id)
+            version2 = self.get_queryset().get(id=version2_id)
+        except ChapterVersion.DoesNotExist:
+            return Response(
+                {'error': '版本不存在'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # 对比结果
+        diff_result = {
+            'version1': ChapterVersionSerializer(version1).data,
+            'version2': ChapterVersionSerializer(version2).data,
+            'base_diff': {
+                'title': version1.title != version2.title,
+                'description': version1.description != version2.description,
+                'content': version1.content != version2.content,
+                'code': version1.code != version2.code,
+                'jupyter_content': version1.jupyter_content != version2.jupyter_content,
+            },
+            'diff_details': {}
+        }
+        
+        # 详细对比各个字段
+        if version1.description != version2.description:
+            diff_result['diff_details']['description'] = self._diff_text(version1.description or '', version2.description or '')
+        
+        if version1.content != version2.content:
+            diff_result['diff_details']['content'] = self._diff_text(version1.content or '', version2.content or '')
+        
+        if version1.code != version2.code:
+            diff_result['diff_details']['code'] = self._diff_text(version1.code or '', version2.code or '')
+        
+        if version1.jupyter_content != version2.jupyter_content:
+            diff_result['diff_details']['jupyter_content'] = self._diff_text(version1.jupyter_content or '', version2.jupyter_content or '')
+        
+        return Response(diff_result)
+    
+    def _diff_text(self, text1, text2):
+        """简单的文本差异对比"""
+        lines1 = text1.split('\n') if text1 else []
+        lines2 = text2.split('\n') if text2 else []
+        
+        # 简单的逐行对比
+        diff_lines = []
+        max_len = max(len(lines1), len(lines2))
+        
+        for i in range(max_len):
+            line1 = lines1[i] if i < len(lines1) else None
+            line2 = lines2[i] if i < len(lines2) else None
+            
+            if line1 != line2:
+                if line1:
+                    diff_lines.append(f"- {line1}")
+                if line2:
+                    diff_lines.append(f"+ {line2}")
+            else:
+                if line1:
+                    diff_lines.append(f"  {line1}")
+        
+        return diff_lines
 
 
 class ChapterMediaViewSet(viewsets.ModelViewSet):

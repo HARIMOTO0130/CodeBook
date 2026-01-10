@@ -433,7 +433,8 @@ export const api = {
               status: 'notStarted',
               difficulty: 3,
               lastLearnTime: null,
-              has_practice: chapter.has_practice || false
+              has_practice: chapter.has_practice || false,
+              order: chapter.order || 0
             });
           }
         }
@@ -454,7 +455,8 @@ export const api = {
               status: 'notStarted',
               difficulty: 3,
               lastLearnTime: null,
-              has_practice: chapterData.has_practice || false
+              has_practice: chapterData.has_practice || false,
+              order: chapterData.order || 0
             });
           }
         }
@@ -1011,10 +1013,28 @@ export const api = {
   // 个性化学习路径相关API
   async generatePersonalizedPath(learningGoal, maxNodes = 10) {
     try {
-      return await httpPost('/learning/personalized-path/generate/', {
-        learning_goal: learningGoal,
-        max_nodes: maxNodes
-      }, true);
+      // 直接调用完整的API路径，不使用API_BASE_URL
+      const fullUrl = 'http://127.0.0.1:8000/api/learning/personalized-path/generate/';
+      const headers = {
+        'Content-Type': 'application/json',
+        ...(true ? authHeaders() : {})
+      };
+      
+      const response = await fetch(fullUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          learning_goal: learningGoal,
+          max_nodes: maxNodes
+        }),
+        credentials: 'omit'
+      });
+      
+      if (!response.ok) {
+        throw new Error(`POST ${fullUrl} ${response.status}`);
+      }
+      
+      return await response.json();
     } catch (error) {
       console.error('生成个性化学习路径失败:', error);
       throw error;

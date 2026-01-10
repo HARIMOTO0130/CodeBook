@@ -52,7 +52,7 @@
         :style="{ width: sidebarWidth + 'px' }"
       >
       <ChapterList 
-        :chapters="getAllSections()" 
+        :chapters="getAllSections" 
         :current-section-id="currentSection?.id"
         :bookId="bookId"
       />
@@ -73,7 +73,7 @@
             <button v-if="currentSection?.type === 'video' || currentSection?.video_url || currentSection?.hasVideo" class="btn btn-primary" @click="showVideo = true">
               🎥 视频教学
             </button>
-            <button v-if="currentSection?.type === 'practice'" class="btn btn-primary" @click="showPractice = true">
+            <button v-if="currentSection?.type === 'practice'" class="btn btn-primary" @click="loadPractice().then(() => showPractice = true)">
               💡 开始练习
             </button>
             <button class="btn btn-primary" @click="openCodeSandbox">
@@ -97,9 +97,9 @@
           <div class="jupyter-container">
             <div v-if="currentChapterContent">
               <!-- 使用辅助函数获取内容 -->
-              <div v-if="getJupyterContent()">
+              <div v-if="getJupyterContent">
                 <JupyterNotebook 
-                  :initialContent="getJupyterContent()"
+                  :initialContent="getJupyterContent"
                   :documentId="null"
                   :isReadOnly="false"
                   :language="codeLanguage"
@@ -173,64 +173,83 @@
           </div>
           <div v-else-if="practiceData" class="question-content">
             <div class="practice-info">
-              <span class="practice-type">{{ getQuestionTypeText(practiceData.question_type) }}</span>
+              <span class="practice-type">{{ practiceData.title }}</span>
               <span class="practice-difficulty">{{ getDifficultyText(practiceData.difficulty) }}</span>
             </div>
-            <h4>{{ practiceData.title }}</h4>
             <p v-if="practiceData.description" class="practice-description">{{ practiceData.description }}</p>
-            <p class="practice-question">{{ practiceData.question }}</p>
             
-            <!-- 选择题 -->
-            <div v-if="practiceData.question_type === 'choice'" class="options">
-              <label v-for="option in practiceData.choice_options" :key="option.id" class="option-item">
-                <input type="radio" name="practice_option" :value="option.id" v-model="selectedOption">
-                <span class="option-content">{{ option.content }}</span>
-              </label>
-            </div>
-            
-            <!-- 填空题 -->
-            <div v-else-if="practiceData.question_type === 'fill'" class="fill-blanks">
-              <div v-for="blank in practiceData.fill_blanks" :key="blank.id" class="blank-item">
-                <label class="blank-label">{{ blank.prompt }}</label>
-                <input 
-                  type="text" 
-                  class="blank-input" 
-                  :placeholder="blank.placeholder || '请输入答案'" 
-                  v-model="blankAnswers[blank.id]"
-                >
+            <!-- 循环显示多个问题 -->
+            <div v-for="(question, index) in practiceData.questions" :key="index" class="question-item">
+              <div class="question-header">
+                <span class="question-number">{{ index + 1 }}.</span>
+                <span class="question-type-badge">{{ getQuestionTypeText(question.type) }}</span>
               </div>
-            </div>
-            
-            <!-- 代码补全题 -->
-            <div v-else-if="practiceData.question_type === 'code_completion'" class="code-completion">
-              <div class="code-template">
-                <pre><code>{{ practiceData.code_template }}</code></pre>
+              <p class="practice-question">{{ question.content }}</p>
+              
+              <!-- 选择题 -->
+              <div v-if="question.type === 'choice'" class="options">
+                <label v-for="option in question.choice_options" :key="option.id" class="option-item">
+                  <input type="radio" :name="`practice_option_${index}`" :value="option.id" v-model="selectedOptions[index]">
+                  <span class="option-content">{{ option.content }}</span>
+                </label>
               </div>
-              <textarea 
-                class="code-input" 
-                v-model="userCode" 
-                :placeholder="'请补全代码...'"
-                rows="10"
-              ></textarea>
-            </div>
-            
-            <!-- 编程题 -->
-            <div v-else-if="practiceData.question_type === 'programming'" class="programming">
-              <div v-if="practiceData.code_template" class="code-template">
-                <pre><code>{{ practiceData.code_template }}</code></pre>
+              
+              <!-- 填空题 -->
+              <div v-else-if="question.type === 'fill'" class="fill-blanks">
+                <div v-for="blank in question.fill_blanks" :key="blank.id" class="blank-item">
+                  <label class="blank-label">{{ blank.prompt }}</label>
+                  <input 
+                    type="text" 
+                    class="blank-input" 
+                    :placeholder="blank.placeholder || '请输入答案'" 
+                    v-model="blankAnswers[index][blank.id]"
+                  >
+                </div>
               </div>
-              <textarea 
-                class="code-input" 
-                v-model="userCode" 
-                :placeholder="'请编写代码...'"
-                rows="15"
-              ></textarea>
-              <div v-if="practiceData.test_cases && practiceData.test_cases.length > 0" class="test-cases">
-                <h5>测试用例</h5>
-                <div v-for="(testCase, index) in practiceData.test_cases" :key="testCase.id" class="test-case">
-                  <span class="test-case-label">用例 {{ index + 1 }}:</span>
-                  <span class="test-case-input">输入: {{ JSON.stringify(testCase.input_data) }}</span>
-                  <span class="test-case-output">期望输出: {{ JSON.stringify(testCase.expected_output) }}</span>
+              
+              <!-- 代码补全题 -->
+              <div v-else-if="question.type === 'code_completion'" class="code-completion">
+                <div class="code-template">
+                  <pre><code>{{ question.code_template }}</code></pre>
+                </div>
+                <textarea 
+                  class="code-input" 
+                  v-model="userCodes[index]" 
+                  :placeholder="'请补全代码...'"
+                  rows="10"
+                ></textarea>
+              </div>
+              
+              <!-- 判断题 -->
+              <div v-else-if="question.type === 'true_false'" class="true-false">
+                <label class="option-item">
+                  <input type="radio" :name="`practice_option_${index}`" :value="true" v-model="selectedOptions[index]">
+                  <span class="option-content">正确</span>
+                </label>
+                <label class="option-item">
+                  <input type="radio" :name="`practice_option_${index}`" :value="false" v-model="selectedOptions[index]">
+                  <span class="option-content">错误</span>
+                </label>
+              </div>
+              
+              <!-- 编程题 -->
+              <div v-else-if="question.type === 'programming'" class="programming">
+                <div v-if="question.code_template" class="code-template">
+                  <pre><code>{{ question.code_template }}</code></pre>
+                </div>
+                <textarea 
+                  class="code-input" 
+                  v-model="userCodes[index]" 
+                  :placeholder="'请编写代码...'"
+                  rows="15"
+                ></textarea>
+                <div v-if="question.test_cases && question.test_cases.length > 0" class="test-cases">
+                  <h5>测试用例</h5>
+                  <div v-for="(testCase, tcIndex) in question.test_cases" :key="tcIndex" class="test-case">
+                    <span class="test-case-label">用例 {{ tcIndex + 1 }}:</span>
+                    <span class="test-case-input">输入: {{ JSON.stringify(testCase.input_data) }}</span>
+                    <span class="test-case-output">期望输出: {{ JSON.stringify(testCase.expected_output) }}</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -344,9 +363,9 @@ export default {
     // 练习题相关数据
     const practiceData = ref(null)
     const loadingPractice = ref(false)
-    const selectedOption = ref(null)
-    const blankAnswers = ref({})
-    const userCode = ref('')
+    const selectedOptions = ref([])
+    const blankAnswers = ref([])
+    const userCodes = ref([])
     const submitResult = ref(null)
     
     const videoSpeed = ref('1')
@@ -360,7 +379,7 @@ export default {
       original: '',
       translation: '',
       solution: ''
-    })
+    }))
     const selectedTerm = ref(null)
     const termTooltipStyle = ref({})
     // AI助手相关功能已移至App.vue中
@@ -629,21 +648,23 @@ export default {
     }
     
     // 聚合实际可学习的“节”列表：
-    const getAllSections = () => {
+    const getAllSections = computed(() => {
       const chapters = book.value?.chapters || []
       if (!chapters.length) return []
       // 若后端提供了章节下的sections，展开；否则直接把章节当作节
       if (chapters[0] && Array.isArray(chapters[0].sections)) {
         const flat = []
         chapters.forEach(ch => (ch.sections || []).forEach(sec => flat.push(sec)))
-        return flat
+        // 按order字段升序排序
+        return [...flat].sort((a, b) => (a.order || 0) - (b.order || 0))
       }
-      return chapters
-    }
+      // 按order字段升序排序
+      return [...chapters].sort((a, b) => (a.order || 0) - (b.order || 0))
+    })
 
     // 查找当前学习节
     const findCurrentSection = async () => {
-      const sections = getAllSections()
+      const sections = getAllSections.value
       if (!sections.length) return
       const found = sections.find(s => s.id === sectionId.value) || sections[0]
       currentSection.value = found
@@ -655,13 +676,13 @@ export default {
     
     // 当前小节索引
     const currentSectionIndex = computed(() => {
-      const sections = getAllSections()
+      const sections = getAllSections.value
       if (!sections.length || !currentSection.value) return 0
       return sections.findIndex(s => s.id === currentSection.value.id)
     })
     
     // 总小节数
-    const totalSections = computed(() => getAllSections().length)
+    const totalSections = computed(() => getAllSections.value.length)
     
     // 是否有上一节
     const hasPreviousSection = computed(() => {
@@ -675,7 +696,7 @@ export default {
     
     // 小节进度
     const sectionProgress = computed(() => {
-      const sections = getAllSections()
+      const sections = getAllSections.value
       if (!sections.length) return 0
       const completed = sections.filter(s => s.status === 'completed').length
       return Math.round((completed / sections.length) * 100)
@@ -683,7 +704,7 @@ export default {
     
     // 上一节
     const goToPreviousSection = () => {
-      const sections = getAllSections()
+      const sections = getAllSections.value
       if (hasPreviousSection.value) {
         const prevSection = sections[currentSectionIndex.value - 1]
         router.push({ name: 'StudentLearning', params: { bookId: bookId.value, chapterId: prevSection.id } })
@@ -692,7 +713,7 @@ export default {
     
     // 下一节
     const goToNextSection = () => {
-      const sections = getAllSections()
+      const sections = getAllSections.value
       if (hasNextSection.value) {
         const nextSection = sections[currentSectionIndex.value + 1]
         router.push({ name: 'StudentLearning', params: { bookId: bookId.value, chapterId: nextSection.id } })
@@ -743,7 +764,7 @@ export default {
     
     // 计算所有章节（用于章节列表组件）
     const allChapters = computed(() => {
-      return getAllSections()
+      return getAllSections.value
     })
     
     // 打开全屏编辑
@@ -837,50 +858,56 @@ export default {
       try {
         submitResult.value = null
         
-        let answerData = {}
+        // 准备所有问题的答案数据
+        const answerData = {
+          questions: []
+        }
         
-        // 根据题型准备答案数据
-        switch (practiceData.value.question_type) {
-          case 'choice':
-            if (!selectedOption.value) {
-              submitResult.value = {
-                success: false,
-                message: '请选择一个选项'
-              }
-              return
-            }
-            answerData = {
-              option_id: selectedOption.value
-            }
-            break
+        // 检查是否所有问题都已回答
+        let allAnswered = true
+        
+        practiceData.value.questions.forEach((question, index) => {
+          const questionAnswer = {
+            index: index,
+            type: question.type
+          }
           
-          case 'fill':
-            if (Object.keys(blankAnswers.value).length === 0) {
-              submitResult.value = {
-                success: false,
-                message: '请填写所有空格'
+          // 根据题型准备答案
+          switch (question.type) {
+            case 'choice':
+              if (selectedOptions.value[index] === null) {
+                allAnswered = false
               }
-              return
-            }
-            answerData = {
-              answers: blankAnswers.value
-            }
-            break
+              questionAnswer.option_id = selectedOptions.value[index]
+              break
+            
+            case 'fill':
+              if (!blankAnswers.value[index] || Object.keys(blankAnswers.value[index]).length === 0) {
+                allAnswered = false
+              }
+              questionAnswer.answers = blankAnswers.value[index]
+              break
+            
+            case 'code_completion':
+            case 'programming':
+              if (!userCodes.value[index] || !userCodes.value[index].trim()) {
+                allAnswered = false
+              }
+              questionAnswer.code = userCodes.value[index]
+              questionAnswer.language = practiceData.value.language
+              break
+          }
           
-          case 'code_completion':
-          case 'programming':
-            if (!userCode.value.trim()) {
-              submitResult.value = {
-                success: false,
-                message: '请编写代码'
-              }
-              return
-            }
-            answerData = {
-              code: userCode.value,
-              language: practiceData.value.language
-            }
-            break
+          answerData.questions.push(questionAnswer)
+        })
+        
+        // 检查是否所有问题都已回答
+        if (!allAnswered) {
+          submitResult.value = {
+            success: false,
+            message: '请完成所有问题的回答'
+          }
+          return
         }
         
         // 提交答案到后端
@@ -938,16 +965,34 @@ export default {
       try {
         loadingPractice.value = true
         submitResult.value = null
-        selectedOption.value = null
-        blankAnswers.value = {}
-        userCode.value = ''
+        selectedOptions.value = []
+        blankAnswers.value = []
+        userCodes.value = []
         
         const data = await api.getChapterPractice(currentSection.value.id)
+        console.log('练习题API返回数据:', data)
         practiceData.value = data
         
-        // 如果是代码补全题或编程题，初始化用户代码为模板
-        if (data.code_template && (data.question_type === 'code_completion' || data.question_type === 'programming')) {
-          userCode.value = data.code_template
+        // 为每个问题初始化答案数组
+        if (data.questions) {
+          console.log('问题数组:', data.questions)
+          data.questions.forEach((question, index) => {
+            console.log(`问题${index + 1}:`, question)
+            // 选择题初始化
+            if (question.type === 'choice') {
+              selectedOptions.value[index] = null
+            }
+            // 填空题初始化
+            else if (question.type === 'fill') {
+              blankAnswers.value[index] = {}
+            }
+            // 代码题初始化
+            else if ((question.type === 'code_completion' || question.type === 'programming') && question.code_template) {
+              userCodes.value[index] = question.code_template
+            } else if (question.type === 'code_completion' || question.type === 'programming') {
+              userCodes.value[index] = ''
+            }
+          })
         }
         
       } catch (error) {
@@ -962,6 +1007,7 @@ export default {
     const getQuestionTypeText = (type) => {
       const typeMap = {
         'choice': '选择题',
+        'true_false': '判断题',
         'fill': '填空题',
         'code_completion': '代码补全题',
         'programming': '编程题'
@@ -981,20 +1027,28 @@ export default {
     
     // 计算是否可以提交
     const canSubmit = computed(() => {
-      if (!practiceData.value) return false
+      if (!practiceData.value || !practiceData.value.questions) return false
       
-      switch (practiceData.value.question_type) {
-        case 'choice':
-          return selectedOption.value !== null
-        case 'fill':
-          return Object.keys(blankAnswers.value).length > 0
-        case 'code_completion':
-        case 'programming':
-          return userCode.value.trim().length > 0
-        default:
-          return false
+      // 检查是否所有问题都已回答
+      for (let i = 0; i < practiceData.value.questions.length; i++) {
+        const question = practiceData.value.questions[i]
+        
+        switch (question.type) {
+          case 'choice':
+            if (selectedOptions.value[i] === null) return false
+            break
+          case 'fill':
+            if (!blankAnswers.value[i] || Object.keys(blankAnswers.value[i]).length === 0) return false
+            break
+          case 'code_completion':
+          case 'programming':
+            if (!userCodes.value[i] || userCodes.value[i].trim().length === 0) return false
+            break
+        }
       }
-    })
+      
+      return true
+    }
     
     // 监听showPractice变化，自动加载练习题数据
     watch(showPractice, (newVal) => {
@@ -1121,7 +1175,7 @@ export default {
     })
     
     // 获取Jupyter内容的辅助函数
-    const getJupyterContent = () => {
+    const getJupyterContent = computed(() => {
       if (currentChapterContent.value) {
         console.log('🔍 开始处理章节内容');
         
@@ -1142,7 +1196,7 @@ export default {
                 
                 // 转换为JupyterNotebook组件期望的单元格数组格式
                 const cellsArray = mergedContent.cells.map((cell, index) => ({
-                  id: `cell_${index}_${Date.now()}`,
+                  id: `cell_${index}_${cell.id || 0}`,
                   type: cell.cell_type === 'code' ? 'code' : 'markdown',
                   content: Array.isArray(cell.source) ? cell.source.join('\n') : cell.source || '',
                   language: mergedContent.metadata?.kernelspec?.language || currentChapterContent.value.language || 'python',
@@ -1161,7 +1215,7 @@ export default {
                 console.log('📊 merged_content是cells数组格式，包含', mergedContent.length, '个单元格');
                 
                 const cellsArray = mergedContent.map((cell, index) => ({
-                  id: `cell_${index}_${Date.now()}`,
+                  id: `cell_${index}_${cell.id || 0}`,
                   type: cell.cell_type === 'code' ? 'code' : 'markdown',
                   content: Array.isArray(cell.source) ? cell.source.join('\n') : cell.source || '',
                   language: currentChapterContent.value.language || 'python',
@@ -1187,7 +1241,7 @@ export default {
                 console.log('✅ 成功解析为Jupyter Notebook格式，包含', parsed.cells.length, '个单元格');
                 
                 const cellsArray = parsed.cells.map((cell, index) => ({
-                  id: `cell_${index}_${Date.now()}`,
+                  id: `cell_${index}_${cell.id || 0}`,
                   type: cell.cell_type === 'code' ? 'code' : 'markdown',
                   content: Array.isArray(cell.source) ? cell.source.join('\n') : cell.source || '',
                   language: parsed.metadata?.kernelspec?.language || currentChapterContent.value.language || 'python',

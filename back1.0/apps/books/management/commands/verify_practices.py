@@ -25,7 +25,7 @@ class Command(BaseCommand):
             self.stdout.write(f'\n书籍: {book.title}')
             for chapter in chapters:
                 total_chapters += 1
-                has_practice = hasattr(chapter, 'practice') and chapter.practice is not None
+                has_practice = chapter.practices.exists()
                 if has_practice:
                     chapters_with_practice += 1
                     self.stdout.write(self.style.SUCCESS(f'  [OK] {chapter.title}'))

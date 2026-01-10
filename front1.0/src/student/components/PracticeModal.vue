@@ -34,7 +34,7 @@
             <!-- 选择题 -->
             <div v-if="currentQuestion.type === 'choice'" class="question-choice">
               <div class="question-stem">
-                <h4>{{ currentQuestion.question }}</h4>
+                <h4>{{ currentQuestion.content }}</h4>
                 <div v-if="currentQuestion.description" class="question-description">
                   {{ currentQuestion.description }}
                 </div>
@@ -84,7 +84,7 @@
             <!-- 判断题 -->
             <div v-else-if="currentQuestion.type === 'judgment' || currentQuestion.type === 'Judgment'" class="question-judgment">
               <div class="question-stem">
-                <h4>{{ currentQuestion.question }}</h4>
+                <h4>{{ currentQuestion.content }}</h4>
                 <div v-if="currentQuestion.description" class="question-description">
                   {{ currentQuestion.description }}
                 </div>
@@ -485,18 +485,37 @@ export default {
         return {
           title: '无题目',
           type: 'choice',
+          question: '当前章节暂无练习题',
           stem: '当前章节暂无练习题',
           options: []
         }
       }
       const question = props.questions[currentIndex.value] || props.questions[0]
       
-      // 确保填空题始终有blanks数组
-      if (question.type === 'fill' && !question.blanks) {
-        question.blanks = []
+      // 创建新对象，避免直接修改 props 数据
+      const normalizedQuestion = { ...question }
+      
+      // 确保 question 字段存在（兼容 stem 字段）
+      if (!normalizedQuestion.question && normalizedQuestion.stem) {
+        normalizedQuestion.question = normalizedQuestion.stem
+      } else if (!normalizedQuestion.question && !normalizedQuestion.stem) {
+        normalizedQuestion.question = normalizedQuestion.title || '题目'
       }
       
-      return question
+      // 确保填空题始终有blanks数组
+      if (normalizedQuestion.type === 'fill' && !normalizedQuestion.blanks) {
+        normalizedQuestion.blanks = []
+      }
+      
+      // 确保选项有 content 字段（兼容 text 字段）
+      if (normalizedQuestion.options && Array.isArray(normalizedQuestion.options)) {
+        normalizedQuestion.options = normalizedQuestion.options.map(opt => ({
+          ...opt,
+          content: opt.content || opt.text || opt.label || ''
+        }))
+      }
+      
+      return normalizedQuestion
     })
     
     // 当前答案是否正确
@@ -565,14 +584,21 @@ export default {
       const question = currentQuestion.value
       const questionId = question.id || question.order || currentIndex.value + 1
       
-      if (question.type === 'choice') {
-        question.selectedOption = selectedOptions.value.length > 0 ? selectedOptions.value[0] : null
-      } else if (question.type === 'fill') {
-        question.userAnswers = [...userAnswers.value]
-      } else if (question.type === 'codeCompletion') {
-        question.userCode = codeCompletionAnswer.value
-      } else if (question.type === 'programming') {
-        question.userCode = programmingAnswer.value
+      // 找到原始问题对象（从 props.questions 中）
+      const originalQuestion = props.questions.find(q => 
+        (q.id || q.order) === questionId
+      ) || props.questions[currentIndex.value]
+      
+      if (originalQuestion) {
+        if (question.type === 'choice') {
+          originalQuestion.selectedOption = selectedOptions.value.length > 0 ? selectedOptions.value[0] : null
+        } else if (question.type === 'fill') {
+          originalQuestion.userAnswers = [...userAnswers.value]
+        } else if (question.type === 'codeCompletion') {
+          originalQuestion.userCode = codeCompletionAnswer.value
+        } else if (question.type === 'programming') {
+          originalQuestion.userCode = programmingAnswer.value
+        }
       }
     }
     
@@ -661,12 +687,19 @@ export default {
       submissionResult.value = null
       currentIndex.value = 0
       
-      // 清除所有问题的作答记录
+      // 清除所有问题的作答记录（注意：这里修改 props 是为了保存状态，但应该通过 emit 通知父组件）
+      // 为了避免递归更新，我们只在确实需要时修改
       if (props.questions && Array.isArray(props.questions)) {
         props.questions.forEach(q => {
-          delete q.selectedOption
-          delete q.userAnswers
-          delete q.userCode
+          if (q.selectedOption !== undefined) {
+            delete q.selectedOption
+          }
+          if (q.userAnswers !== undefined) {
+            delete q.userAnswers
+          }
+          if (q.userCode !== undefined) {
+            delete q.userCode
+          }
         })
       }
     }

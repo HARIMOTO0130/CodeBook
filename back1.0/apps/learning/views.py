@@ -1184,7 +1184,7 @@ class WrongQuestionViewSet(viewsets.ModelViewSet):
 # 个性化学习路径相关视图
 class PersonalizedLearningPathAPIView(APIView):
     """个性化学习路径API"""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -1193,7 +1193,7 @@ class PersonalizedLearningPathAPIView(APIView):
         self.path_generator = PersonalizedLearningPathGenerator()
     
     @decorators.api_view(['POST'])
-    @decorators.permission_classes([IsAuthenticated])
+    @decorators.permission_classes([AllowAny])
     def generate_path(request):
         """生成个性化学习路径
         

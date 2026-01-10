@@ -21,6 +21,18 @@ const providerRoutes = [
     name: 'ProviderVersions',
     component: () => import('../views/ProviderVersionsView.vue'),
     meta: { title: '版本管理', requiresAuth: true, role: 'provider', providerNav: 'versions' }
+  },
+  {
+    path: '/provider/books/:id',
+    name: 'ProviderBookDetail',
+    component: () => import('../views/BookDetailView.vue'),
+    meta: { title: '书籍详情', requiresAuth: true, role: 'provider', providerNav: 'books' }
+  },
+  {
+    path: '/provider/books/:bookId/versions/:versionId',
+    name: 'ProviderBookVersionDetail',
+    component: () => import('../views/BookVersionDetailView.vue'),
+    meta: { title: '版本详情', requiresAuth: true, role: 'provider', providerNav: 'books' }
   }
 ]
 

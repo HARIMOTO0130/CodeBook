@@ -95,6 +95,7 @@ class Book(models.Model):
     chapter_count = models.IntegerField(default=0, verbose_name='章节数')
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
     updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
+    current_version = models.CharField(max_length=20, default='1.0', verbose_name='当前版本')
 
     @property
     def tag_list(self):

@@ -1,18 +1,5 @@
 <template>
   <div class="provider-layout">
-    <aside class="sidebar">
-      <div
-        v-for="item in navItems"
-        :key="item.key"
-        class="nav-item"
-        :class="{ active: activeKey === item.key }"
-        @click="onNavClick(item)"
-      >
-        <span class="nav-icon">{{ item.icon }}</span>
-        <span class="nav-label">{{ item.label }}</span>
-      </div>
-    </aside>
-
     <main class="main">
       <header class="header">
         <h1>{{ currentNav.label }}</h1>
@@ -57,45 +44,8 @@ const onNavClick = (item) => {
 
 <style scoped>
 .provider-layout {
-  display: grid;
-  grid-template-columns: 260px 1fr;
-  gap: 24px;
-  padding: 20px 0;
-}
-
-.sidebar {
-  background: #ffffff;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  padding: 8px 0;
-}
-
-.nav-item {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 20px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  border-left: 3px solid transparent;
-}
-
-.nav-item:hover {
-  background: #f5f7fa;
-}
-
-.nav-item.active {
-  background: #ecf5ff;
-  border-left-color: #409eff;
-  color: #409eff;
-}
-
-.nav-icon {
-  font-size: 20px;
-}
-
-.nav-label {
-  font-size: 15px;
+  padding: 20px 0;
 }
 
 .main {
@@ -106,6 +56,7 @@ const onNavClick = (item) => {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  width: 100%;
 }
 
 .header h1 {
