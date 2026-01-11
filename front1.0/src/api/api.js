@@ -262,7 +262,7 @@ export const api = {
   async getAIAssistantResponse(question, requireAuth = false) {
     try {
       console.log('[API] 发送AI助手问题:', question);
-      const response = await httpPost('/learning/ai-assistant/', 
+      const response = await httpPost('/api/learning/ai-assistant/', 
         { question }, 
         requireAuth
       );

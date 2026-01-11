@@ -126,6 +126,56 @@
                 </div>
               </div>
             </div>
+            
+            <!-- 章节内容编辑 -->
+            <div class="chapter-content-section">
+              <div class="chapter-content-header">
+                <h3>章节内容编辑</h3>
+                <div class="chapter-content-controls">
+                  <button v-if="selectedChapter" class="btn btn-secondary" @click="toggleChapterContentEdit">
+                    {{ isChapterContentEditing ? '取消编辑' : '编辑内容' }}
+                  </button>
+                  <button v-if="isChapterContentEditing" class="btn btn-primary" @click="saveChapterContent" :disabled="savingChapterContent">
+                    {{ savingChapterContent ? '保存中...' : '保存内容' }}
+                  </button>
+                </div>
+              </div>
+              
+              <div v-if="!selectedChapter" class="empty-chapter-selection">
+                <p>请从右侧选择一个章节进行编辑</p>
+              </div>
+              
+              <div v-else-if="chapterContentLoading" class="loading-small">章节内容加载中...</div>
+              
+              <div v-else class="chapter-content-editor">
+                <div class="chapter-content-title">
+                  <h4>{{ selectedChapter.title }}</h4>
+                </div>
+                
+                <div v-if="isChapterContentEditing" class="jupyter-editor-container">
+                  <!-- Jupyter风格编辑器 -->
+                  <JupyterNotebook
+                    :initialContent="chapterContent"
+                    :documentId="null"
+                    :isReadOnly="false"
+                    :bookId="bookId?.toString()"
+                    :chapterId="selectedChapter?.id?.toString()"
+                    @contentChange="handleJupyterContentChange"
+                  ></JupyterNotebook>
+                </div>
+                
+                <div v-else class="jupyter-preview-container">
+                  <!-- Jupyter内容预览 -->
+                  <JupyterNotebook
+                    :initialContent="selectedChapter.merged_content ? selectedChapter.merged_content : chapterContent"
+                    :documentId="null"
+                    :isReadOnly="true"
+                    :bookId="bookId?.toString()"
+                    :chapterId="selectedChapter?.id?.toString()"
+                  ></JupyterNotebook>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -138,9 +188,10 @@
               <div v-if="chaptersLoading" class="loading-small">加载中...</div>
               <div v-else-if="!bookData.chapters || bookData.chapters.length === 0" class="empty-section">暂无章节</div>
               <ul v-else class="chapter-list">
-                <li v-for="(chapter, index) in bookData.chapters" :key="chapter?.id || index" class="chapter-item">
+                <li v-for="(chapter, index) in bookData.chapters" :key="chapter?.id || index" class="chapter-item" @click="selectChapter(chapter)">
                   <span class="chapter-number">{{ chapter?.order || index + 1 }}</span>
                   <span class="chapter-title">{{ chapter?.title || '未知章节' }}</span>
+                  <span class="selected-indicator" v-if="selectedChapterId === chapter?.id">✓</span>
                 </li>
               </ul>
             </div>
@@ -209,12 +260,14 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed, watch } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ProviderLayout from './ProviderLayout.vue'
 import { providerApi } from '../api/index.js'
 import BookBasicInfoEditor from './components/BookBasicInfoEditor.vue'
 import BookStatsPanel from './components/BookStatsPanel.vue'
+import JupyterNotebook from '../../student/components/JupyterNotebook.vue'
+
 
 const route = useRoute()
 const router = useRouter()
@@ -236,6 +289,14 @@ const versionsLoading = ref(false)
 const collaborators = ref([])
 const statsData = ref({})
 const statsLoading = ref(false)
+
+// 章节内容编辑状态
+const selectedChapterId = ref(null)
+const selectedChapter = ref(null)
+const chapterContent = ref('')
+const chapterContentLoading = ref(false)
+const isChapterContentEditing = ref(false)
+const savingChapterContent = ref(false)
 
 // 编辑器组件引用
 const editorRef = ref(null)
@@ -270,6 +331,14 @@ const loadBookDetail = async () => {
     loadVersions()
     loadStats()
     loadCollaborators()
+    
+    // 如果书籍有章节，自动选择第一个章节
+    if (bookDetail.chapters && bookDetail.chapters.length > 0) {
+      // 使用异步方式选择章节，但不等待其完成，避免阻塞其他加载
+      selectChapter(bookDetail.chapters[0]).catch(err => {
+        console.error('自动选择章节失败:', err)
+      })
+    }
   } catch (e) {
     console.error('加载书籍详情失败:', e)
     error.value = e.message || '加载书籍详情失败，请重试'
@@ -374,6 +443,11 @@ const handleSave = async (formData) => {
     
     // 重新加载版本列表（确保显示最新创建的版本）
     await loadVersions()
+    
+    // 如果书籍有章节，自动选择第一个章节
+    if (bookData.value && bookData.value.chapters && bookData.value.chapters.length > 0) {
+      await selectChapter(bookData.value.chapters[0])
+    }
     
     // 关闭编辑模式并显示成功提示
     isEditMode.value = false
@@ -500,6 +574,116 @@ watch(bookId, (newId, oldId) => {
     loadBookDetail()
   }
 })
+
+// 选择章节
+  const selectChapter = async (chapter) => {
+    selectedChapterId.value = chapter.id
+    selectedChapter.value = chapter
+    
+    // 重置编辑状态
+    isChapterContentEditing.value = false
+    
+    try {
+      chapterContentLoading.value = true
+      
+      // 获取完整的章节内容
+      const fullChapter = await providerApi.getChapterDetail(chapter.id)
+      console.log('获取到的完整章节内容:', fullChapter)
+      console.log('merged_content:', fullChapter.merged_content)
+      
+      selectedChapter.value = fullChapter
+      
+      // 将merged_content转换为可编辑的文本格式
+      if (fullChapter.merged_content) {
+        try {
+          // 尝试解析JSON字符串，如果已经是字符串格式
+          const parsedContent = JSON.parse(fullChapter.merged_content)
+          // 如果解析成功，将其转换为格式化的JSON字符串
+          chapterContent.value = JSON.stringify(parsedContent, null, 2)
+        } catch (e) {
+          // 如果解析失败，直接使用原始内容
+          chapterContent.value = fullChapter.merged_content
+        }
+      } else {
+        // 设置默认的Jupyter Notebook结构，包含一个示例Markdown单元格
+        chapterContent.value = JSON.stringify({
+          cells: [
+            {
+              cell_type: 'markdown',
+              source: '# ' + chapter.title + '\n\n在此输入章节内容...\n\n支持Markdown文本和Python代码块。\n\n**示例代码块：**\n```python\n# 这是一个Python代码示例\nprint(\'Hello, World!\')\n```'
+            }
+          ]
+        }, null, 2)
+      }
+    } catch (error) {
+      console.error('加载章节详情失败:', error)
+      // 即使加载失败，也要确保有默认内容
+      chapterContent.value = JSON.stringify({
+        cells: [
+          {
+            cell_type: 'markdown',
+            source: '# ' + chapter.title + '\n\n章节内容加载失败，请重新尝试。\n\n**示例代码块：**\n```python\n# 这是一个Python代码示例\nprint(\'Hello, World!\')\n```'
+          }
+        ]
+      }, null, 2)
+    } finally {
+      chapterContentLoading.value = false
+    }
+  }
+
+// 切换章节内容编辑模式
+const toggleChapterContentEdit = () => {
+  isChapterContentEditing.value = !isChapterContentEditing.value
+}
+
+// 处理Jupyter内容变化
+const handleJupyterContentChange = (eventData) => {
+  chapterContent.value = eventData
+}
+
+// 保存章节内容
+const saveChapterContent = async () => {
+  if (!selectedChapter.value) return
+  
+  try {
+    savingChapterContent.value = true
+    
+    // 解析编辑后的内容，确保它是有效的JSON格式
+    JSON.parse(chapterContent.value)
+    
+    // 更新章节内容，直接发送JSON字符串
+    await providerApi.updateChapterContent(selectedChapter.value.id, {
+      merged_content: chapterContent.value
+    })
+    
+    // 显示成功提示
+    showSuccess.value = true
+    successMessage.value = '章节内容保存成功'
+    
+    // 刷新章节数据
+    await selectChapter(selectedChapter.value)
+  } catch (error) {
+    console.error('保存章节内容失败:', error)
+    alert('保存失败，请检查输入格式是否正确')
+  } finally {
+    savingChapterContent.value = false
+  }
+}
+
+
+
+// 监听编辑模式变化，处理编辑器状态
+watch(isChapterContentEditing, async (newVal) => {
+  if (newVal && selectedChapter.value) {
+    await nextTick()
+    // JupyterNotebook组件会自动初始化
+  } else if (!newVal) {
+    // 保存编辑器内容
+    // JupyterNotebook组件会通过contentChange事件自动更新chapterContent
+  }
+})
+
+// 组件卸载时不需要特殊处理，JupyterNotebook组件会自动清理
 
 // 组件挂载时加载数据
 onMounted(() => {
@@ -912,6 +1096,96 @@ onMounted(() => {
 }
 
 /* 响应式设计 */
+/* 章节内容编辑样式 */
+.chapter-content-section {
+  margin-top: 30px;
+  padding-top: 20px;
+  border-top: 1px solid #eee;
+}
+
+.chapter-content-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.chapter-content-controls {
+  display: flex;
+  gap: 10px;
+}
+
+.empty-chapter-selection {
+  background-color: #f8f9fa;
+  padding: 40px;
+  text-align: center;
+  border-radius: 8px;
+  color: #666;
+}
+
+.chapter-content-editor {
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  padding: 20px;
+}
+
+.chapter-content-title h4 {
+  margin: 0 0 20px 0;
+  color: #333;
+  font-size: 20px;
+}
+
+.jupyter-editor-container {
+  position: relative;
+  min-height: 400px;
+}
+
+.jupyter-preview-container {
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.empty-content {
+  text-align: center;
+  color: #999;
+  padding: 40px;
+  background-color: #f8f9fa;
+  border-radius: 8px;
+}
+
+/* JupyterNotebook组件容器样式 */
+:deep(.jupyter-notebook) {
+  width: 100%;
+}
+
+:deep(.notebook-content) {
+  padding: 0;
+}
+
+:deep(.cell) {
+  margin-bottom: 16px;
+}
+
+:deep(.add-cell-buttons) {
+  margin-top: 20px;
+}
+
+.selected-indicator {
+  color: #2196F3;
+  margin-left: auto;
+  font-weight: bold;
+}
+
+.chapter-item {
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.chapter-item:hover {
+  background-color: #f0f7ff;
+}
+
 @media (max-width: 768px) {
   .detail-content {
     grid-template-columns: 1fr;
@@ -935,6 +1209,17 @@ onMounted(() => {
     flex-direction: column;
     align-items: flex-start;
     gap: 15px;
+  }
+  
+  .chapter-content-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  
+  .chapter-content-controls {
+    width: 100%;
+    flex-direction: column;
   }
 }
 </style>

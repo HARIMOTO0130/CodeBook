@@ -134,7 +134,7 @@
             <!-- 判断题 -->
             <div v-else-if="currentQuestion.type === 'Judgment'" class="question-choice">
               <div class="question-stem">
-                <h4>{{ currentQuestion.question }}</h4>
+                <h4>{{ currentQuestion.content }}</h4>
                 <div v-if="currentQuestion.description" class="question-description">
                   {{ currentQuestion.description }}
                 </div>
@@ -184,7 +184,7 @@
             <!-- 填空题 -->
             <div v-else-if="currentQuestion.type === 'fill'" class="question-fill">
               <div class="question-stem">
-                <h4>{{ currentQuestion.question }}</h4>
+                <h4>{{ currentQuestion.content }}</h4>
               </div>
               
               <div class="fill-container">
@@ -223,7 +223,7 @@
             <!-- 代码补全题 -->
             <div v-else-if="currentQuestion.type === 'codeCompletion'" class="question-code-completion">
               <div class="question-stem">
-                <h4>{{ currentQuestion.question }}</h4>
+                <h4>{{ currentQuestion.content }}</h4>
                 <div v-if="currentQuestion.description" class="question-description">
                   {{ currentQuestion.description }}
                 </div>
@@ -249,7 +249,7 @@
             <!-- 编程题 -->
             <div v-else-if="currentQuestion.type === 'programming'" class="question-programming">
               <div class="question-stem">
-                <h4>{{ currentQuestion.question }}</h4>
+                <h4>{{ currentQuestion.content }}</h4>
                 <div v-if="currentQuestion.description" class="question-description">
                   {{ currentQuestion.description }}
                 </div>
@@ -481,30 +481,94 @@ export default {
     const totalQuestions = computed(() => props.questions.length)
     
     const currentQuestion = computed(() => {
+      console.log('🧮 计算currentQuestion:', {
+        questionsLength: props.questions.length,
+        currentIndex: currentIndex.value,
+        hasQuestions: props.questions.length > 0,
+        currentQuestionExists: props.questions[currentIndex.value] !== undefined,
+        fallbackQuestionExists: props.questions[0] !== undefined
+      })
+      
       if (props.questions.length === 0) {
+        console.log('📭 没有题目数据，返回默认值')
         return {
           title: '无题目',
           type: 'choice',
-          question: '当前章节暂无练习题',
+          content: '当前章节暂无练习题',
           stem: '当前章节暂无练习题',
           options: []
         }
       }
+      
       const question = props.questions[currentIndex.value] || props.questions[0]
+      console.log('🔍 获取问题数据:', {
+        questionExists: !!question,
+        questionIndex: currentIndex.value,
+        questionContent: question?.content,
+        questionStem: question?.stem,
+        questionQuestion: question?.question,
+        questionType: question?.type
+      })
       
       // 创建新对象，避免直接修改 props 数据
       const normalizedQuestion = { ...question }
       
-      // 确保 question 字段存在（兼容 stem 字段）
-      if (!normalizedQuestion.question && normalizedQuestion.stem) {
-        normalizedQuestion.question = normalizedQuestion.stem
-      } else if (!normalizedQuestion.question && !normalizedQuestion.stem) {
-        normalizedQuestion.question = normalizedQuestion.title || '题目'
+      // 确保 content 字段存在（兼容 question 和 stem 字段）
+      console.log('🔧 归一化content字段:', {
+        hasContent: normalizedQuestion.content !== undefined,
+        hasQuestion: normalizedQuestion.question !== undefined,
+        hasStem: normalizedQuestion.stem !== undefined,
+        hasTitle: normalizedQuestion.title !== undefined
+      })
+      
+      if (!normalizedQuestion.content && normalizedQuestion.question) {
+        console.log('🔄 使用question作为content')
+        normalizedQuestion.content = normalizedQuestion.question
+      } else if (!normalizedQuestion.content && normalizedQuestion.stem) {
+        console.log('🔄 使用stem作为content')
+        normalizedQuestion.content = normalizedQuestion.stem
+      } else if (!normalizedQuestion.content && !normalizedQuestion.question && !normalizedQuestion.stem) {
+        console.log('⚠️ 没有找到content相关字段，使用默认值')
+        normalizedQuestion.content = normalizedQuestion.title || '题目'
       }
       
-      // 确保填空题始终有blanks数组
-      if (normalizedQuestion.type === 'fill' && !normalizedQuestion.blanks) {
-        normalizedQuestion.blanks = []
+      // 确保填空题始终有blanks数组（兼容fill_blanks字段）
+      if (normalizedQuestion.type === 'fill') {
+        if (normalizedQuestion.fill_blanks && Array.isArray(normalizedQuestion.fill_blanks)) {
+          normalizedQuestion.blanks = normalizedQuestion.fill_blanks
+        } else if (!normalizedQuestion.blanks) {
+          normalizedQuestion.blanks = []
+        }
+      }
+      
+      // 确保选择题有options数组（兼容choice_options字段）
+      if (normalizedQuestion.type === 'choice' || normalizedQuestion.type === 'true_false' || normalizedQuestion.type === 'Judgment') {
+        console.log('🔍 处理选择题选项:', {
+          questionType: normalizedQuestion.type,
+          hasChoiceOptions: normalizedQuestion.choice_options !== undefined,
+          isChoiceOptionsArray: Array.isArray(normalizedQuestion.choice_options),
+          choiceOptionsCount: normalizedQuestion.choice_options ? normalizedQuestion.choice_options.length : 0,
+          hasOptions: normalizedQuestion.options !== undefined,
+          isOptionsArray: Array.isArray(normalizedQuestion.options),
+          optionsCount: normalizedQuestion.options ? normalizedQuestion.options.length : 0
+        })
+        
+        if (normalizedQuestion.choice_options && Array.isArray(normalizedQuestion.choice_options)) {
+          console.log('✅ 使用choice_options作为options')
+          normalizedQuestion.options = normalizedQuestion.choice_options
+        } else if (normalizedQuestion.options && Array.isArray(normalizedQuestion.options)) {
+          console.log('✅ 使用options作为options')
+          normalizedQuestion.options = normalizedQuestion.options
+        } else {
+          console.log('⚠️ 没有找到选项字段，使用空数组')
+          normalizedQuestion.options = []
+        }
+        
+        // 确认options已设置
+        console.log('✅ options设置后:', {
+          isArray: Array.isArray(normalizedQuestion.options),
+          count: normalizedQuestion.options.length
+        })
       }
       
       // 确保选项有 content 字段（兼容 text 字段）
@@ -513,6 +577,16 @@ export default {
           ...opt,
           content: opt.content || opt.text || opt.label || ''
         }))
+      }
+      
+      // 确保判断题有options数组
+      if (normalizedQuestion.type === 'true_false' && (!normalizedQuestion.options || normalizedQuestion.options.length === 0)) {
+        normalizedQuestion.options = [
+          { id: 1, content: '正确', is_correct: true },
+          { id: 2, content: '错误', is_correct: false }
+        ]
+        // 设置正确答案索引
+        normalizedQuestion.correctAnswer = normalizedQuestion.correct_answer ? 0 : 1
       }
       
       return normalizedQuestion
@@ -707,6 +781,11 @@ export default {
     // 监听 visible 属性，当打开时重置状态
     watch(() => props.visible, (newVal) => {
       if (newVal) {
+        console.log('🔓 模态框打开，初始化状态:', {
+          questionsCount: props.questions.length,
+          currentIndex: currentIndex.value
+        })
+        
         // 检查是否有重做标志（通过检查第一个问题是否有作答记录）
         const hasAnswers = props.questions && props.questions.length > 0 && 
           props.questions.some(q => q.selectedOption !== undefined || q.userAnswers !== undefined || q.userCode !== undefined)
@@ -714,7 +793,7 @@ export default {
         // 如果没有作答记录，说明是重做模式，重置所有状态
         if (!hasAnswers) {
           resetAllAnswers()
-          console.log('检测到重做模式，已重置所有作答状态')
+          console.log('🔄 检测到重做模式，已重置所有作答状态')
         } else {
           // 否则只重置当前题目的状态
           resetQuestionState()
@@ -724,6 +803,42 @@ export default {
         // 加载第一题的状态
         loadQuestionState()
       }
+    })
+    
+    // 监听 questions 属性变化
+    watch(() => props.questions, (newVal) => {
+      console.log('📝 questions属性变化:', {
+        count: newVal.length,
+        questions: newVal,
+        firstQuestion: newVal[0] ? {
+          hasContent: newVal[0].content !== undefined,
+          content: newVal[0].content,
+          hasStem: newVal[0].stem !== undefined,
+          stem: newVal[0].stem,
+          hasQuestion: newVal[0].question !== undefined,
+          question: newVal[0].question,
+          type: newVal[0].type
+        } : null
+      })
+      
+      // 确保currentIndex不超出范围
+      if (newVal.length > 0 && currentIndex.value >= newVal.length) {
+        currentIndex.value = 0
+      }
+    }, { deep: true })
+    
+    // 监听currentIndex变化
+    watch(currentIndex, (newVal) => {
+      console.log('🔢 currentIndex变化:', newVal)
+      console.log('🔍 当前问题:', props.questions[newVal] ? {
+        content: props.questions[newVal].content,
+        stem: props.questions[newVal].stem,
+        type: props.questions[newVal].type,
+        hasOptions: props.questions[newVal].type === 'choice' ? props.questions[newVal].choice_options !== undefined : false
+      } : '无问题')
+      
+      // 加载新问题的状态
+      loadQuestionState()
     })
     
     // 选择题相关方法

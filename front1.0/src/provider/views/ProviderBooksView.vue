@@ -555,9 +555,9 @@ const submitCreate = async () => {
     const formData = new FormData()
     formData.append('title', createForm.value.title)
     formData.append('subtitle', createForm.value.subtitle || '')
-    formData.append('author', createForm.value.author)
+    formData.append('author', createForm.value.author || '')
     formData.append('isbn', createForm.value.isbn || '')
-    formData.append('description', createForm.value.description)
+    formData.append('description', createForm.value.description || '')
     formData.append('introduction', createForm.value.introduction || '')
     formData.append('language', createForm.value.language || '')
     

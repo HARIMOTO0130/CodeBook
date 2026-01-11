@@ -56,7 +56,7 @@
             </div>
             <div class="version-meta">
               <span>{{ formatTime(ver.created_at) }}</span>
-              <span v-if="ver.created_by">创建人：{{ ver.created_by }}</span>
+              <span v-if="ver.created_by_name">创建人：{{ ver.created_by_name }}</span>
             </div>
             <p class="version-comment" v-if="ver.comment">{{ ver.comment }}</p>
           </li>
@@ -76,13 +76,13 @@
                 <h4>版本 1</h4>
                 <p>版本号：v{{ compareResult.version1.version_number }}</p>
                 <p>创建时间：{{ formatTime(compareResult.version1.created_at) }}</p>
-                <p>创建人：{{ compareResult.version1.created_by }}</p>
+                <p>创建人：{{ compareResult.version1.created_by_name || compareResult.version1.created_by || '未知' }}</p>
               </div>
               <div class="version-info">
                 <h4>版本 2</h4>
                 <p>版本号：v{{ compareResult.version2.version_number }}</p>
                 <p>创建时间：{{ formatTime(compareResult.version2.created_at) }}</p>
-                <p>创建人：{{ compareResult.version2.created_by }}</p>
+                <p>创建人：{{ compareResult.version2.created_by_name || compareResult.version2.created_by || '未知' }}</p>
               </div>
             </div>
             
@@ -321,8 +321,9 @@ const compareVersions = async () => {
   if (selectedVersions.value.length !== 2) return
   
   showCompare.value = true
-  loadingCompare.value = false
+  loadingCompare.value = true
   compareError.value = ''
+  compareResult.value = null
   
   try {
     const [version1Id, version2Id] = selectedVersions.value
@@ -337,6 +338,7 @@ const compareVersions = async () => {
   } catch (e) {
     console.error('版本对比失败', e)
     compareError.value = e.message || '对比失败，请重试'
+    compareResult.value = null
   } finally {
     loadingCompare.value = false
   }

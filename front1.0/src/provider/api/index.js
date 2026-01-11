@@ -97,6 +97,18 @@ export const providerApi = {
   async createCategory(payload) {
     return request('/categories/', { method: 'POST', body: payload, auth: true })
   },
+  async updateCategory(categoryId, payload) {
+    return request(`/categories/${categoryId}/`, { method: 'PUT', body: payload, auth: true })
+  },
+  async patchCategory(categoryId, payload) {
+    return request(`/categories/${categoryId}/`, { method: 'PATCH', body: payload, auth: true })
+  },
+  async deleteCategory(categoryId) {
+    return request(`/categories/${categoryId}/`, { method: 'DELETE', auth: true })
+  },
+  async getCategoryDetail(categoryId) {
+    return request(`/categories/${categoryId}/`, { auth: true })
+  },
 
   // 标签
   async listTags() {
@@ -105,10 +117,22 @@ export const providerApi = {
   async createTag(payload) {
     return request('/tags/', { method: 'POST', body: payload, auth: true })
   },
+  async updateTag(tagId, payload) {
+    return request(`/tags/${tagId}/`, { method: 'PUT', body: payload, auth: true })
+  },
+  async patchTag(tagId, payload) {
+    return request(`/tags/${tagId}/`, { method: 'PATCH', body: payload, auth: true })
+  },
+  async deleteTag(tagId) {
+    return request(`/tags/${tagId}/`, { method: 'DELETE', auth: true })
+  },
+  async getTagDetail(tagId) {
+    return request(`/tags/${tagId}/`, { auth: true })
+  },
 
   // 版本
   async listVersions(bookId) {
-    const raw = await request(`http://127.0.0.1:8000/api/provider/versions/?book=${bookId}`, { auth: true })
+    const raw = await request(`/versions/?book=${bookId}`, { auth: true })
     // 统一处理分页和非分页两种返回格式
     if (Array.isArray(raw)) {
       return raw
@@ -121,22 +145,32 @@ export const providerApi = {
   
   // 获取版本详情
   async getVersionDetail(versionId) {
-    return request(`http://127.0.0.1:8000/api/provider/versions/${versionId}/`, { auth: true })
+    return request(`/versions/${versionId}/`, { auth: true })
   },
   
   // 对比书籍版本
   async compareBookVersions(version1Id, version2Id) {
-    return request(`http://127.0.0.1:8000/api/provider/versions/compare/?version1=${version1Id}&version2=${version2Id}`, { auth: true })
+    return request(`/versions/compare/?version1=${version1Id}&version2=${version2Id}`, { auth: true })
   },
   
   // 对比章节版本
   async compareChapterVersions(version1Id, version2Id) {
-    return request(`http://127.0.0.1:8000/api/provider/chapter-versions/compare/?version1=${version1Id}&version2=${version2Id}`, { auth: true })
+    return request(`/chapter-versions/compare/?version1=${version1Id}&version2=${version2Id}`, { auth: true })
+  },
+  
+  // 获取版本详情（书籍版本）
+  async getBookVersionDetail(versionId) {
+    return request(`/versions/${versionId}/`, { auth: true })
+  },
+  
+  // 获取版本详情（章节版本）
+  async getChapterVersionDetail(versionId) {
+    return request(`/chapter-versions/${versionId}/`, { auth: true })
   },
   
   // 章节版本列表
   async listChapterVersions(chapterId) {
-    return request(`http://127.0.0.1:8000/api/provider/chapter-versions/?chapter=${chapterId}`, { auth: true })
+    return request(`/chapter-versions/?chapter=${chapterId}`, { auth: true })
   },
 
   // 删除书籍
@@ -169,6 +203,16 @@ export const providerApi = {
   // 更新书籍设置
   async updateBookSettings(bookId, payload) {
     return request(`/${bookId}/settings/`, { method: 'PUT', body: payload, auth: true })
+  },
+  
+  // 获取章节详情
+  async getChapterDetail(chapterId) {
+    return request(`/chapters/${chapterId}/`, { auth: true })
+  },
+  
+  // 更新章节内容
+  async updateChapterContent(chapterId, payload) {
+    return request(`/chapters/${chapterId}/`, { method: 'PATCH', body: payload, auth: true })
   },
 }
 

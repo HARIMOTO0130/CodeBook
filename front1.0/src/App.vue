@@ -1,35 +1,72 @@
 <template>
   <div class="app-container">
-    <!-- 全局导航栏 -->
-    <nav class="global-nav">
+    <!-- 全局导航栏 - 根据路由路径显示不同的导航 -->
+    <nav class="global-nav" v-if="shouldShowNav">
       <div class="nav-left">
-        <router-link to="/student/books" class="logo">
+        <router-link 
+          :to="navType === 'provider' ? '/provider/books' : navType === 'teacher' ? '/teacher/dashboard' : '/student/books'" 
+          class="logo"
+        >
           📚 CodeBook+——交互式非计算机专业计算机教育数字教材平台
         </router-link>
       </div>
       <div class="nav-right">
-        <router-link to="/student/profile/records" class="nav-item">
-            📊 学习记录
+        <!-- 教材提供者端导航 - 只在提供者端路由显示 -->
+        <template v-if="navType === 'provider'">
+          <router-link to="/provider/books" class="nav-item">
+            📚 书籍管理
           </router-link>
-        <router-link to="/student/practice" class="nav-item">
-            📝 练习题
+          <router-link to="/provider/categories" class="nav-item">
+            🏷️ 分类与标签
           </router-link>
-        <router-link to="/student/learning-paths" class="nav-item">
-            🗺️ 学习路线图
+          <router-link to="/provider/versions" class="nav-item">
+            📑 版本管理
           </router-link>
-        <router-link to="/student/fullcode" class="nav-item">
-          💻 代码沙盒
-        </router-link>
-        <router-link to="/student/profile/settings" class="nav-item">
-          ⚙️ 设置
-        </router-link>
-        <router-link to="/" class="nav-item" v-if="!isAuthed">
-          ️🔑 登录
-        </router-link>
-        <button class="nav-item" v-else @click="onLogout">退出</button>
-          <button class="notes-toggle" @click="toggleNotes">
-            📝 笔记/错题本
-          </button>
+          <button class="nav-item" @click="onLogout">退出</button>
+        </template>
+        
+        <!-- 学生端导航 - 只在学生端路由显示 -->
+        <template v-else-if="navType === 'student'">
+          <router-link to="/student/profile/records" class="nav-item">
+              📊 学习记录
+            </router-link>
+          <router-link to="/student/practice" class="nav-item">
+              📝 练习题
+            </router-link>
+          <router-link to="/student/learning-paths" class="nav-item">
+              🗺️ 学习路线图
+            </router-link>
+          <router-link to="/student/fullcode" class="nav-item">
+            💻 代码沙盒
+          </router-link>
+          <router-link to="/student/profile/settings" class="nav-item">
+            ⚙️ 设置
+          </router-link>
+          <router-link to="/" class="nav-item" v-if="!isAuthed">
+            ️🔑 登录
+          </router-link>
+          <button class="nav-item" v-else @click="onLogout">退出</button>
+            <button class="notes-toggle" @click="toggleNotes">
+              📝 笔记/错题本
+            </button>
+        </template>
+        
+        <!-- 教师端导航 - 只在教师端路由显示 -->
+        <template v-else-if="navType === 'teacher'">
+          <router-link to="/teacher/dashboard" class="nav-item">
+            📊 仪表盘
+          </router-link>
+          <router-link to="/teacher/classes" class="nav-item">
+            👥 班级管理
+          </router-link>
+          <router-link to="/teacher/assignments" class="nav-item">
+            📝 作业管理
+          </router-link>
+          <router-link to="/teacher/students" class="nav-item">
+            🎓 学生管理
+          </router-link>
+          <button class="nav-item" @click="onLogout">退出</button>
+        </template>
         </div>
     </nav>
 
@@ -153,7 +190,7 @@
 
 <script>
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { api } from './api/api.js'
 import NotesComponent from './student/components/NotesComponent.vue'
 import WrongQuestionsComponent from './student/components/WrongQuestionsComponent.vue'
@@ -166,11 +203,50 @@ export default {
   },
   setup() {
     const router = useRouter()
+    const route = useRoute()
     const notesOpen = ref(false)
     const activeTab = ref('notes')
     const targetNoteId = ref(null)
     // 使用ref替代computed，避免频繁检查localStorage导致的页面抖动
     const isAuthed = ref(false)
+    const userRole = ref('student')
+    
+    // 根据路由路径判断应该显示哪个导航栏
+    const shouldShowNav = computed(() => {
+      const path = route.path
+      // 登录页面和404页面不显示导航栏
+      if (path === '/' || route.name === 'Auth' || route.name === 'NotFound') {
+        return false
+      }
+      return true
+    })
+    
+    // 判断当前是否在提供者端路由
+    const isProviderRoute = computed(() => {
+      return route.path.startsWith('/provider/')
+    })
+    
+    // 判断当前是否在学生端路由
+    const isStudentRoute = computed(() => {
+      return route.path.startsWith('/student/')
+    })
+    
+    // 判断当前是否在教师端路由
+    const isTeacherRoute = computed(() => {
+      return route.path.startsWith('/teacher/')
+    })
+    
+    // 根据路由路径决定显示的导航类型
+    const navType = computed(() => {
+      if (isProviderRoute.value) {
+        return 'provider'
+      } else if (isStudentRoute.value) {
+        return 'student'
+      } else if (isTeacherRoute.value) {
+        return 'teacher'
+      }
+      return 'none' // 登录页面等不显示导航
+    })
     
     // 抽屉拖动状态
     const drawerWidth = ref(400)
@@ -208,12 +284,34 @@ export default {
       document.removeEventListener('mouseup', stopDrawerResize)
     }
     
-    // 初始化检查认证状态
+    // 初始化检查认证状态和用户角色
     const checkAuthStatus = () => {
       try { 
-        isAuthed.value = !!localStorage.getItem('token') 
-      } catch { 
+        // 直接获取localStorage中的值
+        const token = localStorage.getItem('token')
+        const storedRole = localStorage.getItem('userRole')
+        
+        // 设置认证状态
+        isAuthed.value = !!token
+        
+        // 设置用户角色，确保值是有效的
+        if (token && storedRole && ['student', 'provider'].includes(storedRole)) {
+          userRole.value = storedRole
+        } else {
+          userRole.value = 'student'
+        }
+        
+        // 调试信息
+        console.log('checkAuthStatus:', {
+          token: !!token,
+          storedRole,
+          userRole: userRole.value,
+          isAuthed: isAuthed.value
+        })
+      } catch (error) { 
+        console.error('检查认证状态失败:', error)
         isAuthed.value = false 
+        userRole.value = 'student'
       }
     }
     
@@ -224,11 +322,27 @@ export default {
     window.__updateAuthStatus = checkAuthStatus
     
     // 监听路由变化，更新认证状态（作为额外保障）
-    watch(() => router.currentRoute.value.path, () => {
+    watch(() => route.path, () => {
       checkAuthStatus()
+    })
+    
+    // 监听localStorage变化，确保角色信息实时更新
+    window.addEventListener('storage', (event) => {
+      if (event.key === 'userRole' || event.key === 'token') {
+        checkAuthStatus()
+      }
+    })
+    
+    // 监听userRole变化，添加调试信息
+    watch(userRole, (newRole) => {
+      console.log('User role changed:', newRole)
     })
 
     const toggleNotes = () => {
+      // 只有学生端才显示笔记/错题本抽屉
+      if (userRole.value !== 'student') {
+        return
+      }
       notesOpen.value = !notesOpen.value
     }
 
@@ -406,11 +520,11 @@ export default {
         }
         assistantMessages.value.push(aiMessage)
         
-        // 显示学习进度提示
-        showProgressTip()
-        
-        // 自动推荐学习内容
-        autoRecommendContent()
+        // 显示学习进度提示（仅学生端）
+        if (userRole.value === 'student') {
+          showProgressTip()
+          autoRecommendContent()
+        }
       } catch (error) {
         console.error('AI助手API调用失败:', error)
         
@@ -705,9 +819,16 @@ export default {
       drawerWidth,
       toggleNotes,
       isAuthed,
+      userRole,
       onLogout,
       handleReviewQuestion,
       startDrawerResize,
+      // 导航栏相关
+      shouldShowNav,
+      navType,
+      isProviderRoute,
+      isStudentRoute,
+      isTeacherRoute,
       // AI助手相关变量和函数
       showAssistant,
       isDragging,
@@ -911,16 +1032,24 @@ export default {
 .drawer-content {
   flex: 1;
   overflow: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .notes-content,
 .wrong-questions-content {
   flex: 1;
   overflow: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .drawer-overlay {

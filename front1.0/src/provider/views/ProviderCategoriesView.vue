@@ -24,7 +24,12 @@
             <div class="category-info">
               <p><strong>分类名称：</strong>{{ getCategoryById(selectedCategory)?.name || '未知' }}</p>
               <p><strong>标识：</strong>{{ getCategoryById(selectedCategory)?.slug || 'N/A' }}</p>
-              <p v-if="getCategoryById(selectedCategory)?.parent"><strong>父级分类：</strong>{{ getCategoryName(getCategoryById(selectedCategory)?.parent) }}</p>
+              <p v-if="getCategoryById(selectedCategory)?.parent_name"><strong>父级分类：</strong>{{ getCategoryById(selectedCategory)?.parent_name }}</p>
+              <p v-if="getCategoryById(selectedCategory)?.book_count !== undefined"><strong>书籍数量：</strong>{{ getCategoryById(selectedCategory)?.book_count || 0 }}</p>
+              <div class="category-actions">
+                <button class="btn btn-secondary" @click="editCategory(selectedCategory)">编辑</button>
+                <button class="btn btn-danger" @click="deleteCategory(selectedCategory)">删除</button>
+              </div>
             </div>
           </div>
         </div>
@@ -40,16 +45,25 @@
           <div v-else-if="tags.length === 0" class="empty-tip">暂无标签。</div>
 
           <div class="tag-list">
-            <span 
+            <div 
               v-for="(tag, index) in tags" 
               :key="tag?.id || index" 
-              class="tag-chip"
-              :class="{ 'active': selectedTag === (tag?.id || index) }"
-              @click="selectTag(tag?.id || index, tag?.name || '未知')"
-              style="cursor: pointer;"
+              class="tag-item-wrapper"
             >
-              {{ tag?.name || '未知' }}
-            </span>
+              <span 
+                class="tag-chip"
+                :class="{ 'active': selectedTag === (tag?.id || index) }"
+                @click="selectTag(tag?.id || index, tag?.name || '未知')"
+                style="cursor: pointer;"
+              >
+                {{ tag?.name || '未知' }}
+                <span v-if="tag?.book_count !== undefined" class="tag-count">({{ tag.book_count }})</span>
+              </span>
+              <div class="tag-actions">
+                <button class="btn-icon" @click.stop="editTag(tag?.id || index)" title="编辑">✏️</button>
+                <button class="btn-icon" @click.stop="deleteTag(tag?.id || index)" title="删除">🗑️</button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -107,20 +121,34 @@
       </div>
 
       <!-- 分类弹窗 -->
-      <div v-if="showCategoryDialog" class="modal-overlay" @click.self="showCategoryDialog = false">
+      <div v-if="showCategoryDialog" class="modal-overlay" @click.self="closeCategoryDialog">
         <div class="modal">
           <div class="modal-header">
-            <h3>新建分类</h3>
-            <button class="close-btn" @click="showCategoryDialog = false">×</button>
+            <h3>{{ categoryForm.id ? '编辑分类' : '新建分类' }}</h3>
+            <button class="close-btn" @click="closeCategoryDialog">×</button>
           </div>
           <div class="modal-body">
             <div class="form-group">
-              <label class="form-label">名称</label>
+              <label class="form-label">名称 <span class="required">*</span></label>
               <input v-model="categoryForm.name" type="text" class="input" placeholder="例如：计算机基础" />
             </div>
             <div class="form-group">
-              <label class="form-label">标识 (slug)</label>
-              <input v-model="categoryForm.slug" type="text" class="input" placeholder="例如：cs-basic" />
+              <label class="form-label">标识 (slug) <span class="required">*</span></label>
+              <input v-model="categoryForm.slug" type="text" class="input" placeholder="例如：cs-basic" :disabled="!!categoryForm.id" />
+              <small class="form-hint" v-if="categoryForm.id">编辑时不能修改标识</small>
+            </div>
+            <div class="form-group">
+              <label class="form-label">父级分类</label>
+              <select v-model="categoryForm.parent" class="input">
+                <option :value="null">无（顶级分类）</option>
+                <option v-for="cat in categories" :key="cat.id" :value="cat.id" :disabled="cat.id === categoryForm.id">
+                  {{ cat.name }}
+                </option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">排序</label>
+              <input v-model.number="categoryForm.order" type="number" class="input" placeholder="0" />
             </div>
             <div class="form-group">
               <label class="form-label">描述</label>
@@ -128,22 +156,24 @@
             </div>
           </div>
           <div class="modal-footer">
-            <button class="btn" @click="showCategoryDialog = false">取消</button>
-            <button class="btn btn-primary" @click="submitCategory">保存</button>
+            <button class="btn" @click="closeCategoryDialog">取消</button>
+            <button class="btn btn-primary" @click="submitCategory" :disabled="!categoryForm.name || !categoryForm.slug">
+              {{ categoryForm.id ? '更新' : '创建' }}
+            </button>
           </div>
         </div>
       </div>
 
       <!-- 标签弹窗 -->
-      <div v-if="showTagDialog" class="modal-overlay" @click.self="showTagDialog = false">
+      <div v-if="showTagDialog" class="modal-overlay" @click.self="closeTagDialog">
         <div class="modal">
           <div class="modal-header">
-            <h3>新建标签</h3>
-            <button class="close-btn" @click="showTagDialog = false">×</button>
+            <h3>{{ tagForm.id ? '编辑标签' : '新建标签' }}</h3>
+            <button class="close-btn" @click="closeTagDialog">×</button>
           </div>
           <div class="modal-body">
             <div class="form-group">
-              <label class="form-label">名称</label>
+              <label class="form-label">名称 <span class="required">*</span></label>
               <input v-model="tagForm.name" type="text" class="input" placeholder="例如：Python 入门" />
             </div>
             <div class="form-group">
@@ -152,8 +182,10 @@
             </div>
           </div>
           <div class="modal-footer">
-            <button class="btn" @click="showTagDialog = false">取消</button>
-            <button class="btn btn-primary" @click="submitTag">保存</button>
+            <button class="btn" @click="closeTagDialog">取消</button>
+            <button class="btn btn-primary" @click="submitTag" :disabled="!tagForm.name">
+              {{ tagForm.id ? '更新' : '创建' }}
+            </button>
           </div>
         </div>
       </div>
@@ -275,12 +307,16 @@ const closeBooksList = () => {
 }
 
 const categoryForm = ref({
+  id: null,
   name: '',
   slug: '',
   description: '',
+  parent: null,
+  order: 0,
 })
 
 const tagForm = ref({
+  id: null,
   name: '',
   description: '',
 })
@@ -297,6 +333,12 @@ const loadCategories = async () => {
       if (cat) {
         mainCat.bookCount = cat.book_count || 0
       }
+    })
+    
+    // 确保分类列表按order和name排序
+    categories.value.sort((a, b) => {
+      if (a.order !== b.order) return (a.order || 0) - (b.order || 0)
+      return (a.name || '').localeCompare(b.name || '')
     })
   } catch (e) {
     console.error('加载分类失败', e)
@@ -359,34 +401,168 @@ const selectTag = async (tagId, tagName) => {
 }
 
 const openCategoryDialog = () => {
-  categoryForm.value = { name: '', slug: '', description: '' }
+  categoryForm.value = { id: null, name: '', slug: '', description: '', parent: null, order: 0 }
   showCategoryDialog.value = true
 }
 
+const closeCategoryDialog = () => {
+  showCategoryDialog.value = false
+  categoryForm.value = { id: null, name: '', slug: '', description: '', parent: null, order: 0 }
+}
+
+const editCategory = async (categoryId) => {
+  try {
+    const category = await providerApi.getCategoryDetail(categoryId)
+    categoryForm.value = {
+      id: category.id,
+      name: category.name,
+      slug: category.slug,
+      description: category.description || '',
+      parent: category.parent || null,
+      order: category.order || 0,
+    }
+    showCategoryDialog.value = true
+  } catch (e) {
+    console.error('获取分类详情失败', e)
+    alert('获取分类详情失败，请重试')
+  }
+}
+
+const deleteCategory = async (categoryId) => {
+  const category = getCategoryById(categoryId)
+  if (!category) return
+  
+  if (category.book_count > 0) {
+    if (!confirm(`分类"${category.name}"下有 ${category.book_count} 本书，删除后这些书籍将失去该分类。确定要删除吗？`)) {
+      return
+    }
+  } else {
+    if (!confirm(`确定要删除分类"${category.name}"吗？此操作不可恢复！`)) {
+      return
+    }
+  }
+  
+  try {
+    await providerApi.deleteCategory(categoryId)
+    await loadCategories()
+    if (selectedCategory.value === categoryId) {
+      selectedCategory.value = ''
+    }
+  } catch (e) {
+    console.error('删除分类失败', e)
+    alert('删除分类失败：' + (e.message || '未知错误'))
+  }
+}
+
 const openTagDialog = () => {
-  tagForm.value = { name: '', description: '' }
+  tagForm.value = { id: null, name: '', description: '' }
   showTagDialog.value = true
 }
 
-const submitCategory = async () => {
-  if (!categoryForm.value.name || !categoryForm.value.slug) return
+const closeTagDialog = () => {
+  showTagDialog.value = false
+  tagForm.value = { id: null, name: '', description: '' }
+}
+
+const editTag = async (tagId) => {
   try {
-    await providerApi.createCategory(categoryForm.value)
-    showCategoryDialog.value = false
+    const tag = await providerApi.getTagDetail(tagId)
+    tagForm.value = {
+      id: tag.id,
+      name: tag.name,
+      description: tag.description || '',
+    }
+    showTagDialog.value = true
+  } catch (e) {
+    console.error('获取标签详情失败', e)
+    alert('获取标签详情失败，请重试')
+  }
+}
+
+const deleteTag = async (tagId) => {
+  const tag = tags.value.find(t => t.id === tagId)
+  if (!tag) return
+  
+  if (tag.book_count > 0) {
+    if (!confirm(`标签"${tag.name}"下有 ${tag.book_count} 本书，删除后这些书籍将失去该标签。确定要删除吗？`)) {
+      return
+    }
+  } else {
+    if (!confirm(`确定要删除标签"${tag.name}"吗？此操作不可恢复！`)) {
+      return
+    }
+  }
+  
+  try {
+    await providerApi.deleteTag(tagId)
+    await loadTags()
+    if (selectedTag.value === tagId) {
+      selectedTag.value = ''
+      tagBooks.value = []
+      showBooksList.value = false
+    }
+  } catch (e) {
+    console.error('删除标签失败', e)
+    alert('删除标签失败：' + (e.message || '未知错误'))
+  }
+}
+
+const submitCategory = async () => {
+  if (!categoryForm.value.name || !categoryForm.value.slug) {
+    alert('请填写分类名称和标识')
+    return
+  }
+  
+  try {
+    const payload = {
+      name: categoryForm.value.name,
+      slug: categoryForm.value.slug,
+      description: categoryForm.value.description || '',
+      parent: categoryForm.value.parent || null,
+      order: categoryForm.value.order || 0,
+    }
+    
+    if (categoryForm.value.id) {
+      // 更新分类
+      await providerApi.updateCategory(categoryForm.value.id, payload)
+    } else {
+      // 创建分类
+      await providerApi.createCategory(payload)
+    }
+    
+    closeCategoryDialog()
     await loadCategories()
   } catch (e) {
-    console.error('创建分类失败', e)
+    console.error('保存分类失败', e)
+    alert('保存分类失败：' + (e.message || '未知错误'))
   }
 }
 
 const submitTag = async () => {
-  if (!tagForm.value.name) return
+  if (!tagForm.value.name) {
+    alert('请填写标签名称')
+    return
+  }
+  
   try {
-    await providerApi.createTag(tagForm.value)
-    showTagDialog.value = false
+    const payload = {
+      name: tagForm.value.name,
+      description: tagForm.value.description || '',
+    }
+    
+    if (tagForm.value.id) {
+      // 更新标签
+      await providerApi.updateTag(tagForm.value.id, payload)
+    } else {
+      // 创建标签
+      await providerApi.createTag(payload)
+    }
+    
+    closeTagDialog()
     await loadTags()
   } catch (e) {
-    console.error('创建标签失败', e)
+    console.error('保存标签失败', e)
+    alert('保存标签失败：' + (e.message || '未知错误'))
   }
 }
 
@@ -768,6 +944,71 @@ onMounted(() => {
 
 .meta-item {
   display: inline-block;
+}
+
+.category-actions {
+  margin-top: 15px;
+  display: flex;
+  gap: 10px;
+}
+
+.btn-secondary {
+  background: #909399;
+  border-color: #909399;
+  color: #fff;
+}
+
+.btn-secondary:hover {
+  background: #a6a9ad;
+  border-color: #a6a9ad;
+}
+
+.btn-danger {
+  background: #f56c6c;
+  border-color: #f56c6c;
+  color: #fff;
+}
+
+.btn-danger:hover {
+  background: #f78989;
+  border-color: #f78989;
+}
+
+.tag-item-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.tag-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.btn-icon {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background-color 0.3s;
+}
+
+.btn-icon:hover {
+  background: #f5f7fa;
+}
+
+.required {
+  color: #f56c6c;
+}
+
+.form-hint {
+  display: block;
+  font-size: 12px;
+  color: #909399;
+  margin-top: 4px;
 }
 </style>
 

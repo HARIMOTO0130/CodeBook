@@ -73,7 +73,7 @@
             <button v-if="currentSection?.type === 'video' || currentSection?.video_url || currentSection?.hasVideo" class="btn btn-primary" @click="showVideo = true">
               🎥 视频教学
             </button>
-            <button v-if="currentSection?.type === 'practice'" class="btn btn-primary" @click="loadPractice().then(() => showPractice = true)">
+            <button v-if="currentSection?.type === 'practice'" class="btn btn-primary" @click="showPractice = true; loadPractice()">
               💡 开始练习
             </button>
             <button class="btn btn-primary" @click="openCodeSandbox">
@@ -161,37 +161,76 @@
     </div>
 
     <!-- 练习题弹层 -->
-    <div v-if="showPractice" class="practice-overlay">
-      <div class="practice-container">
-        <div class="practice-header">
+    <div v-if="showPractice" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; align-items: center; justify-content: center;">
+      <div style="background: white; padding: 40px; border-radius: 8px; max-width: 800px; width: 90%; max-height: 80vh; overflow-y: auto;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
           <h3>练习题</h3>
-          <button class="close-btn" @click="showPractice = false">×</button>
+          <button @click="showPractice = false" style="font-size: 24px; background: none; border: none; cursor: pointer;">×</button>
         </div>
-        <div class="practice-content">
+        <div style="margin-bottom: 20px;">
           <div v-if="loadingPractice" class="loading-content">
             <p>正在加载练习题...</p>
           </div>
           <div v-else-if="practiceData" class="question-content">
+            <!-- 简单调试显示 -->
+            <div style="background: pink; padding: 10px; margin: 10px 0;">
+              <p>practiceData存在: {{ !!practiceData }}</p>
+              <p>题目数量: {{ practiceData.questions?.length || 0 }}</p>
+              <p>第一题内容: {{ practiceData.questions?.[0]?.content }}</p>
+            </div>
+            <!-- 直接显示所有数据结构 -->
+            <div style="background: yellow; padding: 20px; margin-bottom: 20px; font-size: 14px; white-space: pre-wrap; word-break: break-word;">
+              <h3>调试数据:</h3>
+              <pre>{{ debugData }}</pre>
+            </div>
+            
             <div class="practice-info">
               <span class="practice-type">{{ practiceData.title }}</span>
               <span class="practice-difficulty">{{ getDifficultyText(practiceData.difficulty) }}</span>
             </div>
             <p v-if="practiceData.description" class="practice-description">{{ practiceData.description }}</p>
             
-            <!-- 循环显示多个问题 -->
-            <div v-for="(question, index) in practiceData.questions" :key="index" class="question-item">
+            <!-- 测试硬编码题目 -->
+            <div class="question-item">
               <div class="question-header">
-                <span class="question-number">{{ index + 1 }}.</span>
-                <span class="question-type-badge">{{ getQuestionTypeText(question.type) }}</span>
+                <span class="question-number">测试.</span>
+                <span class="question-type-badge">选择题</span>
               </div>
-              <p class="practice-question">{{ question.content }}</p>
+              <p class="practice-question">这是一个测试题目，你能看到吗？</p>
+              <div class="options">
+                <label class="option-item">
+                  <input type="radio" name="test_option" value="1">
+                  <span class="option-content">测试选项1</span>
+                </label>
+                <label class="option-item">
+                  <input type="radio" name="test_option" value="2">
+                  <span class="option-content">测试选项2</span>
+                </label>
+              </div>
+            </div>
+            
+            <!-- 循环显示多个问题 -->
+            <div v-for="(question, index) in practiceData.questions" :key="index" style="border: 1px solid #ccc; padding: 20px; margin: 20px 0;">
+              <h4>{{ index + 1 }}. {{ getQuestionTypeText(question.type) }}</h4>
+              <!-- 调试信息 -->
+              <div style="background: #f5f5f5; padding: 10px; border-radius: 5px; margin-bottom: 10px;">
+                <p>调试信息:</p>
+                <p>问题类型: {{ question.type }}</p>
+                <p>问题内容: {{ question.content }}</p>
+                <p>问题字段: {{ Object.keys(question).join(', ') }}</p>
+                <p v-if="question.type === 'choice'">选项字段: {{ question.choice_options ? 'choice_options' : '未找到' }}</p>
+                <p v-if="question.type === 'choice'">选项数量: {{ question.choice_options ? question.choice_options.length : 0 }}</p>
+              </div>
+              <p style="font-size: 18px; margin: 15px 0;">{{ question.content }}</p>
               
               <!-- 选择题 -->
-              <div v-if="question.type === 'choice'" class="options">
-                <label v-for="option in question.choice_options" :key="option.id" class="option-item">
-                  <input type="radio" :name="`practice_option_${index}`" :value="option.id" v-model="selectedOptions[index]">
-                  <span class="option-content">{{ option.content }}</span>
-                </label>
+              <div v-if="question.type === 'choice'">
+                <div v-for="option in question.choice_options" :key="option.id" style="margin: 10px 0;">
+                  <label>
+                    <input type="radio" :name="`option_${index}`" :value="option.id" v-model="selectedOptions[index]">
+                    {{ option.content }}
+                  </label>
+                </div>
               </div>
               
               <!-- 填空题 -->
@@ -221,14 +260,14 @@
               </div>
               
               <!-- 判断题 -->
-              <div v-else-if="question.type === 'true_false'" class="true-false">
-                <label class="option-item">
-                  <input type="radio" :name="`practice_option_${index}`" :value="true" v-model="selectedOptions[index]">
-                  <span class="option-content">正确</span>
+              <div v-else-if="question.type === 'true_false'">
+                <label style="margin: 10px;">
+                  <input type="radio" :name="`option_${index}`" :value="true" v-model="selectedOptions[index]">
+                  正确
                 </label>
-                <label class="option-item">
-                  <input type="radio" :name="`practice_option_${index}`" :value="false" v-model="selectedOptions[index]">
-                  <span class="option-content">错误</span>
+                <label style="margin: 10px;">
+                  <input type="radio" :name="`option_${index}`" :value="false" v-model="selectedOptions[index]">
+                  错误
                 </label>
               </div>
               
@@ -376,10 +415,10 @@ export default {
     // 新增AI功能相关数据
     const showErrorDrawer = ref(false)
     const errorInfo = ref({
-      original: '',
-      translation: '',
-      solution: ''
-    }))
+        original: '',
+        translation: '',
+        solution: ''
+      })
     const selectedTerm = ref(null)
     const termTooltipStyle = ref({})
     // AI助手相关功能已移至App.vue中
@@ -969,21 +1008,63 @@ export default {
         blankAnswers.value = []
         userCodes.value = []
         
-        const data = await api.getChapterPractice(currentSection.value.id)
-        console.log('练习题API返回数据:', data)
-        practiceData.value = data
+        // 测试：使用硬编码数据
+        const mockData = {
+          id: 1,
+          title: '测试练习题集',
+          description: '这是一个测试练习题集',
+          difficulty: 2,
+          questions: [
+            {
+              id: 1,
+              type: 'choice',
+              content: '计算机中最小的信息单位是？',
+              choice_options: [
+                { id: 1, content: '字节(Byte)', is_correct: false },
+                { id: 2, content: '位(bit)', is_correct: true },
+                { id: 3, content: '字(Word)', is_correct: false },
+                { id: 4, content: '双字(Double Word)', is_correct: false }
+              ],
+              score: 2
+            },
+            {
+              id: 2,
+              type: 'true_false',
+              content: '计算机的CPU主要由运算器和控制器组成。',
+              correct_answer: true,
+              score: 2
+            }
+          ]
+        }
+        
+        // 直接将模拟数据赋值给practiceData
+        practiceData.value = mockData
+        console.log('✅ mockData已赋值给practiceData:', practiceData.value)
         
         // 为每个问题初始化答案数组
-        if (data.questions) {
-          console.log('问题数组:', data.questions)
-          data.questions.forEach((question, index) => {
-            console.log(`问题${index + 1}:`, question)
+        if (practiceData.value && practiceData.value.questions) {
+          console.log('📝 问题数组:', practiceData.value.questions)
+          practiceData.value.questions.forEach((question, index) => {
+            console.log(`❓ 问题${index + 1}:`, {
+              type: question.type,
+              content: question.content,
+              hasContent: question.content !== undefined,
+              fields: Object.keys(question)
+            })
+            
             // 选择题初始化
             if (question.type === 'choice') {
+              console.log('🔘 选择题选项字段:', question.choice_options ? 'choice_options' : (question.options ? 'options' : '未找到选项字段'))
+              selectedOptions.value[index] = null
+            }
+            // 判断题初始化
+            else if (question.type === 'true_false') {
+              console.log('✅ 判断题')
               selectedOptions.value[index] = null
             }
             // 填空题初始化
             else if (question.type === 'fill') {
+              console.log('📝 填空题选项字段:', question.fill_blanks ? 'fill_blanks' : '未找到填空题字段')
               blankAnswers.value[index] = {}
             }
             // 代码题初始化
@@ -994,6 +1075,68 @@ export default {
             }
           })
         }
+        
+        // 真实API调用（暂时注释）
+        /*
+        const data = await api.getChapterPractice(currentSection.value.id)
+        console.log('🔍 练习题API返回数据:', JSON.stringify(data, null, 2))
+        
+        // 检查返回数据的结构
+        console.log('📊 返回数据包含questions:', 'questions' in data)
+        console.log('📊 questions类型:', Array.isArray(data.questions))
+        console.log('📊 questions数量:', data.questions ? data.questions.length : 0)
+        
+        // 直接将数据赋值给practiceData
+        practiceData.value = data
+        */
+        
+        // 确认practiceData已更新
+        console.log('✅ practiceData更新后:', {
+          hasData: !!practiceData.value,
+          hasQuestions: practiceData.value?.questions !== undefined,
+          questionsCount: practiceData.value?.questions?.length || 0
+        })
+        
+        // 为每个问题初始化答案数组
+        if (practiceData.value && practiceData.value.questions) {
+          console.log('📝 问题数组:', practiceData.value.questions)
+          practiceData.value.questions.forEach((question, index) => {
+            console.log(`❓ 问题${index + 1}:`, {
+              type: question.type,
+              content: question.content,
+              hasContent: question.content !== undefined,
+              fields: Object.keys(question)
+            })
+            
+            // 选择题初始化
+            if (question.type === 'choice') {
+              console.log('🔘 选择题选项字段:', question.choice_options ? 'choice_options' : (question.options ? 'options' : '未找到选项字段'))
+              selectedOptions.value[index] = null
+            }
+            // 判断题初始化
+            else if (question.type === 'true_false') {
+              console.log('✅ 判断题')
+              selectedOptions.value[index] = null
+            }
+            // 填空题初始化
+            else if (question.type === 'fill') {
+              console.log('📝 填空题选项字段:', question.fill_blanks ? 'fill_blanks' : '未找到填空题字段')
+              blankAnswers.value[index] = {}
+            }
+            // 代码题初始化
+            else if ((question.type === 'code_completion' || question.type === 'programming') && question.code_template) {
+              userCodes.value[index] = question.code_template
+            } else if (question.type === 'code_completion' || question.type === 'programming') {
+              userCodes.value[index] = ''
+            }
+          })
+        }
+        
+        // 再次确认practiceData状态
+        console.log('🎯 最终practiceData状态:', {
+          data: practiceData.value,
+          questions: practiceData.value?.questions
+        })
         
       } catch (error) {
         console.error('加载练习题失败:', error)
@@ -1048,7 +1191,17 @@ export default {
       }
       
       return true
-    }
+    })
+    
+    // 计算调试数据的JSON字符串
+    const debugData = computed(() => {
+      if (!practiceData.value) return ''
+      try {
+        return JSON.stringify(practiceData.value, null, 2)
+      } catch (error) {
+        return 'JSON序列化错误: ' + error.message
+      }
+    })
     
     // 监听showPractice变化，自动加载练习题数据
     watch(showPractice, (newVal) => {
@@ -1059,6 +1212,30 @@ export default {
         submitResult.value = null
       }
     })
+    
+    // 监听practiceData变化，检查数据更新
+    watch(practiceData, (newVal) => {
+      console.log('🔄 practiceData变化监听:', {
+        hasData: !!newVal,
+        hasQuestions: newVal?.questions !== undefined,
+        questionsCount: newVal?.questions?.length || 0,
+        questions: newVal?.questions
+      })
+      
+      if (newVal && newVal.questions) {
+        // 检查每个问题的内容
+        newVal.questions.forEach((question, index) => {
+          console.log(`📝 问题${index + 1}内容检查:`, {
+            content: question.content,
+            hasContent: question.content !== undefined,
+            contentLength: question.content?.length || 0,
+            type: question.type,
+            hasOptions: question.type === 'choice' ? (question.choice_options ? true : false) : undefined,
+            optionsCount: question.type === 'choice' ? (question.choice_options ? question.choice_options.length : 0) : undefined
+          })
+        })
+      }
+    }, { deep: true })
     
     // 获取输出样式类
     const getOutputClass = (line) => {
@@ -1683,7 +1860,7 @@ export default {
       
       console.log('📭 无内容可返回');
       return null;
-    };
+    })
 
     return {
       bookId,
@@ -1719,14 +1896,15 @@ export default {
       // 练习题相关变量和函数
       practiceData,
       loadingPractice,
-      selectedOption,
+      selectedOptions,
       blankAnswers,
-      userCode,
+      userCodes,
       submitResult,
       loadPractice,
       getQuestionTypeText,
       getDifficultyText,
       canSubmit,
+      debugData,
       // 笔记高亮功能相关变量和函数
       selectedText,
       showContextMenu,

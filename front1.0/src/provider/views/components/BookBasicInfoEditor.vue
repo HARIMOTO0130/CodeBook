@@ -5,9 +5,9 @@
       <div class="form-section cover-section">
         <label class="form-label">封面图片</label>
         <div class="cover-upload-area">
-          <div class="cover-preview" :style="{ backgroundColor: coverColor }">
-            <img v-if="formData.cover && !coverFile" :src="formData.cover" alt="封面预览" class="cover-image">
-            <img v-else-if="coverFile" :src="coverPreviewUrl" alt="封面预览" class="cover-image">
+          <div class="cover-preview" :style="{ backgroundColor: coverColor }" role="img" aria-label="封面预览">
+            <img v-if="formData.cover && !coverFile" :src="formData.cover" alt="封面预览" class="cover-image" aria-hidden="true">
+            <img v-else-if="coverFile" :src="coverPreviewUrl" alt="封面预览" class="cover-image" aria-hidden="true">
             <span v-else>{{ (formData.title || '书').charAt(0) }}</span>
           </div>
           <div class="cover-upload-controls">
@@ -16,18 +16,36 @@
               id="cover-upload"
               accept="image/*"
               class="cover-input"
-              @change="handleCoverUpload"
+              @change="coverHandler.handleCoverUpload"
+              aria-describedby="cover-upload-description"
             />
-            <label for="cover-upload" class="btn btn-secondary btn-sm">选择封面</label>
+            <label for="cover-upload" class="btn btn-secondary btn-sm" tabIndex="0">选择封面</label>
             <button
               type="button"
               class="btn btn-danger btn-sm"
-              @click="removeCover"
+              @click="coverHandler.removeCover"
               v-if="formData.cover || coverFile"
+              aria-label="删除当前封面"
+              tabIndex="0"
             >
               删除封面
             </button>
           </div>
+          <p id="cover-upload-description" class="form-help">支持JPG/PNG格式，最大2MB</p>
+          
+          <!-- 上传进度条 -->
+          <div v-if="uploadProgress > 0" class="upload-progress-container">
+            <div class="progress-bar">
+              <div class="progress" :style="{ width: `${uploadProgress}%` }"></div>
+            </div>
+            <span class="progress-text">{{ uploadProgress }}%</span>
+          </div>
+          
+          <!-- 上传错误提示 -->
+          <p v-if="uploadError" class="error-message">
+            <span class="error-icon">⚠️</span> {{ uploadError }}
+          </p>
+          
           <p class="form-help">支持JPG/PNG格式，最大2MB</p>
         </div>
       </div>
@@ -44,8 +62,10 @@
             class="form-input"
             placeholder="请输入书籍标题"
             :class="{ 'input-error': errors.title }"
+            :aria-invalid="!!errors.title"
+            :aria-describedby="errors.title ? 'title-error' : undefined"
           />
-          <p v-if="errors.title" class="error-message">{{ errors.title }}</p>
+          <p v-if="errors.title" id="title-error" class="error-message">{{ errors.title }}</p>
         </div>
 
         <!-- 副标题 -->
@@ -70,8 +90,10 @@
             class="form-input"
             placeholder="请输入作者姓名"
             :class="{ 'input-error': errors.author }"
+            :aria-invalid="!!errors.author"
+            :aria-describedby="errors.author ? 'author-error' : undefined"
           />
-          <p v-if="errors.author" class="error-message">{{ errors.author }}</p>
+          <p v-if="errors.author" id="author-error" class="error-message">{{ errors.author }}</p>
         </div>
 
         <!-- ISBN -->
@@ -83,7 +105,11 @@
             v-model="formData.isbn"
             class="form-input"
             placeholder="请输入ISBN号（可选）"
+            :class="{ 'input-error': errors.isbn }"
+            :aria-invalid="!!errors.isbn"
+            :aria-describedby="errors.isbn ? 'isbn-error' : undefined"
           />
+          <p v-if="errors.isbn" id="isbn-error" class="error-message">{{ errors.isbn }}</p>
         </div>
 
         <!-- 语言 -->
@@ -114,43 +140,89 @@
         <!-- 分类 -->
         <div class="form-group">
           <label for="categories" class="form-label">分类</label>
-          <div class="checkbox-group">
-            <label 
-              v-for="category in availableCategories" 
-              :key="category.id"
-              class="checkbox-label"
-            >
-              <input
-                type="checkbox"
-                :value="category.name"
-                v-model="selectedCategories"
-                class="checkbox-input"
-              />
-              <span class="checkbox-text">{{ category.name }}</span>
-            </label>
+          <div 
+            class="checkbox-group"
+            role="group"
+            aria-labelledby="categories"
+            aria-describedby="categories-help"
+            @focus="loadCategoriesIfNeeded"
+            @mouseenter="loadCategoriesIfNeeded"
+          >
+            <!-- 加载中状态 -->
+            <div v-if="loadingCategories" class="loading-content" role="status">
+              <div class="loading-spinner" aria-hidden="true"></div>
+              <span>加载分类中...</span>
+            </div>
+            
+            <!-- 无数据状态 -->
+            <div v-else-if="availableCategories.length === 0" class="empty-content" role="status">
+              <span>暂无分类数据</span>
+            </div>
+            
+            <!-- 分类列表 -->
+            <template v-else>
+              <label 
+                v-for="category in availableCategories" 
+                :key="category.id"
+                class="checkbox-label"
+              >
+                <input
+                  type="checkbox"
+                  :value="category.name"
+                  v-model="selectedCategories"
+                  class="checkbox-input"
+                  :id="`category-${category.id}`"
+                  aria-label="选择分类: {{ category.name }}"
+                />
+                <span class="checkbox-text" :for="`category-${category.id}`">{{ category.name }}</span>
+              </label>
+            </template>
           </div>
-          <p class="form-help">可选择多个分类</p>
+          <p id="categories-help" class="form-help">可选择多个分类</p>
         </div>
 
         <!-- 标签 -->
         <div class="form-group">
           <label for="tags" class="form-label">标签</label>
-          <div class="checkbox-group tags-group">
-            <label 
-              v-for="tag in availableTags" 
-              :key="tag.id"
-              class="checkbox-label tag-checkbox"
-            >
-              <input
-                type="checkbox"
-                :value="tag.name"
-                v-model="selectedTags"
-                class="checkbox-input"
-              />
-              <span class="checkbox-text">{{ tag.name }}</span>
-            </label>
+          <div 
+            class="checkbox-group tags-group"
+            role="group"
+            aria-labelledby="tags"
+            aria-describedby="tags-help"
+            @focus="loadTagsIfNeeded"
+            @mouseenter="loadTagsIfNeeded"
+          >
+            <!-- 加载中状态 -->
+            <div v-if="loadingTags" class="loading-content" role="status">
+              <div class="loading-spinner" aria-hidden="true"></div>
+              <span>加载标签中...</span>
+            </div>
+            
+            <!-- 无数据状态 -->
+            <div v-else-if="availableTags.length === 0" class="empty-content" role="status">
+              <span>暂无标签数据</span>
+            </div>
+            
+            <!-- 标签列表 -->
+            <template v-else>
+              <label 
+                v-for="tag in availableTags" 
+                :key="tag.id"
+                class="checkbox-label tag-checkbox"
+              >
+                <input
+                  type="checkbox"
+                  :value="tag.name"
+                  v-model="selectedTags"
+                  class="checkbox-input"
+                  :id="`tag-${tag.id}`"
+                  aria-label="选择标签: {{ tag.name }}"
+                />
+                <span class="checkbox-text" :for="`tag-${tag.id}`">{{ tag.name }}</span>
+              </label>
+            </template>
           </div>
-          <p class="form-help">可选择多个标签</p>
+          <p id="tags-help" class="form-help">可选择多个标签</p>
         </div>
       </div>
 
@@ -171,30 +243,29 @@
         <!-- 详细介绍 -->
         <div class="form-group">
           <label for="introduction" class="form-label">详细介绍</label>
-          <div class="rich-text-editor">
-            <!-- 简化版富文本编辑器 -->
-            <div class="editor-toolbar">
-              <button type="button" class="toolbar-btn" @click="formatText('bold')"><strong>B</strong></button>
-              <button type="button" class="toolbar-btn" @click="formatText('italic')"><em>I</em></button>
-              <button type="button" class="toolbar-btn" @click="formatText('underline')"><u>U</u></button>
-              <button type="button" class="toolbar-btn" @click="insertLink">🔗</button>
-            </div>
-            <textarea
-              id="introduction"
-              v-model="formData.introduction"
-              class="form-textarea rich-text-area"
-              rows="8"
-              placeholder="书籍的详细介绍（支持基本格式化）"
-            ></textarea>
+          <div class="jupyter-editor-wrapper">
+            <JupyterNotebook 
+              :initialContent="getJupyterContent()"
+              :documentId="null"
+              :isReadOnly="false"
+              :language="codeLanguage"
+              :bookId="bookId?.toString()"
+              :chapterId="null"
+              @contentChange="handleContentChange"
+            ></JupyterNotebook>
           </div>
         </div>
       </div>
 
       <!-- 表单操作按钮 -->
       <div class="form-actions">
-        <button type="button" class="btn" @click="handleCancel">取消</button>
-        <button type="submit" class="btn btn-primary" :disabled="isSubmitting">
-          {{ isSubmitting ? '保存中...' : '保存修改' }}
+        <button type="button" class="btn" @click="handleCancel" aria-label="取消编辑并返回">取消</button>
+        <button type="submit" class="btn btn-primary" :disabled="isSubmitting" :aria-busy="isSubmitting">
+          <span v-if="isSubmitting" aria-hidden="true">
+            <div class="loading-spinner" style="width: 16px; height: 16px; margin: 0 8px; display: inline-block;"></div>
+            保存中...
+          </span>
+          <span v-else>保存修改</span>
         </button>
       </div>
     </form>
@@ -202,8 +273,9 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { providerApi } from '../../api/index.js'
+import JupyterNotebook from '../../../student/components/JupyterNotebook.vue'
 
 // 定义组件属性
 const props = defineProps({
@@ -226,6 +298,8 @@ const formData = ref({})
 // 封面文件相关
 const coverFile = ref(null)
 const coverPreviewUrl = ref('')
+const uploadProgress = ref(0)
+const uploadError = ref('')
 
 // 表单验证错误
 const errors = ref({})
@@ -237,6 +311,213 @@ const selectedCategories = ref([])
 const selectedTags = ref([])
 const loadingCategories = ref(false)
 const loadingTags = ref(false)
+
+// JupyterNotebook组件相关
+const codeLanguage = ref('Python')
+const bookId = computed(() => props.bookData.id)
+
+// 获取Jupyter内容的辅助函数（与学生端保持一致）
+const getJupyterContent = () => {
+  console.log('🔄 getJupyterContent被调用');
+  console.log('🔍 formData.value.chapters:', {
+    exists: !!formData.value.chapters,
+    type: typeof formData.value.chapters,
+    length: Array.isArray(formData.value.chapters) ? formData.value.chapters.length : 0
+  });
+  
+  // 首先检查是否有chapters字段（来自书籍章节）
+  if (Array.isArray(formData.value.chapters) && formData.value.chapters.length > 0) {
+    console.log('🔍 开始处理书籍章节内容');
+    
+    // 获取第一个章节的内容（可根据需求选择特定章节）
+    const firstChapter = formData.value.chapters[0];
+    console.log('📝 处理第一个章节:', firstChapter?.title);
+    
+    // 尝试获取章节的merged_content、content或jupyter_content
+    let mergedContent = null;
+    
+    if (firstChapter?.merged_content) {
+      mergedContent = firstChapter.merged_content;
+      console.log('📊 使用章节的merged_content字段');
+    } else if (firstChapter?.content) {
+      mergedContent = firstChapter.content;
+      console.log('📊 使用章节的content字段');
+    } else if (firstChapter?.jupyter_content) {
+      mergedContent = firstChapter.jupyter_content;
+      console.log('📊 使用章节的jupyter_content字段');
+    }
+    
+    if (mergedContent) {
+      console.log('📊 mergedContent详情:', {
+        type: typeof mergedContent,
+        isObject: typeof mergedContent === 'object' && mergedContent !== null,
+        isString: typeof mergedContent === 'string',
+        hasCells: typeof mergedContent === 'object' && mergedContent !== null && mergedContent.cells
+      });
+      
+      try {
+        // 检查mergedContent的类型
+        if (typeof mergedContent === 'object' && mergedContent !== null) {
+          console.log('📊 content已经是对象格式');
+          
+          // 检查是否是有效的Jupyter Notebook格式
+          if (mergedContent.cells && Array.isArray(mergedContent.cells)) {
+            console.log('✅ 成功识别为Jupyter Notebook格式，包含', mergedContent.cells.length, '个单元格');
+            
+            // 转换为JupyterNotebook组件期望的单元格数组格式
+            const cellsArray = mergedContent.cells.map((cell, index) => ({
+              id: `cell_${index}_${Date.now()}`,
+              type: cell.cell_type === 'code' ? 'code' : 'markdown',
+              content: Array.isArray(cell.source) ? cell.source.join('\n') : cell.source || '',
+              language: mergedContent.metadata?.kernelspec?.language || firstChapter?.language || codeLanguage.value || 'python',
+              output: cell.outputs?.map(output => {
+                if (output.text) return Array.isArray(output.text) ? output.text.join('') : output.text;
+                if (output.data?.['text/plain']) return output.data['text/plain'];
+                return JSON.stringify(output);
+              }) || [],
+              isSystemGenerated: true
+            }));
+            
+            console.log('✅ 转换为组件兼容格式完成');
+            return JSON.stringify(cellsArray);
+          } else if (Array.isArray(mergedContent)) {
+            // 如果mergedContent直接是cells数组
+            console.log('📊 content是cells数组格式，包含', mergedContent.length, '个单元格');
+            
+            const cellsArray = mergedContent.map((cell, index) => ({
+              id: `cell_${index}_${Date.now()}`,
+              type: cell.cell_type === 'code' ? 'code' : 'markdown',
+              content: Array.isArray(cell.source) ? cell.source.join('\n') : cell.source || '',
+              language: firstChapter?.language || codeLanguage.value || 'python',
+              output: cell.outputs?.map(output => {
+                if (output.text) return Array.isArray(output.text) ? output.text.join('') : output.text;
+                if (output.data?.['text/plain']) return output.data['text/plain'];
+                return JSON.stringify(output);
+              }) || [],
+              isSystemGenerated: true
+            }));
+            
+            console.log('✅ 转换为组件兼容格式完成');
+            return JSON.stringify(cellsArray);
+          } else {
+            // 如果是普通对象，将其转换为Markdown单元格
+            console.log('📊 content是普通对象，转换为Markdown单元格');
+            const cellsArray = [{
+              id: `cell_0_${Date.now()}`,
+              type: 'markdown',
+              content: JSON.stringify(mergedContent, null, 2),
+              language: firstChapter?.language || codeLanguage.value || 'python',
+              output: [],
+              isSystemGenerated: true
+            }];
+            return JSON.stringify(cellsArray);
+          }
+        }
+        
+        // 如果mergedContent是字符串，尝试解析它
+        if (typeof mergedContent === 'string' && mergedContent.trim()) {
+          console.log('📊 content是字符串格式，尝试解析');
+          try {
+            const parsed = JSON.parse(mergedContent);
+            
+            if (parsed.cells && Array.isArray(parsed.cells)) {
+              console.log('✅ 成功解析为Jupyter Notebook格式，包含', parsed.cells.length, '个单元格');
+              
+              const cellsArray = parsed.cells.map((cell, index) => ({
+                id: `cell_${index}_${Date.now()}`,
+                type: cell.cell_type === 'code' ? 'code' : 'markdown',
+                content: Array.isArray(cell.source) ? cell.source.join('\n') : cell.source || '',
+                language: parsed.metadata?.kernelspec?.language || firstChapter?.language || codeLanguage.value || 'python',
+                output: cell.outputs?.map(output => {
+                  if (output.text) return Array.isArray(output.text) ? output.text.join('') : output.text;
+                  if (output.data?.['text/plain']) return output.data['text/plain'];
+                  return JSON.stringify(output);
+                }) || [],
+                isSystemGenerated: true
+              }));
+              
+              console.log('✅ 转换为组件兼容格式完成');
+              return JSON.stringify(cellsArray);
+            } else if (Array.isArray(parsed)) {
+              // 如果解析后直接是cells数组
+              console.log('📊 解析后是cells数组格式，包含', parsed.length, '个单元格');
+              
+              const cellsArray = parsed.map((cell, index) => ({
+                id: `cell_${index}_${Date.now()}`,
+                type: cell.cell_type === 'code' ? 'code' : 'markdown',
+                content: Array.isArray(cell.source) ? cell.source.join('\n') : cell.source || '',
+                language: firstChapter?.language || codeLanguage.value || 'python',
+                output: cell.outputs?.map(output => {
+                  if (output.text) return Array.isArray(output.text) ? output.text.join('') : output.text;
+                  if (output.data?.['text/plain']) return output.data['text/plain'];
+                  return JSON.stringify(output);
+                }) || [],
+                isSystemGenerated: true
+              }));
+              
+              console.log('✅ 转换为组件兼容格式完成');
+              return JSON.stringify(cellsArray);
+            } else {
+              // 如果是普通对象，将其转换为Markdown单元格
+              console.log('📊 解析后是普通对象，转换为Markdown单元格');
+              const cellsArray = [{
+                id: `cell_0_${Date.now()}`,
+                type: 'markdown',
+                content: JSON.stringify(parsed, null, 2),
+                language: firstChapter?.language || codeLanguage.value || 'python',
+                output: [],
+                isSystemGenerated: true
+              }];
+              return JSON.stringify(cellsArray);
+            }
+          } catch (e) {
+            // 如果解析失败，将字符串作为普通Markdown内容
+            console.log(`⚠️ JSON解析失败，将内容作为普通Markdown处理: ${e.message}`);
+            const cellsArray = [{
+              id: `cell_0_${Date.now()}`,
+              type: 'markdown',
+              content: mergedContent,
+              language: firstChapter?.language || codeLanguage.value || 'python',
+              output: [],
+              isSystemGenerated: true
+            }];
+            return JSON.stringify(cellsArray);
+          }
+        }
+      } catch (e) {
+        console.log(`⚠️ content处理失败: ${e.message}`);
+        // 创建默认内容
+        const defaultContent = [{
+          id: `cell_0_${Date.now()}`,
+          type: 'markdown',
+          content: '# 欢迎使用交互式文档\n\n这是一个默认的Markdown单元格。',
+          language: firstChapter?.language || codeLanguage.value || 'python',
+          output: [],
+          isSystemGenerated: true
+        }];
+        return JSON.stringify(defaultContent);
+      }
+    }
+  }
+  
+  console.log('❌ 没有找到有效的Jupyter内容，创建默认内容');
+  // 创建默认内容
+  const defaultContent = [{
+    id: `cell_0_${Date.now()}`,
+    type: 'markdown',
+    content: '# 欢迎使用交互式文档\n\n这是一个默认的Markdown单元格。',
+    language: codeLanguage.value || 'python',
+    output: [],
+    isSystemGenerated: true
+  }];
+  return JSON.stringify(defaultContent);
+}
+
+// 处理内容变化
+const handleContentChange = (content) => {
+  // 更新表单数据 - content已经是Markdown字符串，不需要再JSON.stringify
+  formData.value.introduction = content;
+}
 
 // 封面颜色
 const coverColor = computed(() => {
@@ -273,12 +554,41 @@ const loadTags = async () => {
   }
 }
 
+// 延迟加载分类（只在需要时加载）
+const loadCategoriesIfNeeded = () => {
+  if (!loadingCategories.value && availableCategories.value.length === 0) {
+    loadCategories()
+  }
+}
+
+// 延迟加载标签（只在需要时加载）
+const loadTagsIfNeeded = () => {
+  if (!loadingTags.value && availableTags.value.length === 0) {
+    loadTags()
+  }
+}
+
 // 监听bookData变化，更新表单数据
 watch(() => props.bookData, (newData) => {
   if (newData) {
+    console.log('📚 接收到新的bookData:', {
+      hasIntroduction: !!newData.introduction,
+      introductionType: typeof newData.introduction,
+      introductionLength: newData.introduction?.length || 0,
+      introductionPreview: newData.introduction?.substring(0, 100) + '...' || 'null'
+    });
+    
     formData.value = {
       ...newData
     }
+    
+    console.log('📝 表单数据更新后:', {
+      hasIntroduction: !!formData.value.introduction,
+      introductionType: typeof formData.value.introduction,
+      introductionLength: formData.value.introduction?.length || 0
+    });
+    
+    // Jupyter内容现在直接通过formData.value.introduction与组件交互
     
     // 处理分类选择
     if (Array.isArray(newData.categories)) {
@@ -317,38 +627,215 @@ watch(() => props.bookData, (newData) => {
   }
 }, { deep: true, immediate: true })
 
-// 处理封面上传
-const handleCoverUpload = (event) => {
-  const file = event.target.files[0]
-  if (file) {
-    // 验证文件大小（最大2MB）
-    if (file.size > 2 * 1024 * 1024) {
-      alert('封面图片大小不能超过2MB')
-      return
-    }
+// 封面处理模块
+const coverHandler = {
+  // 压缩图片
+  compressImage: (file, maxWidth = 800, maxHeight = 1200, quality = 0.8) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      
+      reader.onload = (e) => {
+        const img = new Image()
+        
+        img.onload = () => {
+          // 计算缩放比例
+          let width = img.width
+          let height = img.height
+          
+          if (width > maxWidth || height > maxHeight) {
+            const ratio = Math.min(maxWidth / width, maxHeight / height)
+            width *= ratio
+            height *= ratio
+          }
+          
+          // 创建canvas并绘制压缩后的图片
+          const canvas = document.createElement('canvas')
+          canvas.width = width
+          canvas.height = height
+          
+          const ctx = canvas.getContext('2d')
+          ctx.drawImage(img, 0, 0, width, height)
+          
+          // 将canvas转换为Blob
+          canvas.toBlob(
+            (blob) => {
+              if (blob) {
+                // 创建新的文件对象
+                const compressedFile = new File(
+                  [blob],
+                  file.name,
+                  { type: file.type, lastModified: Date.now() }
+                )
+                resolve(compressedFile)
+              } else {
+                reject(new Error('图片压缩失败'))
+              }
+            },
+            file.type,
+            quality
+          )
+        }
+        
+        img.onerror = () => {
+          reject(new Error('图片加载失败'))
+        }
+        
+        img.src = e.target.result
+      }
+      
+      reader.onerror = () => {
+        reject(new Error('文件读取失败'))
+      }
+      
+      reader.readAsDataURL(file)
+    })
+  },
+  
+  // 处理封面上传
+  handleCoverUpload: async (event) => {
+    const file = event.target.files[0]
+    if (!file) return
+    
+    uploadError.value = ''
     
     // 验证文件类型
     if (!file.type.startsWith('image/')) {
-      alert('请选择有效的图片文件（JPG/PNG）')
+      uploadError.value = '请选择有效的图片文件（JPG/PNG）'
       return
     }
     
-    coverFile.value = file
-    coverPreviewUrl.value = URL.createObjectURL(file)
+    // 开始上传进度模拟
+    uploadProgress.value = 0
+    const progressInterval = setInterval(() => {
+      uploadProgress.value += 10
+      if (uploadProgress.value >= 100) {
+        clearInterval(progressInterval)
+        uploadProgress.value = 0
+      }
+    }, 100)
+    
+    try {
+      // 压缩图片
+      const compressedFile = await coverHandler.compressImage(file)
+      
+      // 验证压缩后的文件大小（最大2MB）
+      if (compressedFile.size > 2 * 1024 * 1024) {
+        throw new Error('图片大小超过2MB，请选择更小的图片')
+      }
+      
+      // 使用object URL创建预览，更高效
+      if (coverPreviewUrl.value) {
+        URL.revokeObjectURL(coverPreviewUrl.value)
+      }
+      
+      coverPreviewUrl.value = URL.createObjectURL(compressedFile)
+      coverFile.value = compressedFile
+      
+      clearInterval(progressInterval)
+      uploadProgress.value = 0
+    } catch (error) {
+      uploadError.value = error.message || '图片处理失败，请重试'
+      clearInterval(progressInterval)
+      uploadProgress.value = 0
+    }
+  },
+  
+  // 移除封面
+  removeCover: () => {
+    // 释放object URL，避免内存泄漏
+    if (coverPreviewUrl.value) {
+      URL.revokeObjectURL(coverPreviewUrl.value)
+    }
+    
+    coverFile.value = null
+    coverPreviewUrl.value = ''
+    formData.value.cover = ''
+    uploadProgress.value = 0
+    uploadError.value = ''
   }
 }
 
-// 移除封面
-const removeCover = () => {
-  coverFile.value = null
-  coverPreviewUrl.value = ''
-  formData.value.cover = ''
+// 表单验证逻辑
+const formValidation = {
+  // 验证单个字段
+  validateField: (field, value) => {
+    if (!errors.value) errors.value = {}
+    
+    switch (field) {
+      case 'title':
+        if (!value || value.trim() === '') {
+          errors.value.title = '请输入书籍标题'
+        } else if (value.length > 200) {
+          errors.value.title = '标题不能超过200个字符'
+        } else {
+          delete errors.value.title
+        }
+        break
+      case 'author':
+        if (!value || value.trim() === '') {
+          errors.value.author = '请输入作者姓名'
+        } else if (value.length > 100) {
+          errors.value.author = '作者姓名不能超过100个字符'
+        } else {
+          delete errors.value.author
+        }
+        break
+      case 'isbn':
+        if (value && value.length > 20) {
+          errors.value.isbn = 'ISBN号不能超过20个字符'
+        } else {
+          delete errors.value.isbn
+        }
+        break
+    }
+  },
+  
+  // 完整表单验证
+  validateForm: () => {
+    errors.value = {}
+    let isValid = true
+    
+    // 必填字段验证
+    if (!formData.value.title || formData.value.title.trim() === '') {
+      errors.value.title = '请输入书籍标题'
+      isValid = false
+    }
+    
+    if (!formData.value.author || formData.value.author.trim() === '') {
+      errors.value.author = '请输入作者姓名'
+      isValid = false
+    }
+    
+    return isValid
+  }
 }
+
+// 监听表单字段变化，实时验证
+watch(() => formData.value.title, (newVal) => {
+  formValidation.validateField('title', newVal)
+})
+
+watch(() => formData.value.author, (newVal) => {
+  formValidation.validateField('author', newVal)
+})
+
+watch(() => formData.value.isbn, (newVal) => {
+  formValidation.validateField('isbn', newVal)
+})
 
 // 处理表单提交
 const handleSubmit = () => {
   // 表单验证
-  if (!validateForm()) return
+  if (!formValidation.validateForm()) return
+  
+  // 如果当前在Jupyter编辑模式，保存编辑器内容
+  if (isJupyterEditing.value) {
+    if (editorInstance.value) {
+      jupyterContent.value = editorInstance.value.getValue()
+    }
+    // 将Jupyter内容保存到introduction字段
+    formData.value.introduction = jupyterContent.value
+  }
   
   // 准备提交数据
   const submitData = new FormData()
@@ -388,49 +875,21 @@ const handleSubmit = () => {
   emit('submit', submitData)
 }
 
-// 表单验证
-const validateForm = () => {
-  errors.value = {}
-  let isValid = true
-  
-  // 必填字段验证
-  if (!formData.value.title || formData.value.title.trim() === '') {
-    errors.value.title = '请输入书籍标题'
-    isValid = false
-  }
-  
-  if (!formData.value.author || formData.value.author.trim() === '') {
-    errors.value.author = '请输入作者姓名'
-    isValid = false
-  }
-  
-  return isValid
-}
-
 // 处理取消操作
 const handleCancel = () => {
   emit('cancel')
 }
 
-// 简化的富文本格式化功能
-const formatText = (command) => {
-  // 这里可以扩展为真正的富文本格式化
-  // 目前仅做提示
-  alert(`格式化功能：${command}（预留）`)
-}
 
-// 插入链接
-const insertLink = () => {
-  const url = prompt('请输入链接地址：')
-  if (url) {
-    formData.value.introduction += `[链接](${url})`
-  }
-}
 
-// 组件挂载时加载分类和标签
+// 组件挂载时不自动加载分类和标签，改为按需加载
 onMounted(() => {
-  loadCategories()
-  loadTags()
+  // 分类和标签现在在用户与相应区域交互时才加载
+})
+
+// 组件卸载时的清理工作
+onUnmounted(() => {
+  // 清理工作已在JupyterNotebook组件内部处理
 })
 
 // 暴露方法供父组件调用
@@ -551,6 +1010,37 @@ defineExpose({
   display: none;
 }
 
+/* 上传进度条 */
+.upload-progress-container {
+  width: 100%;
+  margin-top: 15px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.progress-bar {
+  flex: 1;
+  height: 8px;
+  background-color: #e0e0e0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress {
+  height: 100%;
+  background-color: #2196f3;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.progress-text {
+  font-size: 12px;
+  color: #666;
+  min-width: 40px;
+  text-align: right;
+}
+
 /* 分类与标签区域 */
 .category-tag-section {
   display: grid;
@@ -589,6 +1079,28 @@ defineExpose({
 
 .checkbox-label:hover {
   background-color: #f0f0f0;
+}
+
+/* 加载中状态 */
+.loading-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  color: #666;
+}
+
+.loading-content .loading-spinner {
+  width: 20px;
+  height: 20px;
+  margin-bottom: 0;
+}
+
+/* 空数据状态 */
+.empty-content {
+  padding: 10px;
+  color: #999;
+  text-align: center;
 }
 
 .tag-checkbox {
@@ -642,6 +1154,62 @@ defineExpose({
 .rich-text-area {
   min-height: 120px;
   font-family: inherit;
+}
+
+/* Jupyter编辑器包装器（合并了rich-text-editor和jupyter-container的样式） */
+.jupyter-editor-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 20px 0;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  overflow: hidden;
+  background: white;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.jupyter-editor-wrapper :deep(.jupyter-notebook) {
+  min-height: 400px;
+  width: 100%;
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+  .jupyter-editor-wrapper {
+    margin: 15px 0;
+    border-radius: 6px;
+  }
+  
+  .jupyter-editor-wrapper :deep(.jupyter-notebook) {
+    min-height: 300px;
+  }
+}
+
+/* 保留原有jupyter-container样式以确保兼容性 */
+.jupyter-container {
+  margin: 20px 0;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  overflow: hidden;
+  background: white;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.jupyter-container :deep(.jupyter-notebook) {
+  min-height: 400px;
+  width: 100%;
+}
+
+@media (max-width: 768px) {
+  .jupyter-container {
+    margin: 15px 0;
+    border-radius: 6px;
+  }
+  
+  .jupyter-container :deep(.jupyter-notebook) {
+    min-height: 300px;
+  }
 }
 
 /* 表单操作按钮 */
@@ -699,8 +1267,80 @@ defineExpose({
   font-size: 12px;
 }
 
+/* Jupyter编辑器样式 */
+.jupyter-editor-container {
+  position: relative;
+}
+
+.editor-notice {
+  background-color: #fff3cd;
+  border: 1px solid #ffeaa7;
+  border-radius: 4px;
+  padding: 10px 15px;
+  margin-bottom: 15px;
+  color: #856404;
+}
+
+.jupyter-editor {
+  width: 100%;
+  height: 100%;
+  min-height: 300px;
+  max-height: 800px;
+  padding: 15px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 14px;
+  line-height: 1.5;
+  resize: vertical;
+  background-color: #fafafa;
+  overflow: auto;
+}
+
+/* 编辑器加载状态 */
+.editor-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  max-height: 800px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background-color: #fafafa;
+  color: #666;
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid rgba(33, 150, 243, 0.2);
+  border-left-color: #2196f3;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 15px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 /* 响应式设计 */
+@media (max-width: 1024px) {
+  .book-basic-info-editor {
+    padding: 0 15px;
+  }
+}
+
 @media (max-width: 768px) {
+  .book-basic-info-editor {
+    padding: 0 10px;
+  }
+  
+  .form-section {
+    padding: 15px;
+  }
+  
   .category-tag-section {
     grid-template-columns: 1fr;
   }
@@ -712,6 +1352,81 @@ defineExpose({
   
   .cover-upload-controls {
     flex-direction: column;
+  }
+  
+  /* 优化编辑器工具栏 */
+  .editor-toolbar {
+    flex-wrap: wrap;
+  }
+  
+  /* 优化按钮大小和间距 */
+  .toolbar-btn {
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+  
+  /* 优化表单操作按钮 */
+  .form-actions {
+    flex-direction: column-reverse;
+  }
+  
+  .form-actions .btn {
+    width: 100%;
+  }
+  
+  /* 优化Jupyter编辑器在移动设备上的显示 */
+  .jupyter-editor {
+    min-height: 200px;
+    max-height: 500px;
+  }
+  
+  .editor-loading {
+    min-height: 200px;
+    max-height: 500px;
+  }
+  
+  /* 优化文本区域大小 */
+  .form-textarea {
+    min-height: 60px;
+  }
+  
+  .rich-text-area {
+    min-height: 100px;
+  }
+}
+
+@media (max-width: 480px) {
+  .book-basic-info-editor {
+    padding: 0 5px;
+  }
+  
+  .form-section {
+    padding: 12px;
+  }
+  
+  .cover-preview {
+    width: 120px;
+    height: 160px;
+  }
+  
+  /* 优化分类和标签选择区域 */
+  .checkbox-group {
+    max-height: 150px;
+  }
+  
+  .tags-group {
+    max-height: 120px;
+  }
+  
+  /* 优化表单标签和输入框间距 */
+  .form-label {
+    font-size: 13px;
+  }
+  
+  .form-input, 
+  .form-textarea {
+    padding: 8px 10px;
+    font-size: 14px;
   }
 }
 </style>
