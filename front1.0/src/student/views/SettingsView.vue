@@ -155,6 +155,25 @@
             </div>
 
             <div class="form-group">
+              <label class="form-label">学号</label>
+              <input 
+                type="text" 
+                v-model="userInfo.student_no" 
+                class="input"
+                placeholder="请输入学号"
+              />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">性别</label>
+              <select v-model="userInfo.gender" class="input">
+                <option value="0">未知</option>
+                <option value="1">男</option>
+                <option value="2">女</option>
+              </select>
+            </div>
+
+            <div class="form-group">
               <label class="form-label">个性签名</label>
               <textarea 
                 v-model="userInfo.bio" 
@@ -162,6 +181,17 @@
                 placeholder="请输入个性签名"
                 rows="3"
               ></textarea>
+            </div>
+            
+            <div class="form-group">
+              <label class="form-label">所属班级</label>
+              <input 
+                type="text" 
+                :value="userInfo.class_name"
+                class="input"
+                readonly
+                placeholder="暂无班级"
+              />
             </div>
           </div>
         </div>
@@ -415,7 +445,11 @@ export default {
       bio: '',
       avatar: '',
       profile_visibility: 'public',
-      learning_records_visibility: 'private'
+      learning_records_visibility: 'private',
+      student_no: '',
+      gender: 0,
+      class_name: '',
+      class_id: ''
     })
     
     // 学习信息
@@ -486,7 +520,11 @@ export default {
             bio: user.bio || '',
             avatar: user.avatar || '',
             profile_visibility: user.profile_visibility || 'public',
-            learning_records_visibility: user.learning_records_visibility || 'private'
+            learning_records_visibility: user.learning_records_visibility || 'private',
+            student_no: user.student_no || '',
+            gender: user.gender || 0,
+            class_name: user.class_name || '',
+            class_id: user.class_id || ''
           }
         }
         
@@ -586,42 +624,42 @@ export default {
     // 保存设置
     const saveSettings = async () => {
       try {
-        // 根据当前激活的设置部分执行不同的保存逻辑
-        if (activeSection.value === 'account' || activeSection.value === 'profile' || activeSection.value === 'privacy') {
-          // 保存账号设置、个人信息和隐私设置
-          await api.updateUserInfo({
-            username: userInfo.value.username,
-            nickname: userInfo.value.nickname,
-            phone: userInfo.value.phone,
-            bio: userInfo.value.bio,
-            profile_visibility: userInfo.value.profile_visibility,
-            learning_records_visibility: userInfo.value.learning_records_visibility
-            // avatar已经在上传时单独保存了
-          })
-          alert('设置已保存！')
-        } else if (activeSection.value === 'learning_info' || activeSection.value === 'preferences' || activeSection.value === 'notifications') {
-          // 保存学习信息、学习偏好和通知设置
-          await api.updateUserPreferences({
-            default_language: preferences.value.defaultLanguage,
-            code_theme: preferences.value.editorTheme,
-            auto_play_video: preferences.value.autoPlayVideo,
-            keyboard_shortcuts: preferences.value.enableKeyboardShortcuts,
-            show_line_numbers: preferences.value.showLineNumbers,
-            use_vim_mode: preferences.value.useVimMode,
-            learning_goals: learningInfo.value.learning_goals.split('\n').filter(goal => goal.trim()),
-            major_category: learningInfo.value.major_category,
-            major: learningInfo.value.major,
-            learning_stage: learningInfo.value.learning_stage,
-            interests: learningInfo.value.interests,
-            enable_learning_reminders: notificationSettings.value.enable_learning_reminders,
-            reminder_time: notificationSettings.value.reminder_time,
-            daily_reminder: notificationSettings.value.daily_reminder,
-            deadline_reminder: notificationSettings.value.deadline_reminder
-          })
-          // 保存到本地作为备份
-          localStorage.setItem('userPreferences', JSON.stringify(preferences.value))
-          alert('设置已保存！')
-        }
+        // 保存账号设置、个人信息和隐私设置（这些都在users表和student表中）
+        await api.updateUserInfo({
+          username: userInfo.value.username,
+          nickname: userInfo.value.nickname,
+          phone: userInfo.value.phone,
+          bio: userInfo.value.bio,
+          profile_visibility: userInfo.value.profile_visibility,
+          learning_records_visibility: userInfo.value.learning_records_visibility,
+          student_no: userInfo.value.student_no,
+          gender: userInfo.value.gender
+          // avatar已经在上传时单独保存了
+        })
+        
+        // 保存学习信息、学习偏好和通知设置（这些都在userpreferences表中）
+        await api.updateUserPreferences({
+          default_language: preferences.value.defaultLanguage,
+          code_theme: preferences.value.editorTheme,
+          auto_play_video: preferences.value.autoPlayVideo,
+          keyboard_shortcuts: preferences.value.enableKeyboardShortcuts,
+          show_line_numbers: preferences.value.showLineNumbers,
+          use_vim_mode: preferences.value.useVimMode,
+          learning_goals: learningInfo.value.learning_goals.split('\n').filter(goal => goal.trim()),
+          major_category: learningInfo.value.major_category,
+          major: learningInfo.value.major,
+          learning_stage: learningInfo.value.learning_stage,
+          interests: learningInfo.value.interests,
+          enable_learning_reminders: notificationSettings.value.enable_learning_reminders,
+          reminder_time: notificationSettings.value.reminder_time,
+          daily_reminder: notificationSettings.value.daily_reminder,
+          deadline_reminder: notificationSettings.value.deadline_reminder
+        })
+        
+        // 保存到本地作为备份
+        localStorage.setItem('userPreferences', JSON.stringify(preferences.value))
+        
+        alert('所有设置已保存！')
       } catch (error) {
         console.error('保存设置失败:', error)
         alert('保存失败，请重试')
@@ -945,6 +983,29 @@ export default {
   grid-template-columns: 250px 1fr;
   gap: 30px;
   margin-bottom: 50px;
+}
+
+/* 班级列表样式 */
+.class-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.class-item {
+  padding: 10px 15px;
+  background: #f5f5f5;
+  border-radius: 4px;
+  font-size: 14px;
+  color: #333;
+}
+
+.no-class {
+  padding: 10px 15px;
+  background: #f9f9f9;
+  border-radius: 4px;
+  font-size: 14px;
+  color: #999;
 }
 
 /* 侧边栏样式 */

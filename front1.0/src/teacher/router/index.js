@@ -10,7 +10,10 @@ const AssignmentGradeView = () => import('../views/AssignmentGradeView.vue')
 const AnalyticsView = () => import('../views/AnalyticsView.vue')
 const ResourceListView = () => import('../views/ResourceListView.vue')
 const NotificationListView = () => import('../views/NotificationListView.vue')
-const SettingsView = () => import('../views/SettingsView.vue')
+const TeacherSettingsView = () => import('../views/TeacherSettingsView.vue')
+const TeachingToolsView = () => import('../views/TeachingToolsView.vue')
+const CourseDesignView = () => import('../views/CourseDesignView.vue')
+const ReportGeneratorView = () => import('../views/ReportGeneratorView.vue')
 
 const teacherRoutes = [
   {
@@ -92,8 +95,26 @@ const teacherRoutes = [
   {
     path: '/teacher/settings',
     name: 'TeacherSettings',
-    component: SettingsView,
+    component: TeacherSettingsView,
     meta: { title: '教师设置', requiresAuth: true, role: 'teacher' }
+  },
+  {
+    path: '/teacher/tools',
+    name: 'TeachingTools',
+    component: TeachingToolsView,
+    meta: { title: '教学工具', requiresAuth: true, role: 'teacher' }
+  },
+  {
+    path: '/teacher/courses',
+    name: 'CourseDesign',
+    component: CourseDesignView,
+    meta: { title: '课程设计', requiresAuth: true, role: 'teacher' }
+  },
+  {
+    path: '/teacher/reports',
+    name: 'ReportGenerator',
+    component: ReportGeneratorView,
+    meta: { title: '学习报告生成', requiresAuth: true, role: 'teacher' }
   }
 ]
 

@@ -302,12 +302,16 @@ class UserSerializer(serializers.ModelSerializer):
     preferences = UserPreferencesSerializer(required=False)
     role = serializers.CharField(read_only=True)
     avatar = serializers.SerializerMethodField()
+    # 添加学生特定字段
+    student_no = serializers.CharField(write_only=True, required=False)
+    gender = serializers.IntegerField(write_only=True, required=False)
     
     class Meta:
         model = User
         fields = (
             'id', 'username', 'nickname', 'email', 'phone', 'avatar', 'bio', 
-            'role', 'profile_visibility', 'learning_records_visibility', 'preferences'
+            'role', 'profile_visibility', 'learning_records_visibility', 'preferences',
+            'student_no', 'gender'
         )
         read_only_fields = ('id', 'role')
     
@@ -322,6 +326,10 @@ class UserSerializer(serializers.ModelSerializer):
     
     def update(self, instance, validated_data):
         preferences_data = validated_data.pop('preferences', None)
+        # 提取学生特定字段
+        student_no = validated_data.pop('student_no', None)
+        gender = validated_data.pop('gender', None)
+        phone = validated_data.pop('phone', None)
         
         # 更新用户基本信息
         instance = super().update(instance, validated_data)
@@ -333,7 +341,49 @@ class UserSerializer(serializers.ModelSerializer):
                 setattr(preferences, key, value)
             preferences.save()
         
+        # 更新学生信息（如果用户是学生）
+        if instance.role == 'student':
+            try:
+                from apps.teacher.models import Student
+                student_profile, created = Student.objects.get_or_create(user=instance)
+                if student_no is not None:
+                    student_profile.student_no = student_no
+                if gender is not None:
+                    student_profile.gender = gender
+                if phone is not None:
+                    student_profile.phone = phone
+                # 如果是新创建的学生，设置学生姓名为用户名
+                if created:
+                    student_profile.student_name = instance.nickname or instance.username
+                student_profile.save()
+            except Exception as e:
+                # 如果出现错误，记录日志但不影响整体响应
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"更新学生信息时出错: {e}")
+        
         return instance
+    
+    def to_representation(self, instance):
+        """将学生信息添加到返回数据中"""
+        representation = super().to_representation(instance)
+        # 如果用户是学生，添加学生特定信息
+        if instance.role == 'student':
+            try:
+                # 使用try-except代替hasattr，因为OneToOneField访问不存在的关系会抛出异常
+                representation['student_no'] = instance.student_profile.student_no
+                representation['gender'] = instance.student_profile.gender
+                representation['phone'] = instance.student_profile.phone
+                # 添加班级信息
+                if hasattr(instance.student_profile, 'class_name'):
+                    representation['class_name'] = instance.student_profile.class_name
+                representation['status'] = instance.student_profile.status
+            except Exception as e:
+                # 如果出现错误，记录日志但不影响整体响应
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"序列化学生信息时出错: {e}")
+        return representation
 
 
 class RegisterSerializer(serializers.ModelSerializer):

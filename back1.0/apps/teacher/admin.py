@@ -1,5 +1,8 @@
 from django.contrib import admin
-from .models import Class, Assignment, AssignmentSubmission, Notification, TeachingResource, TeacherProfile, StudentProfile
+from .models import (
+    Class, Teacher, Student, Homework, StudentHomework, Notice, TeachingResource,
+    ClassResource, CourseDesign, StudentLearningProgress
+)
 
 
 @admin.register(Class)
@@ -7,47 +10,72 @@ class ClassAdmin(admin.ModelAdmin):
     list_display = ['name', 'teacher', 'major', 'grade', 'created_at']
     list_filter = ['major', 'grade', 'created_at']
     search_fields = ['name', 'description', 'teacher__username']
-    filter_horizontal = ['students']
 
 
-@admin.register(Assignment)
-class AssignmentAdmin(admin.ModelAdmin):
-    list_display = ['title', 'teacher', 'due_date', 'total_score', 'created_at']
-    list_filter = ['created_at', 'due_date']
-    search_fields = ['title', 'description', 'teacher__username']
-    filter_horizontal = ['books', 'chapters', 'classes']
+@admin.register(Teacher)
+class TeacherAdmin(admin.ModelAdmin):
+    list_display = ['teacher_name', 'user', 'department', 'position', 'created_at']
+    list_filter = ['department', 'position', 'created_at']
+    search_fields = ['teacher_name', 'user__username', 'department', 'position']
 
 
-@admin.register(AssignmentSubmission)
-class AssignmentSubmissionAdmin(admin.ModelAdmin):
-    list_display = ['assignment', 'student', 'score', 'is_late', 'submitted_at', 'graded_at']
-    list_filter = ['is_late', 'submitted_at', 'graded_at']
-    search_fields = ['assignment__title', 'student__username']
+@admin.register(Student)
+class StudentAdmin(admin.ModelAdmin):
+    def display_classes(self, obj):
+        """显示学生所属班级"""
+        return ', '.join([cls.name for cls in obj.class_obj.all()])
+    
+    display_classes.short_description = '班级'
+    
+    list_display = ['student_name', 'student_no', 'display_classes', 'gender', 'phone', 'created_at']
+    list_filter = ['gender', 'created_at']
+    search_fields = ['student_name', 'student_no', 'phone']
 
 
-@admin.register(Notification)
-class NotificationAdmin(admin.ModelAdmin):
-    list_display = ['title', 'sender', 'receiver', 'type', 'is_read', 'created_at']
-    list_filter = ['type', 'is_read', 'created_at']
-    search_fields = ['title', 'content', 'sender__username', 'receiver__username']
+@admin.register(Homework)
+class HomeworkAdmin(admin.ModelAdmin):
+    list_display = ['homework_name', 'teacher', 'class_obj', 'chapter', 'end_time', 'total_score', 'created_at']
+    list_filter = ['class_obj', 'chapter', 'created_at', 'end_time']
+    search_fields = ['homework_name', 'homework_content', 'teacher__username']
+
+
+@admin.register(StudentHomework)
+class StudentHomeworkAdmin(admin.ModelAdmin):
+    list_display = ['homework', 'student', 'score', 'status', 'submit_time', 'correct_time']
+    list_filter = ['status', 'submit_time', 'correct_time']
+    search_fields = ['homework__homework_name', 'student__student_name']
+
+
+@admin.register(Notice)
+class NoticeAdmin(admin.ModelAdmin):
+    list_display = ['notice_title', 'teacher', 'class_obj', 'publish_time', 'status']
+    list_filter = ['class_obj', 'status', 'publish_time']
+    search_fields = ['notice_title', 'notice_content', 'teacher__username']
 
 
 @admin.register(TeachingResource)
 class TeachingResourceAdmin(admin.ModelAdmin):
-    list_display = ['title', 'teacher', 'resource_type', 'category', 'is_public', 'created_at']
-    list_filter = ['resource_type', 'category', 'is_public', 'created_at']
-    search_fields = ['title', 'description', 'teacher__username']
+    list_display = ['resource_name', 'chapter', 'teacher', 'resource_type', 'upload_time']
+    list_filter = ['chapter', 'resource_type', 'upload_time']
+    search_fields = ['resource_name', 'resource_desc', 'teacher__username']
 
 
-@admin.register(TeacherProfile)
-class TeacherProfileAdmin(admin.ModelAdmin):
-    list_display = ['user', 'department', 'title', 'office']
-    list_filter = ['department', 'title']
-    search_fields = ['user__username', 'department', 'title']
+@admin.register(ClassResource)
+class ClassResourceAdmin(admin.ModelAdmin):
+    list_display = ['resource_name', 'class_obj', 'teacher', 'resource_type', 'upload_time']
+    list_filter = ['class_obj', 'resource_type', 'upload_time']
+    search_fields = ['resource_name', 'resource_desc', 'teacher__username']
 
 
-@admin.register(StudentProfile)
-class StudentProfileAdmin(admin.ModelAdmin):
-    list_display = ['user', 'student_id', 'major', 'grade', 'enrollment_date']
-    list_filter = ['major', 'grade', 'enrollment_date']
-    search_fields = ['user__username', 'student_id', 'major', 'grade']
+@admin.register(CourseDesign)
+class CourseDesignAdmin(admin.ModelAdmin):
+    list_display = ['design_title', 'class_obj', 'chapter', 'teacher', 'teaching_hours', 'created_at']
+    list_filter = ['class_obj', 'chapter', 'created_at']
+    search_fields = ['design_title', 'design_content', 'teacher__username']
+
+
+@admin.register(StudentLearningProgress)
+class StudentLearningProgressAdmin(admin.ModelAdmin):
+    list_display = ['student', 'chapter', 'learn_time', 'learn_status', 'last_learn_time']
+    list_filter = ['learn_status', 'last_learn_time']
+    search_fields = ['student__student_name', 'chapter__title']

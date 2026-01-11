@@ -1,19 +1,66 @@
 import api from './index'
 
+// 资源管理API - 基于class_resource和teaching_resource表结构
 export const resourceApi = {
-  getResources(params) {
-    return api.get('/resources/', { params })
+  // 班级资源管理
+  getClassResources(classId, params) {
+    // params: { resource_type, search }
+    return api.get(`/classes/${classId}/resources/`, { params })
   },
-  getResourceDetail(id) {
-    return api.get(`/resources/${id}/`)
+  
+  uploadClassResource(classId, formData) {
+    // formData: file, resource_name, resource_type, resource_desc
+    return api.post(`/classes/${classId}/resources/`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
   },
-  createResource(data) {
-    return api.post('/resources/', data)
+  
+  deleteClassResource(resourceId) {
+    return api.delete(`/resources/${resourceId}/`)
   },
-  updateResource(id, data) {
-    return api.put(`/resources/${id}/`, data)
+  
+  downloadResource(resourceId) {
+    return api.get(`/resources/${resourceId}/download/`, {
+      responseType: 'blob'
+    })
   },
-  deleteResource(id) {
-    return api.delete(`/resources/${id}/`)
+  
+  // 教学资源管理
+  getTeachingResources(params) {
+    // params: { chapter_id, resource_type }
+    return api.get('/teaching_resources/', { params })
+  },
+  
+  uploadTeachingResource(formData) {
+    // formData: file, chapter_id, resource_name, resource_type, resource_desc
+    return api.post('/teaching_resources/', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+  },
+  
+  deleteTeachingResource(resourceId) {
+    return api.delete(`/teaching_resources/${resourceId}/`)
+  },
+  
+  // 获取教材列表
+  getBooks(params) {
+    return api.get('/books/', { params })
+  },
+  
+  // 获取教材详情
+  getBookDetail(bookId) {
+    return api.get(`/books/${bookId}/`)
+  },
+  
+  // 获取章节列表
+  getChapters(bookId, params) {
+    return api.get(`/books/${bookId}/chapters/`, { params })
+  },
+  
+  // 获取章节详情
+  getChapterDetail(chapterId) {
+    return api.get(`/chapters/${chapterId}/`)
   }
 }
+
+export default resourceApi
