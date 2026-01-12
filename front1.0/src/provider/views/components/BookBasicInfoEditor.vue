@@ -315,6 +315,9 @@ const loadingTags = ref(false)
 // JupyterNotebook组件相关
 const codeLanguage = ref('Python')
 const bookId = computed(() => props.bookData.id)
+const isJupyterEditing = ref(false)
+const jupyterContent = ref('')
+const editorInstance = ref(null)
 
 // 获取Jupyter内容的辅助函数（与学生端保持一致）
 const getJupyterContent = () => {

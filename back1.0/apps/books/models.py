@@ -58,6 +58,7 @@ class Book(models.Model):
     """教材书籍模型（面向学生端 + 教材提供者端）"""
     id = models.AutoField(primary_key=True)
     title = models.CharField(max_length=200, verbose_name='书名')
+    subtitle = models.CharField(max_length=200, blank=True, null=True, verbose_name='副标题')
     author = models.CharField(max_length=100, verbose_name='作者')
     cover = models.ImageField(upload_to='book_covers/', null=True, blank=True, verbose_name='封面')
     pdf_file = models.FileField(upload_to='book_pdfs/', null=True, blank=True, verbose_name='PDF文件')
@@ -95,7 +96,7 @@ class Book(models.Model):
     chapter_count = models.IntegerField(default=0, verbose_name='章节数')
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
     updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
-    current_version = models.CharField(max_length=20, default='1.0', verbose_name='当前版本')
+    current_version = models.CharField(max_length=20, default='1.0.0', verbose_name='当前版本')
 
     @property
     def tag_list(self):
@@ -111,7 +112,26 @@ class Book(models.Model):
     @tag_list.setter
     def tag_list(self, value):
         """设置旧版标签JSON字段（保持兼容）"""
-        self.tags = json.dumps(value) if isinstance(value, list) else '[]'
+        # 确保value是列表类型
+        if isinstance(value, list):
+            self.tags = json.dumps(value)
+        elif isinstance(value, str):
+            # 如果是字符串，尝试解析为JSON列表
+            try:
+                # 先尝试解析为JSON
+                parsed_value = json.loads(value)
+                if isinstance(parsed_value, list):
+                    self.tags = value  # 已经是有效的JSON列表
+                else:
+                    self.tags = '[]'  # 不是列表，使用空列表
+            except json.JSONDecodeError:
+                # 如果不是有效的JSON，将其作为单个标签
+                self.tags = json.dumps([value])
+        elif value is None:
+            self.tags = '[]'
+        else:
+            # 其他类型（如整数、布尔值等），转换为列表
+            self.tags = json.dumps([str(value)])
 
     class Meta:
         verbose_name = '教材'
@@ -164,6 +184,7 @@ class BookVersion(models.Model):
     )
     version_number = models.IntegerField(verbose_name='版本号')
     title = models.CharField(max_length=200, verbose_name='标题')
+    subtitle = models.CharField(max_length=200, blank=True, null=True, verbose_name='副标题')
     author = models.CharField(max_length=100, verbose_name='作者')
     description = models.TextField(verbose_name='描述')
     pdf_file = models.FileField(

@@ -48,7 +48,7 @@ from .advanced_processor import AdvancedPDFProcessor
 
 
 class BookViewSet(viewsets.ModelViewSet):
-    http_method_names = ['get', 'post', 'delete']  # 只允许GET、POST和DELETE操作
+    http_method_names = ['get', 'post', 'delete', 'patch']  # 允许GET、POST、DELETE和PATCH操作
     """书籍视图集"""
     queryset = Book.objects.all()
     
@@ -99,6 +99,133 @@ class BookViewSet(viewsets.ModelViewSet):
             pass
         
         return queryset
+        
+    def partial_update(self, request, *args, **kwargs):
+        """
+        部分更新书籍信息，并自动创建新版本
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        try:
+            instance = self.get_object()
+            logger.info(f"开始处理书籍 {instance.id} 的部分更新请求")
+            
+            # 解析当前版本字符串 (格式: major.minor.patch)
+            try:
+                current_version = instance.current_version
+                logger.info(f"获取当前版本字符串: {current_version}")
+                
+                # 处理特殊情况：如果当前版本只有一个数字（如'1'），转换为标准格式
+                if '.' not in current_version:
+                    logger.info(f"将简化版本格式 {current_version} 转换为标准格式")
+                    if current_version.isdigit():
+                        major, minor, patch = int(current_version), 0, 0
+                    else:
+                        raise ValueError("版本格式无效")
+                else:
+                    # 正常解析版本号
+                    parts = current_version.split('.')
+                    if len(parts) == 1:
+                        major, minor, patch = int(parts[0]), 0, 0
+                    elif len(parts) == 2:
+                        major, minor = map(int, parts)
+                        patch = 0
+                    else:
+                        major, minor, patch = map(int, parts[:3])
+                
+                # 递增补丁版本号
+                patch += 1
+                # 如果补丁版本号达到10，进位到minor
+                if patch >= 10:
+                    patch = 0
+                    minor += 1
+                    # 如果minor达到10，进位到major
+                    if minor >= 10:
+                        minor = 0
+                        major += 1
+                new_version_str = f'{major}.{minor}.{patch}'
+                logger.info(f"计算得出新版本字符串: {new_version_str}")
+            except (ValueError, AttributeError) as e:
+                logger.error(f"版本解析错误: {e}")
+                # 如果解析失败，默认从1.0.0开始
+                new_version_str = '1.0.0'
+            
+            logger.info(f"当前版本: {instance.current_version}, 新版本: {new_version_str}")
+            logger.info(f"书籍标签类型: {type(instance.tags)}, 值: {instance.tags}")
+            
+            # 先调用父类的partial_update方法完成实际更新
+            logger.info("调用父类的partial_update方法进行实际更新")
+            response = super().partial_update(request, *args, **kwargs)
+            logger.info(f"父类partial_update调用完成，状态码: {response.status_code}")
+            
+            # 刷新实例获取更新后的数据
+            logger.info("刷新实例获取更新后的数据")
+            instance.refresh_from_db()
+            logger.info(f"刷新后实例的当前版本: {instance.current_version}")
+            logger.info(f"刷新后实例的标题: {instance.title}")
+            logger.info(f"刷新后实例的副标题: {instance.subtitle}")
+            logger.info(f"调用父类update后的标签: 类型={type(instance.tags)}, 值={instance.tags}")
+            
+            # 获取当前最新版本记录
+            logger.info("获取当前最新版本记录")
+            latest_version = instance.versions.order_by('-version_number').first()
+            logger.info(f"最新版本记录: {latest_version.id if latest_version else 'None'}")
+            
+            # 计算新版本号数字 - 确保转换为整数
+            if latest_version:
+                try:
+                    latest_version_num = int(latest_version.version_number)
+                except (ValueError, TypeError):
+                    latest_version_num = 0
+                new_version_number = latest_version_num + 1
+            else:
+                new_version_number = 1  # 第一个版本
+            logger.info(f"计算得出新版本号数字: {new_version_number}")
+            
+            # 确保current_version格式正确
+            if instance.current_version == '1':
+                logger.info("修正current_version格式: 1 -> 1.0.0")
+                instance.current_version = '1.0.0'
+            
+            logger.info(f"准备创建版本记录: 版本号={new_version_number}, 版本字符串={new_version_str}")
+            
+            # 保存更新后的版本到版本历史
+            # 确保tags是字符串类型
+            tags_str = instance.tags if isinstance(instance.tags, str) else str(instance.tags)
+            logger.info(f"创建版本前的标签: 类型={type(tags_str)}, 值={tags_str}")
+            
+            logger.info("开始创建BookVersion记录")
+            version = BookVersion.objects.create(
+                book=instance,
+                version_number=new_version_number,
+                title=instance.title,
+                subtitle=instance.subtitle,
+                author=instance.author,
+                description=instance.description,
+                pdf_file=instance.pdf_file,
+                tags=tags_str,
+                created_by=request.user if request.user.is_authenticated else None,
+                comment=f'自动创建版本 v{new_version_str}'
+            )
+            logger.info(f"版本创建成功: ID={version.id}, 版本号={version.version_number}, 版本字符串={new_version_str}")
+            
+            # 更新书籍的当前版本
+            logger.info(f"更新书籍的当前版本从 {instance.current_version} 到 {new_version_str}")
+            instance.current_version = new_version_str
+            instance.save()
+            logger.info(f"书籍当前版本更新成功")
+            
+            # 重新序列化实例，确保返回包含最新的current_version
+            logger.info("刷新实例并重新序列化返回")
+            instance.refresh_from_db()
+            serializer = self.get_serializer(instance)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except Exception as e:
+            logger.error(f"版本更新失败: {e}", exc_info=True)
+            # 如果发生错误，仍然允许更新书籍信息，但不创建新版本
+            logger.error("发生异常，将仅执行基本更新而不创建版本")
+            return super().partial_update(request, *args, **kwargs)
     
     def list(self, request, *args, **kwargs):
         """获取书籍列表，包含用户学习进度信息"""

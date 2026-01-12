@@ -129,7 +129,7 @@ class BookListSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Book
-        fields = ('id', 'title', 'author', 'cover', 'pdf_file', 'description', 'tag_list', 'chapter_count', 'progress', 'last_learn_time', 'owner')
+        fields = ('id', 'title', 'subtitle', 'author', 'cover', 'pdf_file', 'description', 'tag_list', 'chapter_count', 'progress', 'last_learn_time', 'owner')
     
     def get_owner(self, obj):
         return getattr(obj.owner, 'id', None)
@@ -156,6 +156,7 @@ class BookDetailSerializer(serializers.ModelSerializer):
         fields = (
             'id',
             'title',
+            'subtitle',
             'author',
             'cover',
             'pdf_file',
@@ -167,6 +168,7 @@ class BookDetailSerializer(serializers.ModelSerializer):
             'chapters',
             'owner',
             'is_archived',
+            'current_version',
         )
 
     def get_owner(self, obj):
@@ -252,6 +254,7 @@ class BookVersionSerializer(serializers.ModelSerializer):
             'book',
             'version_number',
             'title',
+            'subtitle',
             'author',
             'description',
             'pdf_file',

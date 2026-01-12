@@ -92,6 +92,10 @@
                   <label>更新时间：</label>
                   <span>{{ formatTime(bookData.updated_at) }}</span>
                 </div>
+                <div class="info-row">
+                  <label>当前版本：</label>
+                  <span>v{{ bookData.current_version || '1.0.0' }}</span>
+                </div>
               </div>
             </div>
             
@@ -212,7 +216,7 @@
                   style="cursor: pointer;"
                 >
                   <div class="version-header">
-                    <span class="version-tag">v{{ ver?.version_number || 'N/A' }}</span>
+                    <span class="version-tag">v{{ formatVersionNumber(ver?.version_number) || 'N/A' }}</span>
                     <span class="version-date">{{ formatTime(ver?.created_at) }}</span>
                   </div>
                   <div class="version-title">{{ ver?.title || '未知' }}</div>
@@ -512,6 +516,19 @@ const formatTime = (timeString) => {
   if (!timeString) return '未设置'
   const date = new Date(timeString)
   return date.toLocaleString()
+}
+
+// 格式化版本号（将数字转换为语义化版本字符串，如1→1.0.0，2→1.0.1，11→1.1.0）
+const formatVersionNumber = (versionNumber) => {
+  if (!versionNumber || isNaN(versionNumber)) return '1.0.0'
+  
+  // 转换为语义化版本号格式：major.minor.patch
+  // 每10个版本增加minor，每100个版本增加major
+  const major = Math.floor(versionNumber / 100)
+  const minor = Math.floor((versionNumber % 100) / 10)
+  const patch = versionNumber % 10
+  
+  return `${major}.${minor}.${patch}`
 }
 
 // 获取标签列表（处理不同格式的标签数据）
