@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """Django settings for CodeBook+ project."""
 import os
 from pathlib import Path
@@ -5,7 +6,9 @@ from dotenv import load_dotenv
 import pymysql
 
 # Use pymysql as MySQL driver
+# 配置 pymysql 使用 UTF-8 编码
 pymysql.install_as_MySQLdb()
+pymysql.charset = 'utf8mb4'
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -55,6 +58,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'config.middleware.UTF8ResponseMiddleware',  # 确保响应使用 UTF-8 编码
 ]
 
 ROOT_URLCONF = 'config.urls'
@@ -81,14 +85,15 @@ WSGI_APPLICATION = 'config.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': os.getenv('DB_NAME', 'codebook'),
+        'NAME': os.getenv('DB_NAME', 'codebook_fixed'),
         'USER': os.getenv('DB_USER', 'root'),
         'PASSWORD': os.getenv('DB_PASSWORD', ''),
         'HOST': os.getenv('DB_HOST', 'localhost'),
         'PORT': os.getenv('DB_PORT', '3306'),
         'OPTIONS': {
             'charset': 'utf8mb4',
-            'init_command': "SET sql_mode='STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'",
+            'init_command': "SET sql_mode='STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION', character_set_client=utf8mb4, character_set_connection=utf8mb4, character_set_results=utf8mb4",
+            'use_unicode': True,
         },
     }
 }
@@ -119,6 +124,10 @@ LANGUAGE_CODE = 'zh-hans'
 TIME_ZONE = 'Asia/Shanghai'
 USE_I18N = True
 USE_TZ = True
+
+# 设置默认字符集
+DEFAULT_CHARSET = 'utf-8'
+FILE_CHARSET = 'utf-8'
 
 # Static files (CSS, JavaScript, Images)
 STATIC_URL = 'static/'
@@ -190,8 +199,13 @@ REST_FRAMEWORK = {
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 10,
     'DEFAULT_RENDERER_CLASSES': [
-        'rest_framework.renderers.JSONRenderer',
+        'config.renderers.UTF8JSONRenderer',  # 使用自定义 UTF-8 JSON 渲染器
         'rest_framework.renderers.BrowsableAPIRenderer',
+    ],
+    'DEFAULT_PARSER_CLASSES': [
+        'rest_framework.parsers.JSONParser',
+        'rest_framework.parsers.FormParser',
+        'rest_framework.parsers.MultiPartParser',
     ],
 }
 

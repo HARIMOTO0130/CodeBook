@@ -1,6 +1,4 @@
 import torch
-import numpy as np
-import cv2
 from transformers import BertModel, BertTokenizer, pipeline
 import spacy
 import re
@@ -405,6 +403,7 @@ class AdvancedPDFProcessor:
         Returns:
             保留的检测框索引列表
         """
+        import numpy as np
         if len(boxes) == 0:
             return []
         
@@ -506,6 +505,7 @@ class AdvancedPDFProcessor:
         Returns:
             分割后的区域掩码
         """
+        import numpy as np
         # 模拟分割结果
         # 在真实实现中，这里会使用预训练的U-Net模型
         height, width = image.shape[:2] if isinstance(image, np.ndarray) else (800, 600)
@@ -603,6 +603,7 @@ class AdvancedPDFProcessor:
         Returns:
             引用关系图（邻接矩阵）
         """
+        import numpy as np
         # 创建节点映射
         nodes = []
         node_to_index = {}

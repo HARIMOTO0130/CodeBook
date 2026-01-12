@@ -344,15 +344,15 @@
                 >
                   提交答案
                 </button>
-                <button 
+              <button 
                   v-else
                   class="btn-primary"
-                  @click="nextQuestion"
-                >
+                @click="nextQuestion" 
+              >
                   下一题
-                </button>
+              </button>
               </template>
-              
+          
               <!-- 代码补全题按钮 -->
               <template v-else-if="currentQuestion.type === 'codeCompletion'">
                 <button class="btn-secondary" @click="runCode">
@@ -458,6 +458,7 @@ export default {
     // 状态管理
     const currentIndex = ref(0)
     const showFeedback = ref(false)
+    const showAllFeedback = ref(false)
     const isFullscreen = ref(false)
     
     // 答案存储
@@ -613,6 +614,30 @@ export default {
         })
       }
       return false
+    })
+    
+    // 总分数
+    const totalScore = computed(() => {
+      return calculateScore()
+    })
+    
+    // 已回答的题目数量
+    const answeredCount = computed(() => {
+      return props.questions.filter(q => {
+        if (q.type === 'choice' || q.type === 'judgment' || q.type === 'Judgment') {
+          return q.selectedOption !== undefined && q.selectedOption !== null
+        } else if (q.type === 'fill') {
+          return q.userAnswers && q.userAnswers.length > 0 && q.userAnswers.some(ans => ans && ans.trim() !== '')
+        } else if (q.type === 'codeCompletion' || q.type === 'programming') {
+          return q.userCode && q.userCode.trim() !== ''
+        }
+        return false
+      }).length
+    })
+    
+    // 是否可以提交所有答案
+    const canSubmitAll = computed(() => {
+      return answeredCount.value === totalQuestions.value && totalQuestions.value > 0
     })
     
     // 方法
@@ -883,6 +908,96 @@ export default {
       showFeedback.value = true
     }
     
+    // 提交所有答案
+    const submitAllAnswers = () => {
+      // 保存所有题目的答案
+      props.questions.forEach((q, index) => {
+        const originalIndex = currentIndex.value
+        currentIndex.value = index
+        loadQuestionState()
+        saveCurrentAnswer()
+        currentIndex.value = originalIndex
+      })
+      
+      // 显示所有反馈
+      showAllFeedback.value = true
+      
+      // 计算最终得分
+      const result = {
+        score: calculateScore(),
+        answers: getAllAnswers()
+      }
+      
+      // 触发完成事件
+      emit('complete', result)
+    }
+    
+    // 判断题目是否正确
+    const isQuestionCorrect = (question) => {
+      if (question.type === 'choice' || question.type === 'judgment' || question.type === 'Judgment') {
+        const correctAnswer = question.correctAnswer
+        const userAnswer = question.selectedOption
+        return correctAnswer === userAnswer
+      } else if (question.type === 'fill') {
+        const blanks = question.blanks || []
+        const userAnswers = question.userAnswers || []
+        return blanks.every((blank, idx) => {
+          const userAnswer = userAnswers[idx] || ''
+          const correctAnswer = blank.correctAnswer || ''
+          return userAnswer.toLowerCase() === correctAnswer.toLowerCase()
+        })
+      }
+      return false
+    }
+    
+    // 获取用户答案文本
+    const getUserAnswerText = (question) => {
+      if (question.type === 'choice' || question.type === 'judgment' || question.type === 'Judgment') {
+        if (question.selectedOption === undefined || question.selectedOption === null) {
+          return '未作答'
+        }
+        const options = question.options || []
+        const option = options[question.selectedOption]
+        return option ? option.content : '未作答'
+      } else if (question.type === 'fill') {
+        const userAnswers = question.userAnswers || []
+        return userAnswers.length > 0 ? userAnswers.join(', ') : '未作答'
+      } else if (question.type === 'codeCompletion' || question.type === 'programming') {
+        return question.userCode || '未作答'
+      }
+      return '未作答'
+    }
+    
+    // 获取正确答案文本
+    const getCorrectAnswerText = (question) => {
+      if (question.type === 'choice' || question.type === 'judgment' || question.type === 'Judgment') {
+        const options = question.options || []
+        const correctAnswer = question.correctAnswer
+        if (correctAnswer === undefined || correctAnswer === null) {
+          return '未知'
+        }
+        const option = options[correctAnswer]
+        return option ? option.content : '未知'
+      } else if (question.type === 'fill') {
+        const blanks = question.blanks || []
+        return blanks.map(blank => blank.correctAnswer || '').join(', ')
+      }
+      return '未知'
+    }
+    
+    // 获取分数样式类
+    const getScoreClass = (score) => {
+      if (score >= 90) return 'excellent'
+      if (score >= 80) return 'good'
+      if (score >= 60) return 'pass'
+      return 'fail'
+    }
+    
+    // 查看所有题目
+    const reviewQuestions = () => {
+      showAllFeedback.value = true
+    }
+    
     // 自动检测代码语言
     const detectLanguage = (code) => {
       // 统计特征出现次数
@@ -1082,6 +1197,7 @@ export default {
       totalQuestions,
       currentQuestion,
       showFeedback,
+      showAllFeedback,
       isFullscreen,
       selectedOptions,
       userAnswers,
@@ -1089,6 +1205,9 @@ export default {
       programmingAnswer,
       codeResult,
       submissionResult,
+      totalScore,
+      answeredCount,
+      canSubmitAll,
       isAnswerCorrect,
       close,
       toggleFullscreen,
@@ -1099,6 +1218,12 @@ export default {
       selectOption,
       isFillAnswerCorrect,
       submitAnswer,
+      submitAllAnswers,
+      isQuestionCorrect,
+      getUserAnswerText,
+      getCorrectAnswerText,
+      getScoreClass,
+      reviewQuestions,
       runCode,
       submitCode,
       runProgrammingCode,
@@ -1275,7 +1400,7 @@ export default {
   padding: 24px;
 }
 
-/* 选择题样式 */
+/* 选择题样�?*/
 .question-choice {
   display: flex;
   flex-direction: column;
@@ -1355,7 +1480,7 @@ export default {
   transform: translateY(-50%);
 }
 
-/* 填空题样式 */
+/* 填空题样�?*/
 .question-fill {
   display: flex;
   flex-direction: column;
@@ -1404,7 +1529,7 @@ export default {
   font-weight: 500;
 }
 
-/* 代码补全题样式 */
+/* 代码补全题样�?*/
 .question-code-completion {
   display: flex;
   flex-direction: column;
@@ -1415,7 +1540,7 @@ export default {
   min-height: 300px;
 }
 
-/* 编程题样式 */
+/* 编程题样�?*/
 .question-programming {
   display: flex;
   flex-direction: column;
@@ -1662,7 +1787,7 @@ export default {
   transform: scale(0.95);
 }
 
-/* 响应式设计 */
+/* 响应式设�?*/
 @media (max-width: 768px) {
   .modal-overlay {
     padding: 10px;
@@ -1733,6 +1858,174 @@ export default {
   
   .result-bar {
     flex: 0 0 calc(50% - 8px);
+  }
+}
+
+/* 提交总结视图样式 */
+.submission-summary {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: white;
+  padding: 30px;
+  overflow-y: auto;
+  z-index: 10;
+}
+
+.summary-header {
+  text-align: center;
+  margin-bottom: 30px;
+  padding-bottom: 20px;
+  border-bottom: 2px solid #e0e0e0;
+}
+
+.summary-header h3 {
+  font-size: 24px;
+  color: #333;
+  margin-bottom: 15px;
+}
+
+.summary-score {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: 20px;
+}
+
+.score-label {
+  color: #666;
+}
+
+.score-value {
+  font-size: 32px;
+  font-weight: bold;
+}
+
+.score-value.score-excellent {
+  color: #67c23a;
+}
+
+.score-value.score-good {
+  color: #e6a23c;
+}
+
+.score-value.score-poor {
+  color: #f56c6c;
+}
+
+.score-percentage {
+  color: #999;
+  font-size: 18px;
+}
+
+.summary-questions {
+  margin-bottom: 30px;
+}
+
+.summary-question-item {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 15px;
+  border-left: 4px solid #ddd;
+}
+
+.summary-question-item.correct {
+  border-left-color: #67c23a;
+  background: #f0f9ff;
+}
+
+.summary-question-item.incorrect {
+  border-left-color: #f56c6c;
+  background: #fef0f0;
+}
+
+.question-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.question-number {
+  font-weight: 600;
+  color: #333;
+}
+
+.question-status {
+  font-weight: 600;
+}
+
+.status-correct {
+  color: #67c23a;
+}
+
+.status-incorrect {
+  color: #f56c6c;
+}
+
+.question-content {
+  color: #666;
+  margin-bottom: 15px;
+  line-height: 1.6;
+}
+
+.question-answer-detail {
+  background: white;
+  padding: 15px;
+  border-radius: 6px;
+  margin-top: 10px;
+}
+
+.answer-row {
+  display: flex;
+  margin-bottom: 8px;
+  align-items: flex-start;
+}
+
+.answer-row:last-child {
+  margin-bottom: 0;
+}
+
+.answer-label {
+  min-width: 100px;
+  color: #999;
+  font-size: 14px;
+}
+
+.answer-value {
+  flex: 1;
+  color: #333;
+  font-size: 14px;
+}
+
+.answer-value.correct {
+  color: #67c23a;
+  font-weight: 500;
+}
+
+.summary-actions {
+  display: flex;
+  justify-content: center;
+  gap: 15px;
+  padding-top: 20px;
+  border-top: 1px solid #e0e0e0;
+}
+
+@media (max-width: 480px) {
+  .submission-summary {
+    padding: 20px;
+  }
+  
+  .summary-header h3 {
+    font-size: 20px;
+  }
+  
+  .score-value {
+    font-size: 24px;
   }
 }
 </style>

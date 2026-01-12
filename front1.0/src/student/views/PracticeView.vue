@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="practice-view">
     <!-- 顶部面包屑 -->
     <div class="breadcrumb">
@@ -180,7 +180,7 @@ export default {
       if (!book) return []
       
       // 从practices中提取章节信息，使用标题作为键确保每组只保留一个
-      const chaptersMap = new Map()
+    const chaptersMap = new Map()
       
       book.practices.forEach(practice => {
         // 标准化章节标题：移除各种可能的后缀
@@ -193,7 +193,7 @@ export default {
         
         // 直接使用标准化后的标题作为键，确保每组只保留一个
         if (!chaptersMap.has(chapterTitle)) {
-          const chapterId = practice.chapter_id
+    const chapterId = practice.chapter_id
           const chapterOrder = practice.chapter_order || practice.chapter_id
           chaptersMap.set(chapterTitle, {
             chapter_id: chapterId,
@@ -206,7 +206,7 @@ export default {
       
       // 转换为数组并按章节顺序排序（优先使用chapter_order，如果没有则使用chapter_id）
       return Array.from(chaptersMap.values()).sort((a, b) => {
-        const orderA = a.chapter_order !== undefined ? a.chapter_order : a.chapter_id
+    const orderA = a.chapter_order !== undefined ? a.chapter_order : a.chapter_id
         const orderB = b.chapter_order !== undefined ? b.chapter_order : b.chapter_id
         return orderA - orderB
       })
@@ -247,13 +247,13 @@ export default {
       if (newBookId && newBookId !== oldBookId) {
         console.log(`检测到书籍ID参数: ${newBookId}`)
         // 检查该书籍是否存在
-        const bookExists = books.value.some(b => b.book_id === newBookId)
+    const bookExists = books.value.some(b => b.book_id === newBookId)
         if (bookExists) {
           selectedBookId.value = newBookId
           console.log(`已选中书籍ID: ${newBookId}`)
         } else {
           // 如果书籍不存在，等待数据加载完成后再次尝试
-          const unwatch = watch(() => books.value.length, (newLength) => {
+    const unwatch = watch(() => books.value.length, (newLength) => {
             if (newLength > 0) {
               const bookExists = books.value.some(b => b.book_id === newBookId)
               if (bookExists) {
@@ -296,7 +296,7 @@ export default {
     // 根据标题匹配练习（用于错题重做）
     const findPracticeByTitle = (title, chapterId = null, bookId = null) => {
       // 标准化标题：移除可能的后缀
-      const normalizeTitle = (t) => {
+    const normalizeTitle = (t) => {
         if (!t) return ''
         return t
           .replace(/-练习题-练习题集$/, '')
@@ -350,7 +350,7 @@ export default {
       if (newPracticeId && newPracticeId !== oldPracticeId) {
         console.log(`检测到练习ID参数: ${newPracticeId}`)
         // 先尝试直接查找练习
-        let foundPractice = findPracticeById(newPracticeId)
+    let foundPractice = findPracticeById(newPracticeId)
         
         if (foundPractice) {
           console.log('找到对应的练习:', foundPractice)
@@ -358,7 +358,7 @@ export default {
         } else {
           console.log(`未找到练习ID为${newPracticeId}的练习，等待数据加载完成后重试`)
           // 如果未找到，等待数据加载完成后再次尝试
-          const unwatch = watch(() => books.value.length, (newLength) => {
+    const unwatch = watch(() => books.value.length, (newLength) => {
             if (newLength > 0) {
               foundPractice = findPracticeById(newPracticeId)
               if (foundPractice) {
@@ -400,7 +400,7 @@ export default {
         } else {
           console.log(`未找到章节ID为${newChapterId}的练习，等待数据加载完成后重试`)
           // 如果未找到，等待数据加载完成后再次尝试
-          const unwatch = watch(() => books.value.length, (newLength) => {
+    const unwatch = watch(() => books.value.length, (newLength) => {
             if (newLength > 0) {
               console.log('数据加载完成，books.length:', newLength)
               // 再次尝试标题匹配
@@ -440,13 +440,13 @@ export default {
       console.log('过滤类别:', category)
       
       // 复制原始数据以避免修改
-      const filteredBooks = JSON.parse(JSON.stringify(booksData))
+    const filteredBooks = JSON.parse(JSON.stringify(booksData))
       
       // 如果category是数字，设置为默认选中的书籍，但不过滤书籍列表
       if (!isNaN(category)) {
         const bookId = Number(category)
         // 检查该书籍是否存在，如果存在则设置为默认选中
-        const bookExists = filteredBooks.some(book => book.book_id === bookId)
+    const bookExists = filteredBooks.some(book => book.book_id === bookId)
         if (bookExists && !selectedBookId.value) {
           selectedBookId.value = bookId
         }
@@ -457,7 +457,7 @@ export default {
       // 否则按语言或其他条件过滤练习
       return filteredBooks.map(book => {
         // 过滤每本书中的练习
-        const filteredPractices = book.practices.filter(practice => {
+    const filteredPractices = book.practices.filter(practice => {
           if (category === 'python') {
             const result = practice.language === 'python'
             console.log(`Python过滤 - 练习ID: ${practice.id}, 语言: ${practice.language}, 结果: ${result}`)
@@ -468,7 +468,7 @@ export default {
             return result
           } else if (category === 'algorithm') {
             // 通过标题或内容判断是否为算法相关练习
-            const title = (practice.title || '').toLowerCase()
+    const title = (practice.title || '').toLowerCase()
             const description = (practice.description || '').toLowerCase()
             const algorithmKeywords = ['算法', '数据结构', '排序', '搜索', '递归', '迭代']
             const result = algorithmKeywords.some(keyword => title.includes(keyword) || description.includes(keyword))
@@ -492,7 +492,7 @@ export default {
       loading.value = true
       try {
         // 使用新的API端点获取按书籍分组的练习题
-        const booksData = await api.getPractices()
+    const booksData = await api.getPractices()
         console.log('原始书籍数据:', booksData)
         
         // 检查是否有重复的练习题标题
@@ -502,14 +502,14 @@ export default {
           console.log('练习标题:', practiceTitles)
           
           // 检查重复标题
-          const uniqueTitles = [...new Set(practiceTitles)]
+    const uniqueTitles = [...new Set(practiceTitles)]
           if (uniqueTitles.length !== practiceTitles.length) {
             console.log('发现重复标题:', practiceTitles)
           }
         })
         
         // 根据URL参数过滤练习
-        const filteredBooksData = filterPracticesByCategory(booksData, urlCategory.value)
+    const filteredBooksData = filterPracticesByCategory(booksData, urlCategory.value)
         console.log('过滤后的书籍数据:', filteredBooksData)
         console.log('当前URL类别:', urlCategory.value)
         
@@ -602,7 +602,7 @@ export default {
           const id = q.id || index + 1
 
           // 统一题型命名：后端使用 snake_case，如 true_false / code_completion
-          let backendType = q.type || 'choice'
+    let backendType = q.type || 'choice'
           if (backendType === 'true_false') {
             backendType = 'judgment'
           }
@@ -630,7 +630,7 @@ export default {
               }
             } else if (typeof correctAnswer === 'string') {
               // 如果 correctAnswer 是字符串（如 "A"），转换为索引
-              const optionIndex = options.findIndex(opt => 
+    const optionIndex = options.findIndex(opt => 
                 opt.id === correctAnswer || opt.id === correctAnswer.toUpperCase()
               )
               if (optionIndex !== -1) {
@@ -656,7 +656,7 @@ export default {
           })) : []
 
           // 测试用例：兼容 testCases / test_cases，字段名 input / input_data, expected_output / expectedOutput
-          const rawTestCases = q.testCases || q.test_cases || []
+    const rawTestCases = q.testCases || q.test_cases || []
           const testCases = Array.isArray(rawTestCases)
             ? rawTestCases.map(tc => ({
                 id: tc.id,
@@ -664,7 +664,7 @@ export default {
                 expectedOutput: tc.expectedOutput ?? tc.expected_output
               }))
             : []
-
+          
           return {
             id,
             type: displayType,
@@ -731,7 +731,7 @@ export default {
       console.log('练习完成:', result)
       
       // 收集所有问题的答案
-      const questionAnswers = currentQuestions.value.map((q, index) => {
+    const questionAnswers = currentQuestions.value.map((q, index) => {
         const answer = {
           question_id: q.id || q.order || index + 1,
           type: q.type
@@ -763,7 +763,7 @@ export default {
     const submitMultiQuestionPractice = async (questionAnswers, result) => {
       try {
         // 获取当前练习所属的章节ID
-        const currentPractice = currentBookPractices.value.find(p => p.id === currentPracticeId.value)
+    const currentPractice = currentBookPractices.value.find(p => p.id === currentPracticeId.value)
         const chapterId = currentPractice ? currentPractice.chapter_id : null
         
         if (!chapterId) {
@@ -772,7 +772,7 @@ export default {
         }
         
         // 调用章节练习提交API
-        const response = await api.submitChapterPractice(chapterId, {
+    const response = await api.submitChapterPractice(chapterId, {
           practice_id: currentPracticeId.value,
           question_answers: questionAnswers
         })
@@ -1618,3 +1618,6 @@ export default {
   }
 }
 </style>
+
+
+

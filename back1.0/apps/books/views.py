@@ -4,8 +4,7 @@ from rest_framework.exceptions import PermissionDenied
 import threading
 import tempfile
 import os
-import cv2
-import numpy as np
+
 from PIL import Image
 import re
 import json
@@ -166,6 +165,8 @@ class BookViewSet(viewsets.ModelViewSet):
         """使用OCR从图像中提取文本"""
         try:
             import pytesseract
+            import cv2
+            import numpy as np
             # 转换PIL图像到OpenCV格式
             img_cv = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
             # 灰度转换
@@ -182,6 +183,8 @@ class BookViewSet(viewsets.ModelViewSet):
     def _detect_content_regions(self, image):
         """检测图像中的内容区域和类型"""
         try:
+            import cv2
+            import numpy as np
             # 加载预训练的布局检测模型
             model = lp.Detectron2LayoutModel(
                 config_path="lp://PubLayNet/faster_rcnn_R_50_FPN_3x/config",
@@ -1251,10 +1254,19 @@ class ChapterViewSet(viewsets.ModelViewSet):
             result = []
             
             for book in books:
-                chapters = Chapter.objects.filter(book=book, practices__isnull=False).prefetch_related('practices').distinct().order_by('order')
+                # 预加载关联数据以提高性能
+                chapters = Chapter.objects.filter(
+                    book=book, 
+                    practices__isnull=False
+                ).prefetch_related(
+                    'practices__choice_options',
+                    'practices__fill_blanks',
+                    'practices__test_cases'
+                ).distinct().order_by('order')
                 practices_data = []
                 
                 for chapter in chapters:
+                    # 使用 prefetch_related 预加载的关联数据
                     practices = chapter.practices.all().order_by('order')
                     for practice in practices:
                         serializer = PracticeSerializer(practice)
@@ -1280,7 +1292,12 @@ class ChapterViewSet(viewsets.ModelViewSet):
         """获取章节的练习题"""
         try:
             chapter = self.get_object()
-            practices = chapter.practices.all().order_by('order')
+            # 预加载关联数据，确保 choice_options、fill_blanks、test_cases 被正确加载
+            practices = chapter.practices.prefetch_related(
+                'choice_options',
+                'fill_blanks',
+                'test_cases'
+            ).all().order_by('order')
             
             if not practices:
                 return Response({'message': '该章节暂无练习题'}, status=status.HTTP_404_NOT_FOUND)
