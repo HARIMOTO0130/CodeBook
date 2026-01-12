@@ -234,7 +234,7 @@
 import { ref, onMounted } from 'vue'
 import api from '../api/index'
 import { analyticsApi } from '../api/analytics'
-import { formatDate } from '../../utils/dataFormatter'
+import { formatDate } from '../utils/dataFormatter'
 
 export default {
   name: 'SettingsView',

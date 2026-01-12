@@ -336,15 +336,22 @@ export const api = {
         // 前端传入为 camelCase，转换成后端的 snake_case
         const payload = {
             // 学习偏好设置
+            ...(preferences.default_language !== undefined ? { default_language: preferences.default_language } : {}),
             ...(preferences.defaultLanguage !== undefined ? { default_language: preferences.defaultLanguage } : {}),
+            ...(preferences.code_theme !== undefined ? { code_theme: preferences.code_theme } : {}),
             ...(preferences.codeTheme !== undefined ? { code_theme: preferences.codeTheme } : {}),
+            ...(preferences.auto_play_video !== undefined ? { auto_play_video: preferences.auto_play_video } : {}),
             ...(preferences.autoPlayVideo !== undefined ? { auto_play_video: preferences.autoPlayVideo } : {}),
+            ...(preferences.keyboard_shortcuts !== undefined ? { keyboard_shortcuts: preferences.keyboard_shortcuts } : {}),
             ...(preferences.keyboardShortcuts !== undefined ? { keyboard_shortcuts: preferences.keyboardShortcuts } : {}),
+            ...(preferences.show_line_numbers !== undefined ? { show_line_numbers: preferences.show_line_numbers } : {}),
             ...(preferences.showLineNumbers !== undefined ? { show_line_numbers: preferences.showLineNumbers } : {}),
+            ...(preferences.use_vim_mode !== undefined ? { use_vim_mode: preferences.use_vim_mode } : {}),
             ...(preferences.useVimMode !== undefined ? { use_vim_mode: preferences.useVimMode } : {}),
             
             // 学习信息
             ...(preferences.learning_goals !== undefined ? { learning_goals: preferences.learning_goals } : {}),
+            ...(preferences.major_category !== undefined ? { major_category: preferences.major_category } : {}),
             ...(preferences.major !== undefined ? { major: preferences.major } : {}),
             ...(preferences.learning_stage !== undefined ? { learning_stage: preferences.learning_stage } : {}),
             ...(preferences.interests !== undefined ? { interests: preferences.interests } : {}),

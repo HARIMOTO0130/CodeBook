@@ -184,7 +184,7 @@ import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { studentApi } from '../api/student'
 import { assignmentApi } from '../api/assignment'
-import { formatDate } from '../../utils/dataFormatter'
+import { formatDate } from '../utils/dataFormatter'
 
 export default {
   name: 'StudentDetailView',

@@ -659,10 +659,13 @@ export default {
         // 保存到本地作为备份
         localStorage.setItem('userPreferences', JSON.stringify(preferences.value))
         
+        // 保存成功后重新加载数据，确保前端显示的是数据库中的最新内容
+        await loadSettings()
+        
         alert('所有设置已保存！')
       } catch (error) {
         console.error('保存设置失败:', error)
-        alert('保存失败，请重试')
+        alert('保存失败，请重试: ' + (error.message || '未知错误'))
       }
     }
     

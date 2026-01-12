@@ -59,7 +59,8 @@ class Class(models.Model):
     @property
     def student_count(self):
         """获取班级学生数量"""
-        return self.students.count()
+        from .models import Student
+        return Student.objects.filter(class_name=self.name).count()
 
 
 class Student(models.Model):
@@ -91,10 +92,12 @@ class Student(models.Model):
 
 class StudentLearningProgress(models.Model):
     """学生学习进度模型 - 对应数据库student_learning_progress表"""
-    id = models.AutoField(primary_key=True, db_column='progress_id')
+    id = models.AutoField(primary_key=True)
     student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='learning_progress', verbose_name='学生', db_column='student_id')
+    book = models.ForeignKey(Book, on_delete=models.CASCADE, related_name='student_progress', verbose_name='教材', db_column='book_id', null=True, blank=True)
     chapter = models.ForeignKey(Chapter, on_delete=models.CASCADE, related_name='student_progress', verbose_name='章节', db_column='chapter_id')
-    teacher = models.ForeignKey(Teacher, on_delete=models.CASCADE, related_name='student_progress', verbose_name='教师', db_column='teacher_id')
+    progress = models.FloatField(default=0, verbose_name='学习进度')
+    is_completed = models.BooleanField(default=False, verbose_name='是否已完成')
     learn_time = models.IntegerField(default=0, verbose_name='学习时长（分钟）')
     learn_status = models.IntegerField(default=1, verbose_name='学习状态', help_text='1-未学习，2-学习中，3-已完成')
     last_learn_time = models.DateTimeField(blank=True, null=True, verbose_name='最后学习时间')
@@ -107,7 +110,8 @@ class StudentLearningProgress(models.Model):
         verbose_name_plural = '学生学习进度'
         unique_together = [['student', 'chapter']]
         indexes = [
-            models.Index(fields=['teacher']),
+            models.Index(fields=['student']),
+            models.Index(fields=['chapter']),
             models.Index(fields=['learn_status']),
         ]
 
@@ -316,25 +320,5 @@ class TeacherSetting(models.Model):
         return f"{self.teacher.teacher_name} - {self.setting_key}"
 
 
-class TeachingToolLog(models.Model):
-    """教学工具使用记录模型 - 对应数据库teaching_tool_log表"""
-    id = models.AutoField(primary_key=True, db_column='log_id')
-    teacher = models.ForeignKey(Teacher, on_delete=models.CASCADE, related_name='tool_logs', verbose_name='教师', db_column='teacher_id')
-    tool_name = models.CharField(max_length=100, verbose_name='工具名称', help_text='计时器、随机点名、答题卡等')
-    use_time = models.DateTimeField(auto_now_add=True, verbose_name='使用时间')
-    class_obj = models.ForeignKey(Class, on_delete=models.CASCADE, null=True, blank=True, related_name='tool_logs', verbose_name='使用的班级', db_column='class_id')
-    use_duration = models.IntegerField(default=0, verbose_name='使用时长（秒）')
-
-    class Meta:
-        db_table = 'teaching_tool_log'
-        verbose_name = '教学工具使用记录'
-        verbose_name_plural = '教学工具使用记录'
-        ordering = ['-use_time']
-        indexes = [
-            models.Index(fields=['teacher']),
-            models.Index(fields=['tool_name']),
-            models.Index(fields=['class_obj']),
-        ]
-
-    def __str__(self):
-        return f"{self.teacher.teacher_name} - {self.tool_name}"
+# TeachingToolLog模型已暂时移除，因为数据库中不存在对应的表
+# 后续需要时可以恢复这个模型并创建对应的表

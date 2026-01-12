@@ -14,14 +14,14 @@ import os
 from .models import (
     Class, Student, StudentLearningProgress, Homework, StudentHomework,
     Notice, StudentNoticeRead, ClassResource, TeachingResource,
-    CourseDesign, TeacherSetting, TeachingToolLog
+    CourseDesign, TeacherSetting
 )
 from .serializers import (
     ClassSerializer, ClassDetailSerializer, StudentSerializer,
     StudentLearningProgressSerializer, HomeworkSerializer, StudentHomeworkSerializer,
     NoticeSerializer, StudentNoticeReadSerializer, ClassResourceSerializer,
     TeachingResourceSerializer, CourseDesignSerializer, TeacherSettingSerializer,
-    TeachingToolLogSerializer, TeacherInfoSerializer
+    TeacherInfoSerializer
 )
 from apps.books.models import Book, Chapter
 from django.contrib.auth import get_user_model
@@ -89,12 +89,44 @@ class ClassViewSet(viewsets.ModelViewSet):
             else:
                 raise serializers.ValidationError({'book': '系统中没有可用的教材，请先添加教材'})
         serializer.save(teacher=self.request.user.teacher_profile)
+
+    def update(self, request, *args, **kwargs):
+        """更新班级信息"""
+        try:
+            kwargs['partial'] = True  # 强制使用partial=True，允许部分更新
+            return super().update(request, *args, **kwargs)
+        except serializers.ValidationError as e:
+            print(f"Validation error: {e}")
+            print(f"Request data: {request.data}")
+            return Response({'error': f'更新失败：{str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            print(f"Update error: {e}")
+            import traceback
+            traceback.print_exc()
+            return Response({'error': f'更新班级失败：{str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def destroy(self, request, *args, **kwargs):
+        """删除班级"""
+        try:
+            instance = self.get_object()
+            # 清理与该班级相关的学生记录（将学生的class_name设为None）
+            Student.objects.filter(class_name=instance.name).update(class_name=None)
+            
+            # 直接从数据库中删除班级记录，避免Django的级联删除操作
+            from django.db import connection
+            with connection.cursor() as cursor:
+                cursor.execute("DELETE FROM class WHERE class_id = %s", [instance.id])
+            
+            return Response({'message': '班级删除成功'}, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({'error': f'删除班级失败：{str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     @action(detail=True, methods=['get'])
     def students(self, request, pk=None):
         """获取班级学生列表"""
         class_obj = self.get_object()
-        students = class_obj.students.all()
+        # 由于Student模型中的class_obj已被替换为class_name，我们需要修改查询方式
+        students = Student.objects.filter(class_name=class_obj.name)
         serializer = StudentSerializer(students, many=True)
         return Response(serializer.data)
     
@@ -105,7 +137,8 @@ class ClassViewSet(viewsets.ModelViewSet):
         student_id = request.data.get('student_id')
         try:
             student = Student.objects.get(id=student_id)
-            student.class_obj = class_obj
+            # 由于Student模型中的class_obj已被替换为class_name，我们需要修改设置方式
+            student.class_name = class_obj.name
             student.save()
             return Response({'message': '学生添加成功'}, status=status.HTTP_200_OK)
         except Student.DoesNotExist:
@@ -117,8 +150,10 @@ class ClassViewSet(viewsets.ModelViewSet):
         class_obj = self.get_object()
         student_id = request.data.get('student_id')
         try:
-            student = Student.objects.get(id=student_id, class_obj=class_obj)
-            student.class_obj = None
+            # 由于Student模型中的class_obj已被替换为class_name，我们需要修改查询方式
+            student = Student.objects.get(id=student_id, class_name=class_obj.name)
+            # 清除班级名称
+            student.class_name = None
             student.save()
             return Response({'message': '学生移除成功'}, status=status.HTTP_200_OK)
         except Student.DoesNotExist:
@@ -128,7 +163,8 @@ class ClassViewSet(viewsets.ModelViewSet):
     def progress(self, request, pk=None):
         """获取班级学习进度"""
         class_obj = self.get_object()
-        students = class_obj.students.all()
+        # 由于Student模型中的class_obj已被替换为class_name，我们需要修改查询方式
+        students = Student.objects.filter(class_name=class_obj.name)
         
         # 统计学习进度
         progress_data = StudentLearningProgress.objects.filter(
@@ -148,7 +184,8 @@ class ClassViewSet(viewsets.ModelViewSet):
     def analytics(self, request, pk=None):
         """获取班级分析数据"""
         class_obj = self.get_object()
-        students = class_obj.students.all()
+        # 由于Student模型中的class_obj已被替换为class_name，我们需要修改查询方式
+        students = Student.objects.filter(class_name=class_obj.name)
         
         # 学生统计
         total_students = students.count()
@@ -226,27 +263,27 @@ class StudentViewSet(viewsets.ModelViewSet):
     """学生管理视图集"""
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['class_obj', 'status', 'gender']
+    filterset_fields = ['status', 'gender']
     search_fields = ['student_name', 'student_no']
     ordering_fields = ['created_at', 'student_name']
     
     def get_queryset(self):
-        """只返回当前教师班级的学生"""
+        """获取学生列表，教师可以查看所有学生"""
         try:
-            # 确保当前用户有对应的Teacher对象
-            teacher = self.request.user.teacher_profile
-            teacher_classes = Class.objects.filter(teacher=teacher)
-            queryset = Student.objects.filter(class_obj__in=teacher_classes)
+            # 获取当前用户
+            user = self.request.user
             
-            # 手动处理class_id参数，因为前端传递的是class_id，而filterset_fields定义的是class_obj
-            class_id = self.request.query_params.get('class_id')
-            if class_id:
-                queryset = queryset.filter(class_obj_id=class_id)
+            # 检查用户角色，教师可以查看所有学生
+            if user.role == 'teacher':
+                # 直接返回所有学生，不限制班级
+                return Student.objects.all()
             
-            return queryset
-        except AttributeError:
-            # 如果没有Teacher对象，返回空查询集
+            # 如果是学生角色，返回空查询集（只有教师可以访问）
             return Student.objects.none()
+        except Exception as e:
+            # 任何异常都返回所有学生，确保教师能看到数据
+            print(f"Error in get_queryset: {e}")
+            return Student.objects.all()
     
     def get_serializer_class(self):
         return StudentSerializer
@@ -392,7 +429,8 @@ class HomeworkViewSet(viewsets.ModelViewSet):
         homework.save()
         
         # 为班级所有学生创建作业提交记录
-        students = homework.class_obj.students.all()
+        # 由于Student模型中的class_obj已被替换为class_name，我们需要修改查询方式
+        students = Student.objects.filter(class_name=homework.class_obj.name)
         for student in students:
             StudentHomework.objects.get_or_create(
                 homework=homework,
@@ -552,7 +590,8 @@ class NoticeViewSet(viewsets.ModelViewSet):
             read_records = notice.read_records.all()
             serializer = StudentNoticeReadSerializer(read_records, many=True)
             
-            total_students = notice.class_obj.students.count() if notice.class_obj else 0
+            # 由于Student模型中的class_obj已被替换为class_name，我们需要修改查询方式
+            total_students = Student.objects.filter(class_name=notice.class_obj.name).count() if notice.class_obj else 0
             read_count = read_records.filter(is_read=1).count()
             
             return Response({
@@ -965,7 +1004,11 @@ class DashboardViewSet(viewsets.ViewSet):
             total_classes = classes.count()
             
             # 学生统计
-            total_students = Student.objects.filter(class_obj__in=classes).count()
+            # 由于Student模型中的class_obj已被替换为class_name，我们需要修改查询方式
+            # 获取所有班级的名称
+            class_names = [c.name for c in classes]
+            # 使用class_name字段进行过滤
+            total_students = Student.objects.filter(class_name__in=class_names).count()
             
             # 作业统计
             homeworks = Homework.objects.filter(teacher=teacher)
@@ -1016,7 +1059,11 @@ class AnalyticsViewSet(viewsets.ViewSet):
             teacher = request.user.teacher_profile
             
             classes = Class.objects.filter(teacher=teacher)
-            total_students = Student.objects.filter(class_obj__in=classes).count()
+            # 由于Student模型中的class_obj已被替换为class_name，我们需要修改查询方式
+            # 获取所有班级的名称
+            class_names = [c.name for c in classes]
+            # 使用class_name字段进行过滤
+            total_students = Student.objects.filter(class_name__in=class_names).count()
             total_homeworks = Homework.objects.filter(teacher=teacher).count()
             
             return Response({
@@ -1322,32 +1369,30 @@ class AnalyticsViewSet(viewsets.ViewSet):
         return Response({'message': '导出功能开发中'})
 
 
-class ToolLogViewSet(viewsets.ModelViewSet):
-    """教学工具使用记录视图集"""
+class ToolLogViewSet(viewsets.ViewSet):
+    """教学工具使用记录视图集 - 由于TeachingToolLog模型已暂时移除，只提供基本功能"""
     permission_classes = [IsAuthenticated]
-    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-    filterset_fields = ['tool_name', 'class_obj']
-    ordering_fields = ['use_time']
     
-    def get_queryset(self):
-        """只返回当前教师的工具使用记录"""
-        # 获取当前用户对应的teacher记录
-        from apps.teacher.models import Teacher
-        try:
-            teacher = Teacher.objects.get(user=self.request.user)
-            return TeachingToolLog.objects.filter(teacher_id=teacher.id)
-        except Teacher.DoesNotExist:
-            return TeachingToolLog.objects.none()
+    def list(self, request):
+        """返回空列表，因为TeachingToolLog模型已暂时移除"""
+        return Response([], status=status.HTTP_200_OK)
     
-    def get_serializer_class(self):
-        return TeachingToolLogSerializer
+    def create(self, request):
+        """暂时不支持创建记录，因为TeachingToolLog模型已暂时移除"""
+        return Response({'message': '教学工具使用记录功能暂时不可用'}, status=status.HTTP_501_NOT_IMPLEMENTED)
     
-    def perform_create(self, serializer):
-        """创建记录时自动设置教师"""
-        # 获取当前用户对应的teacher记录
-        from apps.teacher.models import Teacher
-        try:
-            teacher = Teacher.objects.get(user=self.request.user)
-            serializer.save(teacher_id=teacher.id)
-        except Teacher.DoesNotExist:
-            raise serializers.ValidationError({'error': '教师信息不存在'})
+    def retrieve(self, request, pk=None):
+        """暂时不支持获取单条记录，因为TeachingToolLog模型已暂时移除"""
+        return Response({'message': '教学工具使用记录功能暂时不可用'}, status=status.HTTP_501_NOT_IMPLEMENTED)
+    
+    def update(self, request, pk=None):
+        """暂时不支持更新记录，因为TeachingToolLog模型已暂时移除"""
+        return Response({'message': '教学工具使用记录功能暂时不可用'}, status=status.HTTP_501_NOT_IMPLEMENTED)
+    
+    def partial_update(self, request, pk=None):
+        """暂时不支持部分更新记录，因为TeachingToolLog模型已暂时移除"""
+        return Response({'message': '教学工具使用记录功能暂时不可用'}, status=status.HTTP_501_NOT_IMPLEMENTED)
+    
+    def destroy(self, request, pk=None):
+        """暂时不支持删除记录，因为TeachingToolLog模型已暂时移除"""
+        return Response({'message': '教学工具使用记录功能暂时不可用'}, status=status.HTTP_501_NOT_IMPLEMENTED)

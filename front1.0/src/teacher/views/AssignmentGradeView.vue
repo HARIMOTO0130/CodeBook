@@ -161,7 +161,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { assignmentApi } from '../api/assignment'
-import { formatDate } from '../../utils/dataFormatter'
+import { formatDate } from '../utils/dataFormatter'
 
 export default {
   name: 'AssignmentGradeView',

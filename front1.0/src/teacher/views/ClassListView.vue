@@ -256,8 +256,8 @@
 </template>
 
 <script>
-import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { classApi } from '../api/class'
 import { teacherApi } from '../api/teacher'
 import { assignmentApi } from '../api/assignment'
@@ -266,6 +266,7 @@ export default {
   name: 'ClassManagement',
   setup() {
     const router = useRouter()
+    const route = useRoute()
     const searchQuery = ref('')
     const statusFilter = ref('all')
     const sortBy = ref('name')
@@ -421,10 +422,56 @@ export default {
       }
     }
 
+    const editClass = (classItem) => {
+      editingClass.value = classItem
+      classForm.value = {
+        name: classItem.name || '',
+        course: classItem.major || classItem.course || '',
+        bookId: classItem.book?.id || classItem.book_id || '',
+        startDate: '',
+        endDate: '',
+        description: classItem.description || '',
+        gradient: classItem.gradient || 'linear-gradient(135deg, #667eea, #764ba2)',
+        allowJoin: true,
+        autoGrade: false
+      }
+      showCreateModal.value = true
+    }
+
+    // 检查URL参数，如果有action=edit和id参数，则自动打开编辑模态框
+    const checkEditUrlParam = () => {
+      if (route.query.action === 'edit' && route.query.id) {
+        const classId = parseInt(route.query.id)
+        const classItem = classes.value.find(c => c.id === classId)
+        if (classItem) {
+          editClass(classItem)
+        } else {
+          // 如果班级列表中没有找到该班级，先加载班级列表，再尝试编辑
+          loadClasses().then(() => {
+            const updatedClassItem = classes.value.find(c => c.id === classId)
+            if (updatedClassItem) {
+              editClass(updatedClassItem)
+            }
+          })
+        }
+      }
+    }
+    
     onMounted(() => {
       loadClasses()
       loadBooks()
+      // 检查URL参数，如果有action=edit和id参数，则自动打开编辑模态框
+      checkEditUrlParam()
     })
+    
+    // 监听路由变化，处理URL参数
+    watch(
+      () => route.query,
+      (newQuery) => {
+        checkEditUrlParam()
+      },
+      { immediate: true }
+    )
 
     const totalStudents = computed(() => {
       return classes.value.reduce((sum, c) => sum + c.studentCount, 0)
@@ -480,22 +527,6 @@ export default {
       router.push(`/teacher/classes/${classId}`)
     }
 
-    const editClass = (classItem) => {
-      editingClass.value = classItem
-      classForm.value = {
-        name: classItem.name || '',
-        course: classItem.major || classItem.course || '',
-        bookId: classItem.book?.id || classItem.book_id || '',
-        startDate: '',
-        endDate: '',
-        description: classItem.description || '',
-        gradient: classItem.gradient || 'linear-gradient(135deg, #667eea, #764ba2)',
-        allowJoin: true,
-        autoGrade: false
-      }
-      showCreateModal.value = true
-    }
-
     const viewStudents = (classItem) => {
       router.push(`/teacher/students?classId=${classItem.id}`)
     }
@@ -540,9 +571,9 @@ export default {
           description: classForm.value.description || ''
         }
         
-        // 创建时添加book_id
-        if (!editingClass.value && classForm.value.bookId) {
-          data.book = classForm.value.bookId
+        // 添加book_id（创建和更新时都需要）
+        if (classForm.value.bookId) {
+          data.book_id = classForm.value.bookId
         }
 
         if (editingClass.value) {

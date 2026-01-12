@@ -209,6 +209,12 @@ export const teacherApi = {
     return api.post('/settings/batch/', { settings })
   },
   
+  // 密码修改
+  changePassword(data) {
+    // data: { old_password, new_password }
+    return api.post('/info/change_password/', data)
+  },
+  
   // 教学工具使用记录 (teaching_tool_log表)
   logToolUsage(data) {
     // data: { tool_name, class_id, use_duration }
