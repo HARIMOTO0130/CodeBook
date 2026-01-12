@@ -1157,7 +1157,14 @@ const toggleCellEdit = (index, isEditing, clickOffset = null) => {
         if (result.stdout) {
           cell.output = cell.output.concat(result.stdout.split('\n'))
         }
-        if (result.stderr) {
+        
+        // 处理错误信息
+        if (result.error) {
+          cell.output.push(`错误: ${result.error.message}`)
+          if (result.error.details) {
+            cell.output = cell.output.concat(result.error.details.split('\n'))
+          }
+        } else if (result.stderr) {
           cell.output = cell.output.concat(result.stderr.split('\n'))
         }
         
@@ -1165,7 +1172,12 @@ const toggleCellEdit = (index, isEditing, clickOffset = null) => {
         cell.output.push(`[执行时间: ${result.durationMs}ms]`)
         
       } catch (error) {
+        console.error('代码执行错误:', error)
         cell.output = ['执行错误:', error.message]
+        // 如果有错误详细信息，也显示出来
+        if (error.response?.data?.error?.details) {
+          cell.output.push(error.response.data.error.details)
+        }
       } finally {
         cell.isRunning = false
       }

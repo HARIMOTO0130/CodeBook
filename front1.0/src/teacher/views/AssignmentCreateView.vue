@@ -184,6 +184,12 @@ export default {
         // 注意：后端目前只支持创建单个班级的作业，所以只使用第一个选中的班级
         const selectedClassId = formData.value.classes[0]
         
+        // 验证班级是否被正确选择
+        if (!selectedClassId) {
+          alert('请选择一个班级')
+          return
+        }
+        
         const data = {
           homework_name: formData.value.title,
           homework_content: formData.value.description || '',
@@ -195,12 +201,20 @@ export default {
           chapter: 4  // 使用数据库中存在的第一个章节ID
         }
 
+        console.log('创建作业请求数据:', data)
+        console.log('选中的班级ID:', selectedClassId)
+        console.log('班级列表:', classes.value)
+        console.log('班级列表长度:', classes.value.length)
+        console.log('第一个班级:', classes.value[0])
+
         await assignmentApi.createAssignment(data)
         alert('作业创建成功！')
         router.push('/teacher/assignments')
       } catch (error) {
         console.error('创建作业失败:', error)
-        alert('创建失败: ' + (error.response?.data?.error || error.message))
+        console.error('错误响应数据:', error.response?.data)
+        console.error('请求配置:', error.config)
+        alert('创建失败: ' + (error.response?.data?.error || error.response?.data?.non_field_errors?.[0] || error.message))
       } finally {
         submitting.value = false
       }

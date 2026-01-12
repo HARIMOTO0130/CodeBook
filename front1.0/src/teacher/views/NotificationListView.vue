@@ -310,13 +310,15 @@ export default {
         if (response.data && Array.isArray(response.data)) {
           this.notifications = response.data.map(notif => ({
             id: notif.id,
-            title: notif.title,
-            preview: notif.content ? (notif.content.substring(0, 50) + '...') : '',
-            content: notif.content || '',
+            title: notif.notice_title,
+            preview: notif.notice_content ? (notif.notice_content.substring(0, 50) + '...') : '',
+            content: notif.notice_content || '',
             type: notif.type,
-            isRead: notif.is_read,
-            createdAt: new Date(notif.created_at),
-            targetClass: '', // 可以从关联的班级获取
+            isRead: notif.status === 1 ? false : true, // 假设status=1表示未读
+            isImportant: notif.is_important,
+            createdAt: new Date(notif.publish_time),
+            targetClass: notif.class_obj || '',
+            class_name: notif.class_name || '',
             actionUrl: null
           }))
         }
@@ -327,15 +329,10 @@ export default {
         this.loading = false
       }
     },
-    async markAllRead() {
-      try {
-        await notificationApi.markAllRead()
-        this.notifications.forEach(n => n.isRead = true)
-        alert('全部标记为已读')
-      } catch (error) {
-        console.error('标记失败:', error)
-        alert('标记失败: ' + (error.response?.data?.error || error.message))
-      }
+    markAllRead() {
+      // 前端临时标记为已读，实际标记已读功能需要后端支持
+      this.notifications.forEach(n => n.isRead = true)
+      alert('全部标记为已读（仅前端显示）')
     },
     toggleNotification(notification) {
       if (this.expandedId === notification.id) {
@@ -347,13 +344,9 @@ export default {
         }
       }
     },
-    async toggleRead(notification) {
-      try {
-        await notificationApi.markAsRead(notification.id)
+    toggleRead(notification) {
+      // 前端临时标记为已读，实际标记已读功能需要后端支持
       notification.isRead = !notification.isRead
-      } catch (error) {
-        console.error('标记失败:', error)
-      }
     },
     async deleteNotification(notification) {
       if (confirm('确定要删除这条通知吗？')) {
@@ -385,7 +378,9 @@ export default {
         const notificationData = {
           notice_title: this.newNotification.title,
           notice_content: this.newNotification.content,
-          class_id: this.newNotification.targetClass || null, // 全部班级为null或空字符串
+          class_obj: this.newNotification.targetClass || null, // 后端期望的是class_obj，不是class_id
+          type: this.newNotification.type,
+          is_important: this.newNotification.isImportant,
           expire_time: null // 可以设置默认过期时间，如7天后
         }
         

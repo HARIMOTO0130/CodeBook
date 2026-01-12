@@ -1,6 +1,6 @@
 """学习记录序列化器"""
 from rest_framework import serializers
-from .models import LearningRecord, PracticeRecord, HeatmapData, WrongQuestion, UserLearningPath, RoadmapTemplate, RoadmapStage, RoadmapBook, UserPathStage, Note, NoteTag, NoteTagRelation, NoteAttachment, NoteVersion, NoteShare, JupyterDocument, LearningStyle, KnowledgeMastery, LearningRecommendation, LearningPreference, KnowledgeNode, KnowledgeRelation
+from .models import LearningRecord, PracticeRecord, HeatmapData, WrongQuestion, UserLearningPath, RoadmapTemplate, RoadmapStage, RoadmapBook, UserPathStage, Note, NoteTag, NoteTagRelation, NoteAttachment, NoteVersion, NoteShare, JupyterDocument, LearningStyle, KnowledgeMastery, LearningRecommendation, LearningPreference, KnowledgeNode, KnowledgeRelation, AIInteractionRecord
 
 
 class LearningRecordSerializer(serializers.ModelSerializer):
@@ -284,6 +284,8 @@ class NoteCreateSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         tags = validated_data.pop('tags', [])
+        # 显式添加当前用户
+        validated_data['user'] = self.context['request'].user
         note = Note.objects.create(**validated_data)
         
         # 创建版本历史
@@ -645,3 +647,35 @@ class KnowledgeRelationSerializer(serializers.ModelSerializer):
     
     def get_relation_type_display(self, obj):
         return obj.get_relation_type_display()
+
+
+class AIInteractionRecordSerializer(serializers.ModelSerializer):
+    """AI交互记录序列化器"""
+    username = serializers.CharField(source='user.username', read_only=True)
+    interaction_type_display = serializers.CharField(source='get_interaction_type_display', read_only=True)
+    
+    class Meta:
+        model = AIInteractionRecord
+        fields = (
+            'id', 'user', 'username', 'interaction_type', 'interaction_type_display',
+            'user_input', 'ai_response', 'session_id', 'context', 'response_time',
+            'tokens_used', 'is_satisfied', 'created_at', 'updated_at'
+        )
+        read_only_fields = ('id', 'user', 'created_at', 'updated_at')
+    
+    def create(self, validated_data):
+        """创建记录时自动设置用户"""
+        validated_data['user'] = self.context['request'].user
+        return super().create(validated_data)
+
+
+class AIInteractionRecordCreateSerializer(serializers.Serializer):
+    """创建AI交互记录的序列化器"""
+    user_input = serializers.CharField(required=True, allow_blank=False)
+    interaction_type = serializers.ChoiceField(
+        choices=AIInteractionRecord.INTERACTION_TYPE_CHOICES,
+        default='question',
+        required=False
+    )
+    session_id = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    context = serializers.JSONField(required=False, default=dict)

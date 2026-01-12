@@ -5,6 +5,7 @@ const ClassListView = () => import('../views/ClassListView.vue')
 const ClassDetailView = () => import('../views/ClassDetailView.vue')
 const AssignmentListView = () => import('../views/AssignmentListView.vue')
 const AssignmentCreateView = () => import('../views/AssignmentCreateView.vue')
+const AssignmentEditView = () => import('../views/AssignmentEditView.vue')
 const AssignmentDetailView = () => import('../views/AssignmentDetailView.vue')
 const AssignmentGradeView = () => import('../views/AssignmentGradeView.vue')
 const AnalyticsView = () => import('../views/AnalyticsView.vue')
@@ -72,6 +73,13 @@ const teacherRoutes = [
     name: 'AssignmentGrade',
     component: AssignmentGradeView,
     meta: { title: '批改作业', requiresAuth: true, role: 'teacher' },
+    props: true
+  },
+  {
+    path: '/teacher/assignments/:id/edit',
+    name: 'AssignmentEdit',
+    component: AssignmentEditView,
+    meta: { title: '编辑作业', requiresAuth: true, role: 'teacher' },
     props: true
   },
   {

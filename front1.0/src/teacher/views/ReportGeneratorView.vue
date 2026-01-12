@@ -9,8 +9,9 @@
         <button class="btn btn-secondary" @click="showTemplateModal = true">
           <span>📋</span> 报告模板
         </button>
-        <button class="btn btn-primary" @click="generateReport" :disabled="!canGenerate">
-          <span>📊</span> 生成报告
+        <button class="btn btn-primary" @click="generateReport" :disabled="!canGenerate || loading">
+          <span v-if="loading">⏳</span>
+          <span v-else>📊</span> {{ loading ? '生成中...' : '生成报告' }}
         </button>
       </div>
     </div>
@@ -49,7 +50,7 @@
 
         <div v-if="config.type === 'student'" class="form-group">
           <label>选择学生 *</label>
-          <select v-model="config.studentId" :disabled="!config.classId">
+          <select v-model="config.studentId" :disabled="config.classId === '' || config.classId === undefined || config.classId === null">
             <option value="">请先选择班级</option>
             <option v-for="student in students" :key="student.id" :value="student.id">
               {{ student.student_name }} ({{ student.student_no }})
@@ -193,7 +194,7 @@
           <div class="history-icon">📊</div>
           <div class="history-info">
             <h4>{{ report.title }}</h4>
-            <p>{{ report.date }} · {{ report.type }}</p>
+            <p>{{ report.start_date || report.created_at || report.generated_at }} · {{ report.report_type || '报告' }}</p>
           </div>
           <div class="history-actions">
             <button class="action-btn" @click="viewReport(report)">查看</button>
@@ -209,12 +210,14 @@
 <script>
 import { classApi } from '../api/class'
 import { studentApi } from '../api/student'
+import api from '../api/index'
 
 export default {
   name: 'ReportGeneratorView',
   data() {
     return {
       showTemplateModal: false,
+      loading: false,
       config: {
         type: 'class',
         classId: '',
@@ -245,12 +248,44 @@ export default {
       return true
     }
   },
+  watch: {
+    // 当报告类型切换为学生个人报告时，检查是否已选择班级，如果已选择则加载学生列表
+    'config.type': function(newType, oldType) {
+      if (newType === 'student' && this.config.classId !== '' && this.config.classId !== undefined && this.config.classId !== null) {
+        this.onClassChange()
+      }
+    },
+    // 当班级ID变化时，自动加载学生列表
+    'config.classId': function(newClassId, oldClassId) {
+      console.log('班级ID变化:', { newClassId, oldClassId })
+      if (this.config.type === 'student' && newClassId !== '' && newClassId !== undefined && newClassId !== null) {
+        this.onClassChange()
+      }
+    }
+  },
   mounted() {
     this.loadClasses()
     this.loadTeacherInfo()
     this.setDefaultDates()
+    this.loadHistoryReports()
   },
   methods: {
+    async loadHistoryReports() {
+      try {
+        this.loading = true
+        // 调用后端API获取历史报告列表
+        const response = await api.get('/reports/')
+        // 确保historyReports是数组，并且过滤掉null值
+        this.historyReports = Array.isArray(response.data) 
+          ? response.data.filter(report => report && report.id) 
+          : []
+      } catch (error) {
+        console.error('加载历史报告失败:', error)
+        this.historyReports = []
+      } finally {
+        this.loading = false
+      }
+    },
     loadTeacherInfo() {
       const userFullName = localStorage.getItem('userFullName') || '教师'
       this.teacherName = userFullName
@@ -276,26 +311,56 @@ export default {
           }
         }
         
-        if (classesData.length > 0) {
-          this.classes = classesData
-        }
+        // 确保classesData是数组，并且过滤掉null值
+        this.classes = Array.isArray(classesData) 
+          ? classesData.filter(cls => cls && cls.id) 
+          : []
       } catch (error) {
         console.error('加载班级失败:', error)
+        this.classes = []
       }
     },
     async onClassChange() {
-      if (!this.config.classId) {
+      console.log('onClassChange被调用:', {
+        classId: this.config.classId,
+        classIdType: typeof this.config.classId,
+        classIdEmpty: this.config.classId === '',
+        classIdFalsy: !this.config.classId
+      })
+      
+      // 确保classId是有效的（非空字符串、包括0在内的数字）
+      const classId = this.config.classId
+      // 只有当classId是空字符串或undefined或null时，才返回
+      if (classId === '' || classId === undefined || classId === null) {
         this.students = []
         return
       }
       
       try {
-        const response = await studentApi.getStudents({ class_id: this.config.classId })
-        if (response.data && Array.isArray(response.data)) {
-          this.students = response.data
+        console.log('准备调用API获取学生列表，class_id:', classId)
+        const response = await studentApi.getStudents({ class_id: classId })
+        console.log('API响应:', response.data)
+        
+        let studentsData = []
+        if (response.data) {
+          if (Array.isArray(response.data)) {
+            studentsData = response.data
+          } else if (Array.isArray(response.data.results)) {
+            studentsData = response.data.results
+          }
         }
+        
+        console.log('处理后的学生数据:', studentsData)
+        
+        // 确保studentsData是数组，并且过滤掉null值
+        this.students = Array.isArray(studentsData) 
+          ? studentsData.filter(student => student && student.id) 
+          : []
+        
+        console.log('最终学生列表:', this.students)
       } catch (error) {
         console.error('加载学生失败:', error)
+        this.students = []
       }
     },
     getReportTypeName(type) {
@@ -313,30 +378,42 @@ export default {
       }
 
       try {
-        // 模拟生成报告数据
-        this.reportData = {
-          title: this.config.type === 'student' 
-            ? `${this.getStudentName()}学习报告` 
-            : `${this.getClassName()}学习报告`,
-          generatedAt: new Date().toLocaleString('zh-CN'),
-          progress: {
-            totalChapters: 20,
-            completedChapters: 15,
-            completionRate: 75,
-            totalTime: 48
-          },
-          homework: {
-            total: 10,
-            submitted: 9,
-            avgScore: 85,
-            submissionRate: 90
-          }
+        // 显示加载状态
+        this.loading = true
+        
+        // 准备报告参数
+        const reportParams = {
+          report_type: this.config.type,
+          class_id: this.config.classId,
+          student_id: this.config.studentId,
+          start_date: this.config.startDate,
+          end_date: this.config.endDate,
+          include_progress: this.config.includeProgress,
+          include_homework: this.config.includeHomework,
+          include_attendance: this.config.includeAttendance,
+          include_performance: this.config.includePerformance,
+          export_format: this.config.format
         }
-
+        
+        // 调用后端API生成报告
+        const response = await api.post('/reports/', reportParams)
+        
+        // 获取报告预览数据
+        const previewResponse = await api.get(`/reports/${response.data.id}/preview/`)
+        
+        // 更新报告数据
+        this.reportData = previewResponse.data
+        this.reportData.generatedAt = new Date().toLocaleString('zh-CN')
+        
+        // 更新历史报告列表
+        await this.loadHistoryReports()
+        
         alert('报告生成成功！')
       } catch (error) {
         console.error('生成报告失败:', error)
-        alert('生成报告失败，请重试')
+        alert('生成报告失败: ' + (error.response?.data?.error || error.message || error))
+      } finally {
+        this.loading = false
       }
     },
     getClassName() {

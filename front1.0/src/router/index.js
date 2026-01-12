@@ -63,7 +63,7 @@ const router = createRouter({
 })
 
 // 全局路由守卫
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from, next) => {
   // 设置页面标题
   document.title = to.meta.title || 'CodeBook+——交互式非计算机专业计算机教育数字教材平台'
   
@@ -149,6 +149,36 @@ router.beforeEach((to, from, next) => {
       }
       next({ path: '/', query: { redirect: to.fullPath } })
       return
+    }
+  }
+  
+  // 学生端权限控制：未加入任何班级的用户应被限制访问除班级加入功能外的其他系统功能
+  if (userRole === 'student' && requiresAuth) {
+    // 班级页面是允许访问的（用于加入班级）
+    if (to.path === '/student/class') {
+      next()
+      return
+    }
+    
+    try {
+      // 动态导入API，避免循环依赖
+      const { api } = await import('../student/api/api')
+      const classes = await api.getStudentClasses()
+      
+      // 检查是否加入了班级
+      if (!classes || classes.length === 0) {
+        if (import.meta.env.DEV) {
+          console.log('Student has no classes, redirecting to class page')
+        }
+        // 重定向到班级页面，提示加入班级
+        next('/student/class')
+        return
+      }
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        console.error('Failed to check student classes:', error)
+      }
+      // 如果检查失败，允许访问，但可能会在页面中显示错误
     }
   }
   

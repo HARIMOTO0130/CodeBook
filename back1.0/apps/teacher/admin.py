@@ -1,7 +1,7 @@
 from django.contrib import admin
 from .models import (
-    Class, Teacher, Student, Homework, StudentHomework, Notice, TeachingResource,
-    ClassResource, CourseDesign, StudentLearningProgress
+    Class, Teacher, Student, Homework, StudentHomework, Notice,
+    ClassResource, TeachingResource, CourseDesign, StudentLearningProgress
 )
 
 
@@ -41,8 +41,8 @@ class HomeworkAdmin(admin.ModelAdmin):
 
 @admin.register(StudentHomework)
 class StudentHomeworkAdmin(admin.ModelAdmin):
-    list_display = ['homework', 'student', 'score', 'status', 'submit_time', 'correct_time']
-    list_filter = ['status', 'submit_time', 'correct_time']
+    list_display = ['homework', 'student', 'score', 'status', 'submit_time', 'grade_time']
+    list_filter = ['status', 'submit_time', 'grade_time']
     search_fields = ['homework__homework_name', 'student__student_name']
 
 
@@ -55,9 +55,9 @@ class NoticeAdmin(admin.ModelAdmin):
 
 @admin.register(TeachingResource)
 class TeachingResourceAdmin(admin.ModelAdmin):
-    list_display = ['resource_name', 'chapter', 'teacher', 'resource_type', 'upload_time']
-    list_filter = ['chapter', 'resource_type', 'upload_time']
-    search_fields = ['resource_name', 'resource_desc', 'teacher__username']
+    list_display = ['title', 'teacher', 'resource_type', 'category', 'created_at']
+    list_filter = ['resource_type', 'category', 'is_public', 'created_at']
+    search_fields = ['title', 'description', 'teacher__username']
 
 
 @admin.register(ClassResource)

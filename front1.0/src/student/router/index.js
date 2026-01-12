@@ -13,6 +13,13 @@ const PracticeView = () => import('../views/PracticeView.vue')
 const JupyterNotebookView = () => import('../views/JupyterNotebookView.vue')
 const JupyterDocumentsListView = () => import('../views/JupyterDocumentsListView.vue')
 
+// 新增视图组件导入
+const ClassView = () => import('../views/ClassView.vue')
+const HomeworksView = () => import('../views/HomeworksView.vue')
+const HomeworkDetailView = () => import('../views/HomeworkDetailView.vue')
+const ResourcesView = () => import('../views/ResourcesView.vue')
+const NoticesView = () => import('../views/NoticesView.vue')
+
 // 学生端路由配置
 const studentRoutes = [
   {
@@ -100,6 +107,41 @@ const studentRoutes = [
     component: JupyterNotebookView,
     meta: { title: '编辑Jupyter文档', requiresAuth: true, role: 'student' },
     props: true
+  },
+  // 新增班级相关路由
+  {
+    path: '/student/class',
+    name: 'StudentClass',
+    component: ClassView,
+    meta: { title: '我的班级', requiresAuth: true, role: 'student' }
+  },
+  // 新增作业相关路由
+  {
+    path: '/student/homeworks',
+    name: 'StudentHomeworks',
+    component: HomeworksView,
+    meta: { title: '我的作业', requiresAuth: true, role: 'student' }
+  },
+  {
+    path: '/student/homeworks/:homeworkId',
+    name: 'StudentHomeworkDetail',
+    component: HomeworkDetailView,
+    meta: { title: '作业详情', requiresAuth: true, role: 'student' },
+    props: true
+  },
+  // 新增资源相关路由
+  {
+    path: '/student/resources',
+    name: 'StudentResources',
+    component: ResourcesView,
+    meta: { title: '学习资源', requiresAuth: true, role: 'student' }
+  },
+  // 新增通知相关路由
+  {
+    path: '/student/notices',
+    name: 'StudentNotices',
+    component: NoticesView,
+    meta: { title: '通知消息', requiresAuth: true, role: 'student' }
   }
 ]
 

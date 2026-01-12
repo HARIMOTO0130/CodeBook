@@ -115,6 +115,11 @@
             </div>
           </div>
           
+          <div class="class-code-section" v-if="classItem.courseCode">
+            <div class="code-label">课程码</div>
+            <div class="code-value">{{ classItem.courseCode }}</div>
+          </div>
+          
           <div class="class-meta">
             <span class="meta-item">
               📅 创建于 {{ formatDate(classItem.createdAt) }}
@@ -339,7 +344,8 @@ export default {
           createdAt: cls.created_at || new Date().toISOString().split('T')[0],
           major: cls.major,
           grade: cls.grade,
-          description: cls.description
+          description: cls.description,
+          courseCode: cls.course_code || '' // 添加课程码字段
         }))
         
         // 基于实际映射后的班级数组长度设置班级总数
@@ -922,6 +928,29 @@ export default {
   height: 100%;
   border-radius: 4px;
   transition: width 0.5s ease;
+}
+
+.class-code-section {
+  margin-bottom: 16px;
+  padding: 12px;
+  background: #f8fafc;
+  border-radius: 8px;
+  border-left: 3px solid var(--primary-color, #667eea);
+}
+
+.code-label {
+  font-size: 12px;
+  color: #64748b;
+  margin-bottom: 4px;
+  font-weight: 500;
+}
+
+.code-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1e293b;
+  font-family: 'Courier New', monospace;
+  letter-spacing: 1px;
 }
 
 .class-meta {

@@ -14,8 +14,9 @@
       ></div>
       <div class="sidebar-header">
         <h3>我的笔记</h3>
-        <button class="new-note-btn" @click="createNewNote">
-          + 新建笔记
+        <button class="new-note-btn" @click="createNewNote" :disabled="isLoading">
+          <span v-if="isLoading">✍️ 创建中...</span>
+          <span v-else>+ 新建笔记</span>
         </button>
       </div>
       <div class="notes-filter">
@@ -65,9 +66,12 @@
           <input 
             type="text" 
             v-model="activeNote.title" 
-            class="note-title-input"
-            placeholder="笔记标题"
-            @input="saveNote"
+            class="note-title-input" 
+            placeholder="笔记标题" 
+            @input="autoSave"
+            @focus="saveStatus.value = '正在编辑...'"
+            @blur="autoSave"
+            ref="titleInput"
           />
           
           <!-- 笔记工具栏 -->
@@ -125,8 +129,13 @@
         </div>
       </div>
       <div v-else class="no-note-selected">
-        <p>选择一个笔记或创建新笔记开始编辑</p>
-        <p>调试信息: activeNote = {{ activeNote }}, activeNoteIndex = {{ activeNoteIndex }}</p>
+        <div class="empty-note-icon">📝</div>
+        <h3>没有选中笔记</h3>
+        <p>请从左侧选择一个现有笔记或创建新笔记开始编辑</p>
+        <button class="btn btn-primary create-note-btn" @click="createNewNote" :disabled="isLoading">
+          <span v-if="isLoading">✍️ 创建中...</span>
+          <span v-else>+ 创建新笔记</span>
+        </button>
       </div>
     </div>
     
@@ -207,9 +216,20 @@ import { api } from '../api/api.js'
 const quillOptions = {
   theme: 'snow',
   modules: {
-    toolbar: false
+    toolbar: false,
+    // 添加性能优化配置
+    history: {
+      delay: 2000, // 延迟记录历史记录，提高输入性能
+      maxStack: 50, // 最大历史记录数量
+      userOnly: true // 只记录用户操作
+    }
   },
-  placeholder: '开始记录你的学习笔记...'
+  placeholder: '开始记录你的学习笔记...',
+  // 性能优化：禁用不必要的格式检测
+  formats: [
+    'bold', 'italic', 'underline', 'strike',
+    'list', 'bullet', 'code-block', 'image'
+  ]
 }
 
 export default {
@@ -233,6 +253,7 @@ export default {
   setup(props) {
     // 编辑器引用
     const editor = ref(null)
+    const titleInput = ref(null)
     let quill = null
     let saveTimer = null
     
@@ -401,21 +422,41 @@ export default {
     const selectNote = (index) => {
       console.log('选择笔记 - 索引:', index)
       console.log('选择笔记 - filteredNotes数组:', filteredNotes.value)
-      console.log('选择笔记 - 要选择的笔记:', filteredNotes.value[index])
+      
+      // 验证索引和数组有效性
+      if (index < 0 || index >= filteredNotes.value.length) {
+        console.error('选择笔记 - 无效索引:', index)
+        return
+      }
+      
+      const noteToSelect = filteredNotes.value[index]
+      if (!noteToSelect) {
+        console.error('选择笔记 - 笔记不存在:', noteToSelect)
+        return
+      }
+      
+      console.log('选择笔记 - 要选择的笔记:', noteToSelect)
       
       activeNoteIndex.value = index
-      activeNote.value = { ...filteredNotes.value[index] } // 深拷贝，避免直接修改
+      activeNote.value = { ...noteToSelect } // 深拷贝，避免直接修改
       
       console.log('选择笔记 - activeNote:', activeNote.value)
       console.log('选择笔记 - activeNote.id:', activeNote.value.id)
       
+      // 确保content字段存在
+      if (!activeNote.value.content) {
+        activeNote.value.content = ''
+      }
+      
       // 初始化编辑器内容
-      if (quill) {
+      if (quill && activeNote.value) {
         quill.root.innerHTML = activeNote.value.content
       }
       
       // 获取版本历史
-      fetchVersions(activeNote.value.id)
+      if (activeNote.value.id) {
+        fetchVersions(activeNote.value.id)
+      }
     }
     
     // 保存笔记
@@ -632,9 +673,21 @@ export default {
     // 自动保存
     const autoSave = () => {
       clearTimeout(saveTimer)
-      saveTimer = setTimeout(() => {
-        saveNote()
-      }, 2000) // 2秒后自动保存
+      saveTimer = setTimeout(async () => {
+        // 优化体验：添加保存状态提示
+        if (activeNote.value) {
+          saveStatus.value = '正在保存...'
+          try {
+            await saveNote()
+          } catch (error) {
+            console.error('自动保存失败:', error)
+            saveStatus.value = '保存失败'
+            setTimeout(() => {
+              saveStatus.value = ''
+            }, 3000)
+          }
+        }
+      }, 3000) // 3秒后自动保存，减少API请求频率
     }
     
     // 检查笔记ID是否有效
@@ -978,6 +1031,7 @@ export default {
     
     return {
       editor,
+      titleInput,
       notes,
       filteredNotes,
       tags,
@@ -1093,19 +1147,33 @@ export default {
 .new-note-btn {
   background: var(--primary-color);
   color: white;
-  border: none;
+  border: 2px solid var(--primary-color);
   padding: 8px 16px;
   border-radius: var(--border-radius);
   font-size: 14px;
   cursor: pointer;
   transition: var(--transition);
   box-shadow: 0 2px 4px rgba(64, 158, 255, 0.2);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .new-note-btn:hover {
   background: #66b1ff;
+  border-color: #66b1ff;
   box-shadow: 0 4px 8px rgba(64, 158, 255, 0.3);
   transform: translateY(-1px);
+}
+
+.new-note-btn:disabled {
+  background: var(--info-color);
+  border-color: var(--info-color);
+  cursor: not-allowed;
+  opacity: 0.7;
+  transform: none;
+  box-shadow: none;
 }
 
 /* 笔记过滤 */
@@ -1436,6 +1504,74 @@ export default {
 }
 
 /* 富文本编辑器内容区域 */
+
+/* 没有选中笔记时的空状态 */
+.no-note-selected {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  max-height: 100%;
+  text-align: center;
+  padding: 20px;
+  background-color: #fff;
+  margin: 10px;
+  border-radius: var(--border-radius);
+  box-shadow: var(--box-shadow);
+  color: var(--text-color-secondary);
+}
+
+.empty-note-icon {
+  font-size: 64px;
+  margin-bottom: 20px;
+  opacity: 0.6;
+}
+
+.no-note-selected h3 {
+  font-size: 24px;
+  font-weight: 600;
+  margin-bottom: 10px;
+  color: var(--text-color);
+}
+
+.no-note-selected p {
+  font-size: 16px;
+  margin-bottom: 30px;
+  max-width: 500px;
+  line-height: 1.6;
+}
+
+.create-note-btn {
+  background: var(--primary-color);
+  color: white;
+  border: 2px solid var(--primary-color);
+  padding: 12px 24px;
+  border-radius: var(--border-radius);
+  font-size: 16px;
+  cursor: pointer;
+  transition: var(--transition);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.create-note-btn:hover {
+  background: #66b1ff;
+  border-color: #66b1ff;
+  box-shadow: 0 4px 8px rgba(64, 158, 255, 0.3);
+  transform: translateY(-1px);
+}
+
+.create-note-btn:disabled {
+  background: var(--info-color);
+  border-color: var(--info-color);
+  cursor: not-allowed;
+  opacity: 0.7;
+  transform: none;
+  box-shadow: none;
+}
 .note-content-editor {
   flex: 1;
   min-height: 150px;

@@ -81,64 +81,7 @@
 
     <!-- 主要内容区 -->
     <div class="dashboard-content">
-      <!-- 左侧 - 待办事项和近期活动 -->
-      <div class="content-left">
-        <!-- 作业管理 -->
-        <div class="card todo-card">
-          <div class="card-header">
-            <h2>作业管理</h2>
-            <button class="view-all-btn" @click="goToAssignments">查看全部 →</button>
-          </div>
-          <div class="todo-list">
-            <div 
-              v-for="todo in todos" 
-              :key="todo.id" 
-              class="todo-item"
-              :class="{ completed: todo.completed }"
-            >
-              <div class="todo-checkbox" @click="toggleTodo(todo)">
-                <span v-if="todo.completed">✅</span>
-                <span v-else>📝</span>
-              </div>
-              <div class="todo-content">
-                <p class="todo-title">{{ todo.title }}</p>
-                <span class="todo-meta">{{ todo.class }} · {{ todo.time }}</span>
-              </div>
-              <span class="todo-priority" :class="todo.priority">{{ todo.priority }}</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- 近期活动 -->
-        <div class="card activity-card">
-          <div class="card-header">
-            <h2>近期活动</h2>
-            <span class="activity-filter">
-              <select v-model="activityFilter">
-                <option value="all">全部</option>
-                <option value="homework">作业</option>
-                <option value="class">班级</option>
-                <option value="resource">资源</option>
-              </select>
-            </span>
-          </div>
-          <div class="activity-list">
-            <div 
-              v-for="activity in filteredActivities" 
-              :key="activity.id" 
-              class="activity-item"
-            >
-              <div class="activity-icon">{{ activity.icon }}</div>
-              <div class="activity-content">
-                <p class="activity-text">{{ activity.text }}</p>
-                <span class="activity-time">{{ activity.time }}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 右侧 - 班级概览和快捷入口 -->
+      <!-- 班级概览和快捷入口 -->
       <div class="content-right">
         <!-- 班级概览 -->
         <div class="card class-overview-card">
@@ -200,31 +143,6 @@
             >
               <div class="feature-icon">{{ feature.icon }}</div>
               <span class="feature-name">{{ feature.name }}</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- 学习进度提醒 -->
-        <div class="card progress-alert-card">
-          <div class="card-header">
-            <h2>进度提醒</h2>
-          </div>
-          <div class="alert-list">
-            <div 
-              v-for="alert in progressAlerts" 
-              :key="alert.id" 
-              class="alert-item"
-            >
-              <div class="alert-icon" :class="alert.type">
-                {{ alert.type === 'warning' ? '⚠️' : '📢' }}
-              </div>
-              <div class="alert-content">
-                <p>{{ alert.message }}</p>
-                <span class="alert-class">{{ alert.className }}</span>
-              </div>
-              <button class="alert-action" @click="handleAlert(alert)">
-                查看
-              </button>
             </div>
           </div>
         </div>
@@ -398,16 +316,16 @@ export default {
             const now = new Date()
             todos.value = assignmentsRes.data
               .filter(a => {
-                const dueDate = new Date(a.due_date)
+                const dueDate = new Date(a.end_time)
                 return dueDate > now && dueDate - now < 7 * 24 * 60 * 60 * 1000 // 7天内截止
               })
               .slice(0, 5)
               .map(a => ({
                 id: a.id,
-                title: `批改「${a.title}」作业`,
-                class: a.classes?.[0]?.name || '',
-                time: formatDueTime(a.due_date),
-                priority: getPriority(a.due_date),
+                title: `批改「${a.homework_name}」作业`,
+                class: a.class_name || '',
+                time: formatDueTime(a.end_time),
+                priority: getPriority(a.end_time),
                 completed: false
               }))
           }
@@ -754,16 +672,19 @@ export default {
 
 /* 内容区 */
 .dashboard-content {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: flex;
   gap: 24px;
 }
 
-.content-left,
 .content-right {
   display: flex;
-  flex-direction: column;
   gap: 24px;
+  width: 100%;
+}
+
+.content-right .card {
+  flex: 1;
+  min-width: 0;
 }
 
 /* 卡片通用样式 */
@@ -1095,7 +1016,11 @@ export default {
   }
   
   .dashboard-content {
-    grid-template-columns: 1fr;
+    flex-direction: column;
+  }
+  
+  .content-right {
+    flex-direction: column;
   }
 }
 

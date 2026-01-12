@@ -27,6 +27,9 @@
         
         <!-- 学生端导航 - 只在学生端路由显示 -->
         <template v-else-if="navType === 'student'">
+          <router-link to="/student/class" class="nav-item">
+            👥 我的班级
+          </router-link>
           <router-link to="/student/profile/records" class="nav-item">
               📊 学习记录
             </router-link>
@@ -116,8 +119,12 @@
     <!-- 遮罩层 -->
     <div v-if="notesOpen" class="drawer-overlay" @click="toggleNotes"></div>
     
-    <!-- AI学习助手（全局显示且支持拖拽） -->
-    <div class="ai-assistant" :style="chatPosition" v-if="showAssistant">
+    <!-- AI学习助手（根据路由类型显示不同的AI助手） -->
+    <!-- 教师端AI助手 -->
+    <TeacherAIAssistant v-if="isTeacherRoute" />
+    
+    <!-- 其他端AI学习助手 -->
+    <div class="ai-assistant" :style="chatPosition" v-else-if="showAssistant">
       <div class="assistant-chat" :class="{ minimized: isMinimized }">
         <div class="assistant-header" 
              @mousedown="handleDragStart" 
@@ -194,12 +201,14 @@ import { useRouter, useRoute } from 'vue-router'
 import { api } from './api/api.js'
 import NotesComponent from './student/components/NotesComponent.vue'
 import WrongQuestionsComponent from './student/components/WrongQuestionsComponent.vue'
+import TeacherAIAssistant from './teacher/components/TeacherAIAssistant.vue'
 
 export default {
   name: 'App',
   components: {
     NotesComponent,
-    WrongQuestionsComponent
+    WrongQuestionsComponent,
+    TeacherAIAssistant
   },
   setup() {
     const router = useRouter()

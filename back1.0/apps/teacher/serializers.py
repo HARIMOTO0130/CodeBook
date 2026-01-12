@@ -2,9 +2,9 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.db import models
 from .models import (
-    Class, Student, StudentLearningProgress, Homework, StudentHomework,
+    Class, Student, StudentClass, StudentLearningProgress, Homework, StudentHomework,
     Notice, StudentNoticeRead, ClassResource, TeachingResource,
-    CourseDesign, TeacherSetting
+    CourseDesign, TeacherSetting, Report
 )
 from apps.books.models import Book, Chapter
 
@@ -27,7 +27,7 @@ class ChapterSimpleSerializer(serializers.ModelSerializer):
 
 class StudentSerializer(serializers.ModelSerializer):
     """学生序列化器"""
-    class_name = serializers.CharField(source='class_name', read_only=True)
+    class_name = serializers.CharField(read_only=True)
     progress = serializers.SerializerMethodField()
     avg_score = serializers.SerializerMethodField()
     submission_count = serializers.SerializerMethodField()
@@ -146,10 +146,10 @@ class ClassSerializer(serializers.ModelSerializer):
         model = Class
         fields = [
             'id', 'name', 'teacher', 'teacher_name', 'book', 'book_id', 'book_title',
-            'major', 'grade', 'description', 'status', 'student_count',
+            'major', 'grade', 'description', 'status', 'student_count', 'course_code',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'teacher', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'teacher', 'created_at', 'updated_at', 'course_code']
     
     def validate(self, data):
         """验证数据，确保不会违反unique_together约束"""
@@ -182,6 +182,45 @@ class ClassSerializer(serializers.ModelSerializer):
         return data
 
 
+class StudentClassSerializer(serializers.ModelSerializer):
+    """学生班级关系序列化器"""
+    class_obj = ClassSerializer(read_only=True)
+    class_id = serializers.PrimaryKeyRelatedField(source='class_obj', queryset=Class.objects.all(), write_only=True)
+    
+    class Meta:
+        model = StudentClass
+        fields = ['id', 'student', 'class_obj', 'class_id', 'is_active', 'joined_at']
+        read_only_fields = ['id', 'student', 'joined_at']
+
+
+class ReportSerializer(serializers.ModelSerializer):
+    """报告序列化器"""
+    class_name = serializers.CharField(source='class_obj.name', read_only=True)
+    student_name = serializers.SerializerMethodField(read_only=True)
+    student_no = serializers.SerializerMethodField(read_only=True)
+    
+    class Meta:
+        model = Report
+        fields = [
+            'id', 'title', 'report_type', 'class_obj', 'class_name', 'student', 
+            'student_name', 'student_no', 'start_date', 'end_date', 
+            'include_progress', 'include_homework', 'include_attendance', 
+            'include_performance', 'export_format', 'report_data', 'file_path', 
+            'status', 'generated_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'generated_at', 'updated_at']
+    
+    def get_student_name(self, obj):
+        if obj.student:
+            return obj.student.student_name
+        return ''
+    
+    def get_student_no(self, obj):
+        if obj.student:
+            return obj.student.student_no
+        return ''
+
+
 class ClassDetailSerializer(serializers.ModelSerializer):
     """班级详情序列化器"""
     teacher_name = serializers.CharField(source='teacher.username', read_only=True)
@@ -194,7 +233,7 @@ class ClassDetailSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'teacher', 'teacher_name', 'book',
             'major', 'grade', 'description', 'status', 'students',
-            'student_count', 'created_at', 'updated_at'
+            'student_count', 'course_code', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'teacher', 'created_at', 'updated_at']
 
@@ -237,18 +276,38 @@ class HomeworkSerializer(serializers.ModelSerializer):
 
 class StudentHomeworkSerializer(serializers.ModelSerializer):
     """学生作业提交序列化器"""
-    student_name = serializers.CharField(source='student.student_name', read_only=True)
-    student_no = serializers.CharField(source='student.student_no', read_only=True)
-    homework_name = serializers.CharField(source='homework.homework_name', read_only=True)
+    student_name = serializers.SerializerMethodField(read_only=True)
+    student_no = serializers.SerializerMethodField(read_only=True)
+    homework_name = serializers.SerializerMethodField(read_only=True)
     
     class Meta:
         model = StudentHomework
         fields = [
             'id', 'homework', 'homework_name', 'student', 'student_name', 'student_no',
-            'submit_content', 'submit_file_url', 'submit_time', 'correct_time',
-            'score', 'correct_comment', 'correct_teacher', 'status'
+            'submit_content', 'score', 'feedback', 'submit_time', 'grade_time', 'status'
         ]
-        read_only_fields = ['id', 'submit_time']
+        read_only_fields = ['id', 'submit_time', 'grade_time']
+    
+    def get_student_name(self, obj):
+        """安全获取学生姓名"""
+        try:
+            return obj.student.student_name if obj.student else '未知学生'
+        except AttributeError:
+            return '未知学生'
+    
+    def get_student_no(self, obj):
+        """安全获取学号"""
+        try:
+            return obj.student.student_no if obj.student else '未知学号'
+        except AttributeError:
+            return '未知学号'
+    
+    def get_homework_name(self, obj):
+        """安全获取作业名称"""
+        try:
+            return obj.homework.homework_name if obj.homework else '未知作业'
+        except AttributeError:
+            return '未知作业'
 
 
 class NoticeSerializer(serializers.ModelSerializer):
@@ -256,11 +315,15 @@ class NoticeSerializer(serializers.ModelSerializer):
     teacher_name = serializers.CharField(source='teacher.username', read_only=True)
     class_name = serializers.CharField(source='class_obj.name', read_only=True, allow_null=True)
     
+    # 确保is_important和type字段有默认值
+    type = serializers.ChoiceField(choices=Notice.NOTICE_TYPE_CHOICES, default='announcement')
+    is_important = serializers.BooleanField(default=False)
+    
     class Meta:
         model = Notice
         fields = [
             'id', 'teacher', 'teacher_name', 'class_obj', 'class_name',
-            'notice_title', 'notice_content', 'publish_time', 'expire_time',
+            'notice_title', 'notice_content', 'type', 'is_important', 'publish_time', 'expire_time',
             'read_count', 'status'
         ]
         read_only_fields = ['id', 'teacher', 'publish_time', 'read_count']
@@ -290,24 +353,74 @@ class ClassResourceSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'class_obj', 'class_name', 'teacher', 'teacher_name',
             'resource_name', 'resource_type', 'resource_url', 'upload_time',
-            'download_count', 'resource_desc'
+            'download_count', 'resource_desc',
+            'file_size', 'file_hash', 'upload_status', 'storage_path',
+            'mime_type', 'upload_ip', 'retry_count'
         ]
-        read_only_fields = ['id', 'teacher', 'upload_time', 'download_count']
+        read_only_fields = [
+            'id', 'teacher', 'upload_time', 'download_count',
+            'file_hash', 'upload_status', 'storage_path', 'mime_type',
+            'upload_ip', 'retry_count'
+        ]
 
 
 class TeachingResourceSerializer(serializers.ModelSerializer):
     """教学资源序列化器"""
-    teacher_name = serializers.CharField(source='teacher.username', read_only=True)
-    chapter_title = serializers.CharField(source='chapter.title', read_only=True)
+    teacher_name = serializers.CharField(source='teacher.teacher_name', read_only=True)
+    
+    # 明确字段定义，确保验证正确
+    title = serializers.CharField(max_length=200, required=True)
+    description = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    file = serializers.CharField(required=True, allow_blank=False)
+    resource_type = serializers.CharField(max_length=20, required=True)
+    category = serializers.CharField(max_length=100, required=False, allow_blank=True, allow_null=True)
+    is_public = serializers.BooleanField(required=False, default=True)
+    file_size = serializers.IntegerField(required=False, allow_null=True, min_value=0)
+    # 将teacher字段标记为read_only，因为我们会在save时自动设置它
+    teacher = serializers.PrimaryKeyRelatedField(read_only=True)
     
     class Meta:
         model = TeachingResource
         fields = [
-            'id', 'chapter', 'chapter_title', 'teacher', 'teacher_name',
-            'resource_name', 'resource_type', 'resource_url', 'upload_time',
-            'resource_desc'
+            'id', 'title', 'description', 'file', 'resource_type', 'category',
+            'is_public', 'file_size', 'created_at', 'updated_at',
+            'teacher', 'teacher_name',
+            'file_hash', 'upload_status', 'storage_path',
+            'mime_type', 'upload_ip', 'retry_count'
         ]
-        read_only_fields = ['id', 'teacher', 'upload_time']
+        read_only_fields = [
+            'id', 'created_at', 'updated_at',
+            'teacher', 'file_hash', 'upload_status', 'storage_path',
+            'mime_type', 'upload_ip', 'retry_count'
+        ]
+    
+    def validate_resource_type(self, value):
+        """验证资源类型"""
+        if not value:
+            return 'other'
+        # 确保resource_type长度不超过20
+        if len(value) > 20:
+            return value[:20]
+        return value
+    
+    def validate_category(self, value):
+        """验证分类"""
+        if value == '' or value is None:
+            return None
+        # 确保category长度不超过100
+        if len(value) > 100:
+            return value[:100]
+        return value
+    
+    def validate_file_size(self, value):
+        """验证文件大小"""
+        if value is None:
+            return None
+        # 确保是整数类型
+        try:
+            return int(value)
+        except (ValueError, TypeError):
+            return None
 
 
 class CourseDesignSerializer(serializers.ModelSerializer):

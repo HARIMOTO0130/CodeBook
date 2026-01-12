@@ -615,8 +615,23 @@ export const api = {
     return httpGet('/learning/heatmap/', true);
   },
   async executeCode({ language, code, input = '' }) {
-    // 正确的API路径是/learning/execute/
-    return httpPost('/learning/execute/', { language, code, input }, true);
+    // 使用直接的API路径，不依赖API_BASE_URL
+    const fullUrl = 'http://127.0.0.1:8000/api/learning/execute/';
+    const headers = {
+      'Content-Type': 'application/json',
+      ...authHeaders()
+    };
+    const res = await fetch(fullUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ language, code, input }),
+      credentials: 'omit'
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ message: `请求失败: ${res.status}` }));
+      throw new Error(error.message || `请求失败: ${res.status}`);
+    }
+    return res.json();
   },
   
   // 错题本相关API
@@ -1120,5 +1135,272 @@ export const api = {
       console.error('生成个性化学习建议失败:', error);
       throw error;
     }
+  },
+  
+  // 学生端班级相关API
+  async getStudentClasses() {
+    // 获取学生所在的所有班级
+    const teacherApiUrl = 'http://127.0.0.1:8000/api/teacher/student-side/classes/';
+    const headers = {
+      'Content-Type': 'application/json; charset=utf-8'
+    };
+    if (true) { // requireAuth
+      const authHeader = authHeaders();
+      Object.assign(headers, authHeader);
+    }
+    const res = await fetch(teacherApiUrl, { method: 'GET', headers, credentials: 'omit' });
+    if ((res.status === 401 || res.status === 403) && true) {
+      try { localStorage.removeItem('token') } catch {};
+      window.location.href = '/user/login';
+    }
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({ error: '网络错误' }));
+      throw new Error(errorData.error || `请求失败: ${res.status}`);
+    }
+    return await res.json();
+  },
+  
+  async searchClasses(keyword) {
+    // 搜索班级
+    const teacherApiUrl = `http://127.0.0.1:8000/api/teacher/student-side/classes/search/?keyword=${encodeURIComponent(keyword)}`;
+    const headers = {
+      'Content-Type': 'application/json; charset=utf-8'
+    };
+    if (true) { // requireAuth
+      const authHeader = authHeaders();
+      Object.assign(headers, authHeader);
+    }
+    const res = await fetch(teacherApiUrl, { method: 'GET', headers, credentials: 'omit' });
+    if ((res.status === 401 || res.status === 403) && true) {
+      try { localStorage.removeItem('token') } catch {};
+      window.location.href = '/user/login';
+    }
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({ error: '网络错误' }));
+      throw new Error(errorData.error || `请求失败: ${res.status}`);
+    }
+    return await res.json();
+  },
+  
+  async joinClass(classId) {
+    // 加入班级
+    const teacherApiUrl = 'http://127.0.0.1:8000/api/teacher/student-side/classes/join/';
+    const headers = {
+      'Content-Type': 'application/json; charset=utf-8'
+    };
+    if (true) { // requireAuth
+      const authHeader = authHeaders();
+      Object.assign(headers, authHeader);
+    }
+    const res = await fetch(teacherApiUrl, { 
+      method: 'POST', 
+      headers, 
+      body: JSON.stringify({ class_id: classId }),
+      credentials: 'omit' 
+    });
+    if ((res.status === 401 || res.status === 403) && true) {
+      try { localStorage.removeItem('token') } catch {};
+      window.location.href = '/user/login';
+    }
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({ error: '网络错误' }));
+      throw new Error(errorData.error || `请求失败: ${res.status}`);
+    }
+    return await res.json();
+  },
+  
+  async joinClassByCode(courseCode) {
+    // 通过课程码加入班级
+    const teacherApiUrl = 'http://127.0.0.1:8000/api/teacher/student-side/classes/join-by-code/';
+    const headers = {
+      'Content-Type': 'application/json; charset=utf-8'
+    };
+    if (true) { // requireAuth
+      const authHeader = authHeaders();
+      Object.assign(headers, authHeader);
+    }
+    const res = await fetch(teacherApiUrl, { 
+      method: 'POST', 
+      headers, 
+      body: JSON.stringify({ course_code: courseCode }),
+      credentials: 'omit' 
+    });
+    if ((res.status === 401 || res.status === 403) && true) {
+      try { localStorage.removeItem('token') } catch {};
+      window.location.href = '/user/login';
+    }
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({ error: '网络错误' }));
+      throw new Error(errorData.error || `请求失败: ${res.status}`);
+    }
+    return await res.json();
+  },
+  
+  async leaveClass(classId) {
+    // 退出班级
+    const teacherApiUrl = 'http://127.0.0.1:8000/api/teacher/student-side/classes/leave/';
+    const headers = {
+      'Content-Type': 'application/json; charset=utf-8'
+    };
+    if (true) { // requireAuth
+      const authHeader = authHeaders();
+      Object.assign(headers, authHeader);
+    }
+    const res = await fetch(teacherApiUrl, { 
+      method: 'POST', 
+      headers, 
+      body: JSON.stringify({ class_id: classId }),
+      credentials: 'omit' 
+    });
+    if ((res.status === 401 || res.status === 403) && true) {
+      try { localStorage.removeItem('token') } catch {};
+      window.location.href = '/user/login';
+    }
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({ error: '网络错误' }));
+      throw new Error(errorData.error || `请求失败: ${res.status}`);
+    }
+    return await res.json();
+  },
+  
+  // 学生端作业相关API
+  async getStudentHomeworks() {
+    // 直接使用教师端API路径
+    const teacherApiUrl = 'http://127.0.0.1:8000/api/teacher/student-side/homeworks/';
+    const headers = {
+      'Content-Type': 'application/json; charset=utf-8'
+    };
+    if (true) { // requireAuth
+      const authHeader = authHeaders();
+      Object.assign(headers, authHeader);
+    }
+    const res = await fetch(teacherApiUrl, { method: 'GET', headers, credentials: 'omit' });
+    if ((res.status === 401 || res.status === 403) && true) {
+      try { localStorage.removeItem('token') } catch {};
+      window.location.href = '/user/login';
+    }
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({ error: '网络错误' }));
+      throw new Error(errorData.error || `请求失败: ${res.status}`);
+    }
+    return await res.json();
+  },
+  
+  async getStudentHomeworkDetail(homeworkId) {
+    // 直接使用教师端API路径
+    const teacherApiUrl = `http://127.0.0.1:8000/api/teacher/student-side/homeworks/${homeworkId}/`;
+    const headers = {
+      'Content-Type': 'application/json; charset=utf-8'
+    };
+    if (true) { // requireAuth
+      const authHeader = authHeaders();
+      Object.assign(headers, authHeader);
+    }
+    const res = await fetch(teacherApiUrl, { method: 'GET', headers, credentials: 'omit' });
+    if ((res.status === 401 || res.status === 403) && true) {
+      try { localStorage.removeItem('token') } catch {};
+      window.location.href = '/user/login';
+    }
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({ error: '网络错误' }));
+      throw new Error(errorData.error || `请求失败: ${res.status}`);
+    }
+    return await res.json();
+  },
+  
+  async submitStudentHomework(homeworkId, content) {
+    // 直接使用教师端API路径
+    const teacherApiUrl = `http://127.0.0.1:8000/api/teacher/student-side/homeworks/${homeworkId}/submit/`;
+    const headers = {
+      'Content-Type': 'application/json'
+    };
+    const authHeader = authHeaders();
+    Object.assign(headers, authHeader);
+    const res = await fetch(teacherApiUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ content }),
+      credentials: 'omit'
+    });
+    if ((res.status === 401 || res.status === 403) && true) {
+      try { localStorage.removeItem('token') } catch {};
+      window.location.href = '/user/login';
+    }
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({ error: '网络错误' }));
+      throw new Error(errorData.error || `请求失败: ${res.status}`);
+    }
+    return await res.json();
+  },
+  
+  // 学生端资源相关API
+  async getStudentResources() {
+    // 直接使用教师端API路径
+    const teacherApiUrl = 'http://127.0.0.1:8000/api/teacher/student-side/resources/';
+    const headers = {
+      'Content-Type': 'application/json; charset=utf-8'
+    };
+    if (true) { // requireAuth
+      const authHeader = authHeaders();
+      Object.assign(headers, authHeader);
+    }
+    const res = await fetch(teacherApiUrl, { method: 'GET', headers, credentials: 'omit' });
+    if ((res.status === 401 || res.status === 403) && true) {
+      try { localStorage.removeItem('token') } catch {};
+      window.location.href = '/user/login';
+    }
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({ error: '网络错误' }));
+      throw new Error(errorData.error || `请求失败: ${res.status}`);
+    }
+    return await res.json();
+  },
+  
+  // 学生端通知相关API
+  async getStudentNotices() {
+    // 直接使用教师端API路径
+    const teacherApiUrl = 'http://127.0.0.1:8000/api/teacher/student-side/notices/';
+    const headers = {
+      'Content-Type': 'application/json; charset=utf-8'
+    };
+    if (true) { // requireAuth
+      const authHeader = authHeaders();
+      Object.assign(headers, authHeader);
+    }
+    const res = await fetch(teacherApiUrl, { method: 'GET', headers, credentials: 'omit' });
+    if ((res.status === 401 || res.status === 403) && true) {
+      try { localStorage.removeItem('token') } catch {};
+      window.location.href = '/user/login';
+    }
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({ error: '网络错误' }));
+      throw new Error(errorData.error || `请求失败: ${res.status}`);
+    }
+    return await res.json();
+  },
+  
+  async markNoticeAsRead(noticeId) {
+    // 直接使用教师端API路径
+    const teacherApiUrl = `http://127.0.0.1:8000/api/teacher/student-side/notices/${noticeId}/read/`;
+    const headers = {
+      'Content-Type': 'application/json'
+    };
+    const authHeader = authHeaders();
+    Object.assign(headers, authHeader);
+    const res = await fetch(teacherApiUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({}),
+      credentials: 'omit'
+    });
+    if ((res.status === 401 || res.status === 403) && true) {
+      try { localStorage.removeItem('token') } catch {};
+      window.location.href = '/user/login';
+    }
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({ error: '网络错误' }));
+      throw new Error(errorData.error || `请求失败: ${res.status}`);
+    }
+    return await res.json();
   }
 };

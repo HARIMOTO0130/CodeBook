@@ -182,7 +182,7 @@
             </div>
             
             <!-- 填空题 -->
-            <div v-else-if="currentQuestion.type === 'fill'" class="question-fill">
+            <div v-else-if="currentQuestion.type === 'fill' || currentQuestion.type === 'fillBlank'" class="question-fill">
               <div class="question-stem">
                 <h4>{{ currentQuestion.content }}</h4>
               </div>
@@ -336,7 +336,7 @@
             
             <div class="footer-center">
               <!-- 选择题/填空题/判断题按钮 -->
-              <template v-if="['choice', 'fill', 'Judgment'].includes(currentQuestion.type)">
+              <template v-if="['choice', 'fill', 'fillBlank', 'Judgment'].includes(currentQuestion.type)">
                 <button 
                   v-if="!showFeedback"
                   class="btn-primary"
@@ -533,13 +533,21 @@ export default {
         normalizedQuestion.content = normalizedQuestion.title || '题目'
       }
       
-      // 确保填空题始终有blanks数组（兼容fill_blanks字段）
-      if (normalizedQuestion.type === 'fill') {
+      // 确保填空题始终有blanks数组（兼容fill_blanks字段和fill_blank类型）
+      if (normalizedQuestion.type === 'fill' || normalizedQuestion.type === 'fill_blank' || normalizedQuestion.type === 'fillBlank') {
         if (normalizedQuestion.fill_blanks && Array.isArray(normalizedQuestion.fill_blanks)) {
           normalizedQuestion.blanks = normalizedQuestion.fill_blanks
         } else if (!normalizedQuestion.blanks) {
           normalizedQuestion.blanks = []
         }
+        
+        // 确保每个空位都有correctAnswer字段（兼容correct_answer字段）
+        normalizedQuestion.blanks = normalizedQuestion.blanks.map(blank => {
+          if (blank.correct_answer !== undefined && blank.correctAnswer === undefined) {
+            return { ...blank, correctAnswer: blank.correct_answer }
+          }
+          return blank
+        })
       }
       
       // 确保选择题有options数组（兼容choice_options字段）
@@ -607,10 +615,12 @@ export default {
           // 单选题/判断题：必须选中正确选项
           return selectedOptions.value[0] === currentQuestion.value.correctAnswer
         }
-      } else if (currentQuestion.value.type === 'fill') {
+      } else if (currentQuestion.value.type === 'fill' || currentQuestion.value.type === 'fillBlank') {
         // 填空题：所有空都要正确
         return currentQuestion.value.blanks.every((blank, index) => {
-          return userAnswers.value[index] === blank.correctAnswer
+          // 兼容correct_answer和correctAnswer字段
+          const correctAnswer = blank.correctAnswer || blank.correct_answer
+          return userAnswers.value[index] === correctAnswer
         })
       }
       return false
@@ -711,13 +721,14 @@ export default {
           if (correctAnswer === userAnswer) {
             correctCount++
           }
-        } else if (q.type === 'fill') {
+        } else if (q.type === 'fill' || q.type === 'fillBlank') {
           const blanks = q.blanks || []
           const userAnswers = q.userAnswers || []
           let allCorrect = true
           blanks.forEach((blank, idx) => {
             const userAnswer = userAnswers[idx] || ''
-            const correctAnswer = blank.correctAnswer || ''
+            // 兼容correct_answer和correctAnswer字段
+            const correctAnswer = blank.correctAnswer || blank.correct_answer || ''
             if (userAnswer.toLowerCase() !== correctAnswer.toLowerCase()) {
               allCorrect = false
             }
@@ -761,9 +772,17 @@ export default {
       if (question.type === 'choice' || question.type === 'judgment' || question.type === 'Judgment') {
         // 重做模式或没有保存的答案时，重置选项
         selectedOptions.value = isRedo ? [] : (question.selectedOption !== undefined ? [question.selectedOption] : [])
-      } else if (question.type === 'fill') {
+      } else if (question.type === 'fill' || question.type === 'fillBlank') {
         // 确保blanks数组存在且不为空
         const blanksCount = (question.blanks && question.blanks.length) || 0
+        console.log('📝 填空题初始化:', {
+          blanksCount: blanksCount,
+          hasBlanks: question.blanks !== undefined,
+          blanks: question.blanks,
+          isRedo: isRedo,
+          hasUserAnswers: question.userAnswers !== undefined,
+          userAnswers: question.userAnswers
+        })
         // 重做模式或没有保存的答案时，重置答案
         userAnswers.value = isRedo ? new Array(blanksCount).fill('') : (question.userAnswers || new Array(blanksCount).fill(''))
       } else if (question.type === 'codeCompletion') {
@@ -900,7 +919,9 @@ export default {
     const isFillAnswerCorrect = (index) => {
       const blanks = currentQuestion.value.blanks || []
       const blank = blanks[index]
-      return blank && userAnswers.value[index] === blank.correctAnswer
+      // 兼容correct_answer和correctAnswer字段
+      const correctAnswer = blank?.correctAnswer || blank?.correct_answer
+      return blank && userAnswers.value[index] === correctAnswer
     }
     
     // 提交答案（选择题/填空题/判断题）
@@ -938,7 +959,7 @@ export default {
         const correctAnswer = question.correctAnswer
         const userAnswer = question.selectedOption
         return correctAnswer === userAnswer
-      } else if (question.type === 'fill') {
+      } else if (question.type === 'fill' || question.type === 'fillBlank') {
         const blanks = question.blanks || []
         const userAnswers = question.userAnswers || []
         return blanks.every((blank, idx) => {
@@ -959,7 +980,7 @@ export default {
         const options = question.options || []
         const option = options[question.selectedOption]
         return option ? option.content : '未作答'
-      } else if (question.type === 'fill') {
+      } else if (question.type === 'fill' || question.type === 'fillBlank') {
         const userAnswers = question.userAnswers || []
         return userAnswers.length > 0 ? userAnswers.join(', ') : '未作答'
       } else if (question.type === 'codeCompletion' || question.type === 'programming') {
@@ -978,7 +999,7 @@ export default {
         }
         const option = options[correctAnswer]
         return option ? option.content : '未知'
-      } else if (question.type === 'fill') {
+      } else if (question.type === 'fill' || question.type === 'fillBlank') {
         const blanks = question.blanks || []
         return blanks.map(blank => blank.correctAnswer || '').join(', ')
       }

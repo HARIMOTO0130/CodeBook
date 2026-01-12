@@ -584,13 +584,11 @@ export default {
         for (const file of this.uploadFiles) {
           const formData = new FormData()
           formData.append('file', file)
-          formData.append('resource_name', file.name)
-          formData.append('resource_desc', this.uploadData.description || '')
+          formData.append('title', file.name)
+          formData.append('description', this.uploadData.description || '')
           formData.append('resource_type', this.getResourceType(file))
-          
-          // 从uploadData中获取章节ID，默认为1
-          const chapterId = this.uploadData.chapterId || 1
-          formData.append('chapter_id', chapterId)
+          formData.append('is_public', true)
+          formData.append('category', this.uploadData.folderId || '')
           
           // 使用正确的API方法上传教学资源
           await resourceApi.uploadTeachingResource(formData)
@@ -602,8 +600,37 @@ export default {
         this.loadResources()
       } catch (error) {
         console.error('上传失败:', error)
-        const errorMessage = error.response?.data?.error || error.message || '上传失败，请重试'
-        alert(`上传失败: ${errorMessage}`)
+        console.error('错误详情:', error.response?.data)
+        let errorMessage = '上传失败，请重试'
+        
+        if (error.response?.data) {
+          const errorData = error.response.data
+          
+          // 优先使用message字段
+          if (errorData.message) {
+            errorMessage = errorData.message
+          } else if (errorData.error) {
+            errorMessage = errorData.error
+          }
+          
+          // 如果有details，添加详细信息
+          if (errorData.details) {
+            const detailsStr = typeof errorData.details === 'string' 
+              ? errorData.details 
+              : JSON.stringify(errorData.details, null, 2)
+            errorMessage += '\n\n详细信息:\n' + detailsStr
+          }
+          
+          // 如果有resource_data（调试信息），也显示
+          if (errorData.resource_data) {
+            console.log('资源数据:', errorData.resource_data)
+          }
+        } else if (error.message) {
+          errorMessage = error.message
+        }
+        
+        // 显示更友好的错误提示
+        alert(`上传资源失败:\n${errorMessage}`)
       }
     },
     getResourceType(file) {
@@ -653,16 +680,16 @@ export default {
           }
         }
         
-        // 映射资源数据
+        // 映射资源数据，使用新的字段名称
         this.resources = resourcesList.map(item => ({
           id: item.id,
-          name: item.resource_name || '未命名资源',
+          name: item.title || '未命名资源',
           type: item.resource_type || 'other',
-          size: 0, // 后端未返回文件大小
-          uploadTime: item.upload_time || new Date().toISOString(),
+          size: item.file_size || 0, // 使用file_size字段获取文件大小
+          uploadTime: item.created_at || new Date().toISOString(), // 使用created_at字段
           views: 0, // 后端未返回浏览次数
-          downloads: item.download_count || 0,
-          folderId: '', // 后端未支持分类
+          downloads: 0, // 后端未返回下载次数
+          folderId: item.category || '', // 使用category字段作为分类
           classId: '' // 教学资源不属于特定班级
         }))
         

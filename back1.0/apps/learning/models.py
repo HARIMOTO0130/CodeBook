@@ -666,3 +666,86 @@ class PromptTemplate(models.Model):
     
     def __str__(self):
         return self.name
+
+
+class AIInteractionRecord(models.Model):
+    """AI交互记录模型 - 存储用户与AI助手的交互历史"""
+    INTERACTION_TYPE_CHOICES = [
+        ('question', '提问'),
+        ('code_completion', '代码补全'),
+        ('explanation', '解释说明'),
+        ('other', '其他'),
+    ]
+    
+    id = models.AutoField(primary_key=True, verbose_name='记录ID')
+    user = models.ForeignKey(
+        User, 
+        on_delete=models.CASCADE, 
+        related_name='ai_interactions', 
+        verbose_name='用户',
+        db_index=True
+    )
+    interaction_type = models.CharField(
+        max_length=50, 
+        choices=INTERACTION_TYPE_CHOICES, 
+        default='question',
+        verbose_name='交互类型',
+        db_index=True
+    )
+    user_input = models.TextField(verbose_name='用户输入内容')
+    ai_response = models.TextField(verbose_name='AI回复内容')
+    session_id = models.CharField(
+        max_length=100, 
+        blank=True, 
+        null=True, 
+        verbose_name='会话ID',
+        db_index=True,
+        help_text='用于关联同一会话的多次交互'
+    )
+    context = models.JSONField(
+        default=dict, 
+        blank=True, 
+        null=True, 
+        verbose_name='上下文信息',
+        help_text='存储额外的上下文信息，如代码语言、章节信息等'
+    )
+    response_time = models.FloatField(
+        blank=True, 
+        null=True, 
+        verbose_name='响应时间(秒)',
+        help_text='AI响应耗时'
+    )
+    tokens_used = models.IntegerField(
+        default=0, 
+        verbose_name='使用的Token数量'
+    )
+    is_satisfied = models.BooleanField(
+        default=None, 
+        null=True, 
+        blank=True,
+        verbose_name='用户满意度',
+        help_text='用户对回复的满意度评价'
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True, 
+        verbose_name='创建时间',
+        db_index=True
+    )
+    updated_at = models.DateTimeField(
+        auto_now=True, 
+        verbose_name='更新时间'
+    )
+    
+    class Meta:
+        db_table = 'ai_interaction_record'
+        verbose_name = 'AI交互记录'
+        verbose_name_plural = 'AI交互记录'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', '-created_at']),
+            models.Index(fields=['user', 'session_id']),
+            models.Index(fields=['user', 'interaction_type', '-created_at']),
+        ]
+    
+    def __str__(self):
+        return f"{self.user.username} - {self.interaction_type} - {self.created_at.strftime('%Y-%m-%d %H:%M:%S')}"

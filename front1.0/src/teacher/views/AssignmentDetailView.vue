@@ -182,11 +182,11 @@ export default {
           description: assignmentData.homework_content || '暂无说明',
           due_date: assignmentData.end_time || null,
           total_score: assignmentData.total_score || 100,
-          // 处理班级数据
-          classes: assignmentData.class_obj && assignmentData.class_obj.id ? [{
-            id: assignmentData.class_obj.id,
-            name: assignmentData.class_obj.name || '未知班级',
-            student_count: assignmentData.class_obj.student_count || 0
+          // 处理班级数据 - class_obj是班级ID，不是完整对象
+          classes: assignmentData.class_obj ? [{
+            id: assignmentData.class_obj,
+            name: assignmentData.class_name || '未知班级',
+            student_count: 0  // 暂时使用0，后续可以通过API获取真实数据
           }] : []
         }
         
@@ -286,7 +286,7 @@ export default {
     }
 
     const editAssignment = () => {
-      alert('编辑功能开发中...')
+      router.push(`/teacher/assignments/${route.params.id}/edit`)
     }
 
     const goToClassDetail = (classId) => {

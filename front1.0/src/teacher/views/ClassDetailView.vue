@@ -92,6 +92,7 @@
             </div>
             <div class="student-actions">
               <button class="btn-icon" @click.stop="viewStudentProgress(student.user?.id || student.id)">📊</button>
+              <button class="btn-icon btn-danger" @click.stop="confirmRemoveStudent(student.user?.id || student.id, student.user?.username || student.username || '未知')">×</button>
             </div>
           </div>
         </div>
@@ -375,6 +376,21 @@ export default {
     const viewStudentProgress = (studentId) => {
       router.push(`/teacher/students/${studentId}`)
     }
+    
+    // 确认移除学生
+    const confirmRemoveStudent = async (studentId, studentName) => {
+      if (confirm(`确定要将学生 "${studentName}" 从班级中移除吗？`)) {
+        try {
+          await classApi.removeStudent(route.params.id, studentId)
+          alert('学生移除成功！')
+          // 刷新班级详情数据
+          await loadClassDetail()
+        } catch (error) {
+          console.error('移除学生失败:', error)
+          alert('移除学生失败: ' + (error.response?.data?.error || error.message))
+        }
+      }
+    }
 
     const getAssignmentStatus = (assignment) => {
       const now = new Date()
@@ -488,6 +504,7 @@ export default {
       editClass,
       createAssignment,
       viewStudentProgress,
+      confirmRemoveStudent,
       getAssignmentStatus,
       getAssignmentStatusText,
       getResourceIcon,
@@ -850,15 +867,29 @@ export default {
 
 .btn-small {
   padding: 6px 12px;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .btn-icon {
   background: none;
   border: none;
-  cursor: pointer;
+  padding: 8px;
   font-size: 18px;
-  padding: 4px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.btn-icon:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+.btn-icon.btn-danger {
+  color: #d32f2f;
+}
+
+.btn-icon.btn-danger:hover {
+  background-color: rgba(211, 47, 47, 0.1);
 }
 
 /* 模态框样式 */
