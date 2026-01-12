@@ -192,7 +192,7 @@ export default {
           end_time: formattedDueDate,
           class_obj: selectedClassId,
           // 暂时使用固定的chapter_id，实际应该添加章节选择功能
-          chapter: 1
+          chapter: 4  // 使用数据库中存在的第一个章节ID
         }
 
         await assignmentApi.createAssignment(data)

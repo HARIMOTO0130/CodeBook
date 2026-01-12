@@ -209,12 +209,12 @@
 </template>
 
 <script>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { classApi } from '../api/class'
 import { assignmentApi } from '../api/assignment'
 import { resourceApi } from '../api/resource'
-import { formatDate } from '../../utils/dataFormatter'
+import { formatDate } from '../utils/dataFormatter'
 
 export default {
   name: 'ClassDetailView',
@@ -446,6 +446,31 @@ export default {
     onMounted(() => {
       loadClassDetail()
     })
+    
+    // 监听路由变化，确保班级ID变化时重新加载数据
+    watch(
+      () => route.params.id,
+      (newId) => {
+        if (newId) {
+          loadClassDetail()
+        }
+      },
+      { immediate: true }
+    )
+    
+    // 添加页面返回时的重新加载逻辑
+    const originalBack = window.history.back
+    window.history.back = function() {
+      // 在返回之前记录当前路径
+      const currentPath = window.location.pathname
+      originalBack.call(this)
+      // 如果返回的是当前页面，重新加载数据
+      setTimeout(() => {
+        if (window.location.pathname === currentPath) {
+          loadClassDetail()
+        }
+      }, 100)
+    }
 
     return {
       loading,

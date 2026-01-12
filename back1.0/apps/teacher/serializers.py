@@ -4,7 +4,7 @@ from django.db import models
 from .models import (
     Class, Student, StudentLearningProgress, Homework, StudentHomework,
     Notice, StudentNoticeRead, ClassResource, TeachingResource,
-    CourseDesign, TeacherSetting, TeachingToolLog
+    CourseDesign, TeacherSetting
 )
 from apps.books.models import Book, Chapter
 
@@ -27,7 +27,7 @@ class ChapterSimpleSerializer(serializers.ModelSerializer):
 
 class StudentSerializer(serializers.ModelSerializer):
     """学生序列化器"""
-    class_name = serializers.CharField(source='class_obj.name', read_only=True)
+    class_name = serializers.CharField(source='class_name', read_only=True)
     progress = serializers.SerializerMethodField()
     avg_score = serializers.SerializerMethodField()
     submission_count = serializers.SerializerMethodField()
@@ -35,16 +35,30 @@ class StudentSerializer(serializers.ModelSerializer):
     total_assignments = serializers.SerializerMethodField()
     last_learn_time = serializers.SerializerMethodField()
     gender = serializers.SerializerMethodField()
+    # 从关联的User对象获取学生姓名，确保始终显示最新的昵称或用户名
+    student_name = serializers.SerializerMethodField()
     
     class Meta:
         model = Student
         fields = [
             'id', 'student_no', 'student_name', 'gender', 'phone',
-            'class_obj', 'class_name', 'status', 'created_at', 'updated_at',
+            'class_name', 'status', 'created_at', 'updated_at',
             'progress', 'avg_score', 'submission_count', 'completed_assignments',
             'total_assignments', 'last_learn_time'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+    
+    def get_student_name(self, obj):
+        """从关联的User对象获取学生姓名，优先使用昵称"""
+        try:
+            if obj.user:
+                # 如果有关联的User对象，优先使用昵称，否则使用用户名
+                return obj.user.nickname or obj.user.username
+        except AttributeError:
+            # 如果没有user属性或访问出错，使用Student模型本身的student_name字段
+            pass
+        # 如果以上都没有，返回Student模型的student_name字段或默认值
+        return obj.student_name or '未知学生'
     
     def get_gender(self, obj):
         """将性别转换为整数，处理字符串值"""
@@ -123,15 +137,49 @@ class ClassSerializer(serializers.ModelSerializer):
     teacher_name = serializers.CharField(source='teacher.username', read_only=True)
     book_title = serializers.CharField(source='book.title', read_only=True)
     student_count = serializers.IntegerField(read_only=True)
+    # 用于写入操作的教材ID
+    book_id = serializers.PrimaryKeyRelatedField(source='book', queryset=Book.objects.all(), required=False, allow_null=True, write_only=True)
+    # 用于读取操作的详细教材信息
+    book = BookSimpleSerializer(read_only=True)
     
     class Meta:
         model = Class
         fields = [
-            'id', 'name', 'teacher', 'teacher_name', 'book', 'book_title',
+            'id', 'name', 'teacher', 'teacher_name', 'book', 'book_id', 'book_title',
             'major', 'grade', 'description', 'status', 'student_count',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'teacher', 'created_at', 'updated_at']
+    
+    def validate(self, data):
+        """验证数据，确保不会违反unique_together约束"""
+        try:
+            # 获取当前教师
+            teacher = self.context['request'].user.teacher_profile
+            # 获取当前要更新的班级实例
+            instance = self.instance
+            # 获取要设置的book
+            book = data.get('book')
+            
+            # 如果没有提供book，使用当前实例的book（如果存在）
+            if not book and instance:
+                book = instance.book
+            
+            # 只有当提供了book或者当前实例有book时才进行验证
+            if book:
+                # 查找相同教师和教材的班级
+                existing_classes = Class.objects.filter(teacher=teacher, book=book)
+                if instance:
+                    # 如果是更新操作，排除当前实例
+                    existing_classes = existing_classes.exclude(id=instance.id)
+                
+                if existing_classes.exists():
+                    raise serializers.ValidationError({'book': '您已经创建了使用该教材的班级，请选择其他教材'})
+        except Exception as e:
+            # 如果验证过程中出现任何错误，记录错误但不阻止更新
+            print(f"验证班级数据时出现错误: {e}")
+        
+        return data
 
 
 class ClassDetailSerializer(serializers.ModelSerializer):
@@ -289,18 +337,7 @@ class TeacherSettingSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'teacher', 'created_at', 'updated_at']
 
 
-class TeachingToolLogSerializer(serializers.ModelSerializer):
-    """教学工具使用记录序列化器"""
-    teacher_name = serializers.CharField(source='teacher.username', read_only=True)
-    class_name = serializers.CharField(source='class_obj.name', read_only=True, allow_null=True)
-    
-    class Meta:
-        model = TeachingToolLog
-        fields = [
-            'id', 'teacher', 'teacher_name', 'tool_name', 'use_time',
-            'class_obj', 'class_name', 'use_duration'
-        ]
-        read_only_fields = ['id', 'teacher', 'use_time']
+# TeachingToolLogSerializer类已暂时移除，因为TeachingToolLog模型已被移除
 
 
 class TeacherInfoSerializer(serializers.ModelSerializer):

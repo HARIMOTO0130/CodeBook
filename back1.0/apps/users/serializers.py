@@ -325,64 +325,198 @@ class UserSerializer(serializers.ModelSerializer):
         return None
     
     def update(self, instance, validated_data):
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"[INFO] Starting update for user: {instance}, user ID: {instance.id}")
+        logger.info(f"[INFO] Validated data: {validated_data}")
+        
         preferences_data = validated_data.pop('preferences', None)
         # 提取学生特定字段
         student_no = validated_data.pop('student_no', None)
         gender = validated_data.pop('gender', None)
-        phone = validated_data.pop('phone', None)
+        
+        logger.info(f"[INFO] Extracted student_no: {student_no}, gender: {gender}")
         
         # 更新用户基本信息
-        instance = super().update(instance, validated_data)
+        updated_instance = super().update(instance, validated_data)
+        logger.info(f"[INFO] Basic user info updated: username={updated_instance.username}, nickname={updated_instance.nickname}, email={updated_instance.email}")
         
         # 更新用户偏好设置
         if preferences_data:
-            preferences, created = UserPreferences.objects.get_or_create(user=instance)
+            logger.info(f"[INFO] Updating user preferences with data: {preferences_data}")
+            preferences, created = UserPreferences.objects.get_or_create(user=updated_instance)
             for key, value in preferences_data.items():
                 setattr(preferences, key, value)
+                logger.info(f"[INFO] Updated preference {key}: {value}")
             preferences.save()
+            logger.info(f"[INFO] User preferences saved successfully")
         
         # 更新学生信息（如果用户是学生）
-        if instance.role == 'student':
+        if updated_instance.role == 'student':
+            logger.info(f"[INFO] Updating student information for user: {updated_instance}")
+            student_profile = None
+            student_name_updated = False
+            
             try:
                 from apps.teacher.models import Student
-                student_profile, created = Student.objects.get_or_create(user=instance)
+                
+                # 准备学生姓名的值（优先使用昵称，否则使用用户名）
+                new_student_name = (updated_instance.nickname and updated_instance.nickname.strip()) or updated_instance.username
+                logger.info(f"[INFO] Target student_name: '{new_student_name}' (nickname: '{updated_instance.nickname}', username: '{updated_instance.username}')")
+                
+                # 方式1：通过user关联查找（最优先）
+                try:
+                    student_profile = updated_instance.student_profile
+                    logger.info(f"[INFO] Found student profile via user association: {student_profile}")
+                except (Student.DoesNotExist, AttributeError):
+                    # 方式2：通过student_no查找（如果提供了）
+                    if student_no:
+                        try:
+                            student_profile = Student.objects.get(student_no=student_no)
+                            # 如果找到的student_profile已经有user，且不是当前用户，则创建新的
+                            if student_profile.user and student_profile.user != updated_instance:
+                                logger.warning(f"[WARNING] Student profile with student_no {student_no} already belongs to another user, creating new one")
+                                student_profile = None
+                            else:
+                                # 关联到当前用户（如果还没有关联）
+                                if not student_profile.user:
+                                    student_profile.user = updated_instance
+                                logger.info(f"[INFO] Found student profile via student_no: {student_profile}")
+                        except Student.DoesNotExist:
+                            # 方式3：创建新的学生对象，同时设置student_name和student_no
+                            try:
+                                student_profile = Student.objects.create(
+                                    user=updated_instance,
+                                    student_name=new_student_name,
+                                    student_no=student_no
+                                )
+                                student_name_updated = True
+                                logger.info(f"[INFO] Created new student profile with student_no: {student_profile}")
+                            except Exception as e:
+                                logger.error(f"[ERROR] Failed to create student profile with student_no {student_no}: {e}")
+                                student_profile = None
+                    
+                    # 如果还没有找到或创建，尝试创建新的（需要生成临时学号）
+                    if not student_profile:
+                        # 生成唯一的临时学号
+                        temp_student_no = f"STU{updated_instance.id:06d}"
+                        max_attempts = 10
+                        attempt = 0
+                        while attempt < max_attempts:
+                            try:
+                                student_profile = Student.objects.create(
+                                    user=updated_instance,
+                                    student_name=new_student_name,
+                                    student_no=temp_student_no
+                                )
+                                student_name_updated = True
+                                logger.info(f"[INFO] Created new student profile with temp student_no: {student_profile}")
+                                break
+                            except Exception as e:
+                                attempt += 1
+                                if attempt < max_attempts:
+                                    temp_student_no = f"STU{updated_instance.id:06d}_{attempt}"
+                                else:
+                                    logger.error(f"[ERROR] Failed to create student profile after {max_attempts} attempts: {e}")
+                                    raise
+                
+                # 如果仍然没有找到或创建学生对象，抛出异常
+                if not student_profile:
+                    raise Exception("Failed to find or create student profile")
+                
+                # 更新学生信息
                 if student_no is not None:
+                    old_student_no = student_profile.student_no
                     student_profile.student_no = student_no
+                    logger.info(f"[INFO] Updated student_no from {old_student_no} to {student_no}")
+                
                 if gender is not None:
+                    old_gender = student_profile.gender
                     student_profile.gender = gender
-                if phone is not None:
-                    student_profile.phone = phone
-                # 如果是新创建的学生，设置学生姓名为用户名
-                if created:
-                    student_profile.student_name = instance.nickname or instance.username
+                    logger.info(f"[INFO] Updated gender from {old_gender} to {gender}")
+                
+                if updated_instance.phone is not None:
+                    old_phone = student_profile.phone
+                    student_profile.phone = updated_instance.phone
+                    logger.info(f"[INFO] Updated phone from {old_phone} to {updated_instance.phone}")
+                
+                # 确保学生姓名始终与用户昵称或用户名同步
+                # 这是最重要的更新，必须确保执行
+                old_student_name = student_profile.student_name
+                # 处理昵称：如果昵称存在且非空字符串，则使用昵称；否则使用用户名
+                new_student_name = (updated_instance.nickname and updated_instance.nickname.strip()) or updated_instance.username
+                
+                # 始终更新 student_name，确保与用户昵称/用户名保持同步
+                student_profile.student_name = new_student_name
+                student_name_updated = True
+                
+                if new_student_name != old_student_name:
+                    logger.info(f"[INFO] Updated student_name from '{old_student_name}' to '{new_student_name}' (nickname: '{updated_instance.nickname}', username: '{updated_instance.username}')")
+                else:
+                    logger.info(f"[INFO] student_name kept as '{old_student_name}' (nickname: '{updated_instance.nickname}', username: '{updated_instance.username}')")
+                
+                # 保存学生信息，确保所有更改都写入数据库
                 student_profile.save()
+                logger.info(f"[INFO] Student profile saved successfully: student_name='{student_profile.student_name}', student_no='{student_profile.student_no}'")
+                
             except Exception as e:
-                # 如果出现错误，记录日志但不影响整体响应
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.error(f"更新学生信息时出错: {e}")
+                # 如果出现错误，记录详细日志以便调试
+                logger.error(f"[ERROR] Error updating student information: {e}")
+                logger.error(f"[ERROR] User ID: {updated_instance.id}, Username: {updated_instance.username}, Nickname: {updated_instance.nickname}")
+                logger.exception(e)
+                
+                # 即使出现异常，也要尝试更新student_name
+                if not student_name_updated:
+                    try:
+                        from apps.teacher.models import Student
+                        # 尝试直接通过user查找并更新
+                        try:
+                            student_profile = Student.objects.get(user=updated_instance)
+                            new_student_name = (updated_instance.nickname and updated_instance.nickname.strip()) or updated_instance.username
+                            student_profile.student_name = new_student_name
+                            student_profile.save()
+                            logger.info(f"[INFO] Force updated student_name to '{new_student_name}' after exception")
+                        except Student.DoesNotExist:
+                            logger.error(f"[ERROR] Cannot update student_name: Student profile not found for user {updated_instance.id}")
+                    except Exception as e2:
+                        logger.error(f"[ERROR] Failed to force update student_name: {e2}")
         
-        return instance
+        logger.info(f"[INFO] Update completed successfully for user: {updated_instance}")
+        return updated_instance
     
     def to_representation(self, instance):
         """将学生信息添加到返回数据中"""
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"[INFO] to_representation called for user: {instance}, role: {instance.role}")
+        
         representation = super().to_representation(instance)
+        
         # 如果用户是学生，添加学生特定信息
         if instance.role == 'student':
+            logger.info(f"[INFO] Adding student specific info for user: {instance}")
             try:
                 # 使用try-except代替hasattr，因为OneToOneField访问不存在的关系会抛出异常
-                representation['student_no'] = instance.student_profile.student_no
-                representation['gender'] = instance.student_profile.gender
-                representation['phone'] = instance.student_profile.phone
+                student_profile = instance.student_profile
+                logger.info(f"[INFO] Found student profile: {student_profile}")
+                
+                representation['student_no'] = student_profile.student_no
+                representation['gender'] = student_profile.gender
+                representation['phone'] = student_profile.phone
+                
                 # 添加班级信息
-                if hasattr(instance.student_profile, 'class_name'):
-                    representation['class_name'] = instance.student_profile.class_name
-                representation['status'] = instance.student_profile.status
+                if hasattr(student_profile, 'class_name'):
+                    representation['class_name'] = student_profile.class_name
+                    logger.info(f"[INFO] Added class_name: {student_profile.class_name}")
+                
+                representation['status'] = student_profile.status
+                logger.info(f"[INFO] Added student info: student_no={student_profile.student_no}, gender={student_profile.gender}, phone={student_profile.phone}, status={student_profile.status}")
             except Exception as e:
                 # 如果出现错误，记录日志但不影响整体响应
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.error(f"序列化学生信息时出错: {e}")
+                logger.error(f"[ERROR] Error serializing student info: {e}")
+                logger.exception(e)
+        
+        logger.info(f"[INFO] Final representation: {representation}")
         return representation
 
 

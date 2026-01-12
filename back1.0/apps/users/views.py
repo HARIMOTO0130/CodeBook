@@ -120,52 +120,89 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def me(self, request):
         """获取当前用户信息"""
-        print(f"[DEBUG] GET /me/ called by user: {request.user}")
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"[INFO] GET /me/ called by user: {request.user}, user ID: {request.user.id}")
         if request.user.is_authenticated:
             serializer = UserSerializer(request.user, context={'request': request})
+            logger.info(f"[INFO] User data retrieved: username={request.user.username}, nickname={request.user.nickname}")
+            logger.info(f"[INFO] Response data: {serializer.data}")
             return Response(serializer.data)
+        logger.warning("[WARNING] Unauthenticated user attempted to get profile")
         return Response({'error': '未登录'}, status=status.HTTP_401_UNAUTHORIZED)
     
     @action(detail=False, methods=['put', 'post'])
     def update_me(self, request):
         """更新当前用户信息"""
-        print(f"[DEBUG] PUT/POST /me/ called by user: {request.user}")
-        print(f"[DEBUG] Request data: {request.data}")
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"[INFO] PUT/POST /me/ called by user: {request.user}, user ID: {request.user.id}")
+        logger.info(f"[INFO] Request data: {request.data}")
+        
         if not request.user.is_authenticated:
+            logger.warning("[WARNING] Unauthenticated user attempted to update profile")
             return Response({'error': '未登录'}, status=status.HTTP_401_UNAUTHORIZED)
         
         serializer = UserSerializer(request.user, data=request.data, context={'request': request}, partial=True)
         if serializer.is_valid():
             user = serializer.save()
-            print(f"[DEBUG] User updated successfully: {user}")
-            return Response(UserSerializer(user, context={'request': request}).data)
-        print(f"[DEBUG] Serializer errors: {serializer.errors}")
+            logger.info(f"[INFO] User updated successfully: {user}, user ID: {user.id}")
+            logger.info(f"[INFO] Updated user data: username={user.username}, nickname={user.nickname}, email={user.email}")
+            
+            # 检查是否是学生用户，并记录学生信息
+            if user.role == 'student':
+                try:
+                    from apps.teacher.models import Student
+                    student_profile = Student.objects.get(user=user)
+                    logger.info(f"[INFO] Student profile found: {student_profile}, student ID: {student_profile.id}")
+                    logger.info(f"[INFO] Student data: student_name={student_profile.student_name}, student_no={student_profile.student_no}, class_name={student_profile.class_name}")
+                except Student.DoesNotExist:
+                    logger.warning(f"[WARNING] No student profile found for user: {user}")
+                except Exception as e:
+                    logger.error(f"[ERROR] Error retrieving student profile: {e}")
+            
+            response_data = UserSerializer(user, context={'request': request}).data
+            logger.info(f"[INFO] Response data: {response_data}")
+            return Response(response_data)
+        
+        logger.error(f"[ERROR] Serializer errors: {serializer.errors}")
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
     @action(detail=False, methods=['get', 'put'], url_path='preferences')
     def preferences(self, request):
         """获取或更新用户偏好设置"""
-        print(f"[DEBUG] {request.method} /preferences/ called by user: {request.user}")
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"[INFO] {request.method} /preferences/ called by user: {request.user}, user ID: {request.user.id}")
+        
         if request.method == 'PUT':
-            print(f"[DEBUG] Preferences update data: {request.data}")
+            logger.info(f"[INFO] Preferences update data: {request.data}")
         
         if not request.user.is_authenticated:
+            logger.warning("[WARNING] Unauthenticated user attempted to access preferences")
             return Response({'error': '未登录'}, status=status.HTTP_401_UNAUTHORIZED)
             
         if request.method == 'GET':
             preferences, created = UserPreferences.objects.get_or_create(user=request.user)
             serializer = UserPreferencesSerializer(preferences)
-            print(f"[DEBUG] Preferences retrieved: {preferences}")
+            logger.info(f"[INFO] Preferences retrieved: {preferences}, created: {created}")
+            logger.info(f"[INFO] Preferences data: {serializer.data}")
             return Response(serializer.data)
         elif request.method == 'PUT':
             preferences, created = UserPreferences.objects.get_or_create(user=request.user)
+            logger.info(f"[INFO] Updating preferences: {preferences}, created: {created}")
+            
             serializer = UserPreferencesSerializer(preferences, data=request.data, partial=True)
             if serializer.is_valid():
-                preferences = serializer.save()
-                print(f"[DEBUG] Preferences updated successfully: {preferences}")
+                updated_preferences = serializer.save()
+                logger.info(f"[INFO] Preferences updated successfully: {updated_preferences}")
+                
                 # 使用序列化器返回所有更新后的字段
-                return Response(UserPreferencesSerializer(preferences).data)
-            print(f"[DEBUG] Preferences serializer errors: {serializer.errors}")
+                response_data = UserPreferencesSerializer(updated_preferences).data
+                logger.info(f"[INFO] Updated preferences response: {response_data}")
+                return Response(response_data)
+            
+            logger.error(f"[ERROR] Preferences serializer errors: {serializer.errors}")
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
     @action(detail=False, methods=['post'], url_path='change-password')

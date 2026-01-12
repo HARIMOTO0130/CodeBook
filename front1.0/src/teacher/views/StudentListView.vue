@@ -94,7 +94,19 @@
       </div>
     </div>
 
-    <div v-if="viewMode === 'card'" class="students-grid">
+    <!-- 加载状态和空数据提示 -->
+    <div v-if="loading" class="loading-state" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 20px; text-align: center;">
+      <div style="width: 40px; height: 40px; border: 4px solid #e2e8f0; border-top-color: #3b82f6; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+      <p style="margin-top: 16px; color: #64748b;">加载学生数据中...</p>
+    </div>
+    <div v-else-if="filteredStudents.length === 0" class="empty-state" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 20px; text-align: center;">
+      <div style="font-size: 48px; margin-bottom: 16px;">👥</div>
+      <p style="font-size: 16px; color: #374151; margin-bottom: 8px;">暂无学生数据</p>
+      <p style="font-size: 14px; color: #64748b;">请尝试调整筛选条件或添加学生</p>
+    </div>
+    
+    <!-- 学生卡片视图 -->
+    <div v-else-if="viewMode === 'card'" class="students-grid">
       <div
         v-for="student in filteredStudents"
         :key="student.id"
@@ -250,47 +262,119 @@
       </button>
     </div>
 
+    <!-- 消息提示 -->
+    <div v-if="message" class="message" :class="messageType" style="position: fixed; top: 20px; right: 20px; padding: 12px 20px; border-radius: 8px; color: white; font-weight: 500; z-index: 1001; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);">
+      {{ message }}
+    </div>
+    
+    <!-- 选择学生模态框 -->
     <div v-if="showAddModal" class="modal-overlay" @click.self="closeModal">
-      <div class="modal">
+      <div class="modal" style="max-width: 600px;">
         <div class="modal-header">
-          <h2>添加学生</h2>
+          <h2>添加学生到班级</h2>
           <button class="close-btn" @click="closeModal">×</button>
         </div>
-        <form @submit.prevent="addStudent" class="modal-body">
-          <div class="form-group">
-            <label>姓名 *</label>
-            <input type="text" v-model="newStudent.name" required />
+        <div class="modal-body">
+          <!-- 搜索区域 -->
+          <div class="search-section" style="margin-bottom: 20px;">
+            <div style="display: flex; gap: 10px; align-items: center;">
+              <input 
+                type="text" 
+                v-model="searchExistingStudent" 
+                placeholder="搜索学生姓名或学号..." 
+                @keyup.enter="searchStudents"
+                style="flex: 1; padding: 10px; border: 1px solid #e2e8f0; border-radius: 8px;"
+              />
+              <button 
+                @click="searchStudents" 
+                class="btn btn-primary" 
+                :disabled="searching"
+                style="padding: 10px 20px;"
+              >
+                {{ searching ? '搜索中...' : '搜索' }}
+              </button>
+            </div>
           </div>
-          <div class="form-group">
-            <label>学号 *</label>
-            <input type="text" v-model="newStudent.studentId" required />
-          </div>
-          <div class="form-group">
-            <label>班级 *</label>
-            <select v-model="newStudent.classId" required>
+          
+          <!-- 班级选择 -->
+          <div class="form-group" style="margin-bottom: 20px;">
+            <label>目标班级 *</label>
+            <select v-model="assigningClassId" required style="width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px;">
               <option value="">请选择班级</option>
               <option v-for="cls in classes" :key="cls.id" :value="cls.id">
                 {{ cls.name }}
               </option>
             </select>
           </div>
-          <div class="form-group">
-            <label>邮箱</label>
-            <input type="email" v-model="newStudent.email" />
+          
+          <!-- 搜索结果 -->
+          <div class="search-results" style="margin-bottom: 20px; max-height: 300px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 8px;">
+            <div v-if="searching" style="padding: 20px; text-align: center; color: #64748b;">
+              <div style="width: 24px; height: 24px; border: 3px solid #e2e8f0; border-top-color: #3b82f6; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 8px;"></div>
+              <span>搜索中...</span>
+            </div>
+            <div v-else-if="searchResults.length === 0 && searchExistingStudent" style="padding: 30px 20px; text-align: center; color: #64748b;">
+              <div style="font-size: 32px; margin-bottom: 12px;">🔍</div>
+              <p style="margin-bottom: 8px;">没有找到匹配的学生</p>
+              <p style="font-size: 13px;">请尝试调整搜索关键词</p>
+              <div style="margin-top: 16px; padding: 12px; background: #f8fafc; border-radius: 8px; font-size: 13px;">
+                <p>搜索示例：</p>
+                <p style="margin: 4px 0;">• 姓名：zzh</p>
+                <p style="margin: 4px 0;">• 学号：202230033027</p>
+              </div>
+            </div>
+            <div v-else-if="searchResults.length === 0" style="padding: 30px 20px; text-align: center; color: #64748b;">
+              <div style="font-size: 32px; margin-bottom: 12px;">👥</div>
+              <p>请输入关键词搜索学生</p>
+            </div>
+            <div v-else>
+              <!-- 全选按钮 -->
+              <div style="padding: 10px 15px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; gap: 10px;">
+                <input 
+                  type="checkbox" 
+                  :checked="selectedStudents.length === searchResults.length && searchResults.length > 0" 
+                  @change="selectAllStudents"
+                />
+                <span style="font-weight: 500;">全选 ({{ selectedStudents.length }}/{{ searchResults.length }})</span>
+              </div>
+              
+              <!-- 学生列表 -->
+              <div 
+                v-for="student in searchResults" 
+                :key="student.id" 
+                style="padding: 15px; border-bottom: 1px solid #f1f5f9; display: flex; align-items: center; gap: 15px;"
+              >
+                <input 
+                  type="checkbox" 
+                  :checked="selectedStudents.includes(student.id)" 
+                  @change="toggleStudentSelection(student.id)"
+                />
+                <div style="flex: 1;">
+                  <div style="font-weight: 500;">{{ student.name }}</div>
+                  <div style="font-size: 13px; color: #64748b;">学号: {{ student.studentId }}</div>
+                </div>
+                <div style="font-size: 12px; color: #3b82f6;">
+                  当前班级: {{ student.currentClass }}
+                </div>
+              </div>
+            </div>
           </div>
-          <div class="form-group">
-            <label>手机号</label>
-            <input type="tel" v-model="newStudent.phone" />
-          </div>
-          <div class="form-actions">
+          
+          <!-- 操作按钮 -->
+          <div class="form-actions" style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px;">
             <button type="button" class="btn btn-secondary" @click="closeModal">
               取消
             </button>
-            <button type="submit" class="btn btn-primary">
-              添加学生
+            <button 
+              type="button" 
+              class="btn btn-primary" 
+              @click="assignStudentsToClass" 
+              :disabled="assigning || selectedStudents.length === 0 || !assigningClassId"
+            >
+              {{ assigning ? '分配中...' : `分配 ${selectedStudents.length} 名学生` }}
             </button>
           </div>
-        </form>
+        </div>
       </div>
     </div>
 
@@ -347,13 +431,15 @@ export default {
       showMessageModal: false,
       selectedStudent: null,
       messageContent: '',
-      newStudent: {
-        name: '',
-        studentId: '',
-        classId: '',
-        email: '',
-        phone: ''
-      },
+      // 新添加的状态变量
+      searchExistingStudent: '',
+      searchResults: [],
+      selectedStudents: [],
+      assigningClassId: '',
+      searching: false,
+      assigning: false,
+      message: '',
+      messageType: '',
       classes: [],
       students: [],
       loading: false
@@ -394,30 +480,43 @@ export default {
     },
     async loadStudents() {
       this.loading = true
+      console.log('开始加载学生数据，班级筛选:', this.classFilter)
       try {
         const params = {}
         if (this.classFilter !== 'all') {
           params.class_id = this.classFilter
         }
         const response = await studentApi.getStudents(params)
+        
+        console.log('加载学生API响应:', response)
+        console.log('加载学生响应data结构:', response.data)
+        console.log('加载学生响应data类型:', typeof response.data)
+        console.log('加载学生响应data键名:', Object.keys(response.data))
+        
         // 处理不同的响应格式
         let data = response.data
         let results = []
         
         // 处理分页数据
+        console.log('检查data是否为数组:', Array.isArray(data))
         if (Array.isArray(data)) {
+          console.log('情况1: data是数组')
           results = data
         } else if (data && Array.isArray(data.results)) {
+          console.log('情况2: data.results是数组，长度:', data.results.length)
           results = data.results
         } else if (data && Array.isArray(data.data)) {
+          console.log('情况3: data.data是数组，长度:', data.data.length)
           results = data.data
         } else {
+          console.log('情况4: 未找到数据数组')
+          console.log('data的完整内容:', JSON.stringify(data))
           results = []
         }
         
         console.log('加载的学生原始数据:', results)
         
-        // 直接使用获取到的学生数据，不再依赖额外的API调用
+        // 直接使用获取到的学生数据，不再使用模拟数据
         this.students = results.map(student => ({
           id: student.id,
           name: student.student_name || student.username,
@@ -436,9 +535,11 @@ export default {
         }))
         
         console.log('处理后的学生数据:', this.students)
+        console.log('页面显示的学生列表（部分）:', this.students.map(s => ({id: s.id, name: s.name, studentId: s.studentId})))
         
       } catch (error) {
         console.error('加载学生失败:', error)
+        console.error('错误详情:', error.response || error.message)
         alert('加载学生失败: ' + (error.response?.data?.error || error.message))
       } finally {
         this.loading = false
@@ -491,19 +592,168 @@ export default {
     exportData() {
       console.log('Exporting student data...')
     },
-    addStudent() {
-      console.log('Adding student:', this.newStudent)
-      this.closeModal()
+    // 搜索学生 - 直接调用API搜索
+    async searchStudents() {
+      const searchKey = this.searchExistingStudent.trim()
+      if (!searchKey) {
+        this.searchResults = []
+        return
+      }
+      
+      this.searching = true
+      console.log('开始搜索学生，关键词:', searchKey)
+      
+      try {
+        // 直接调用API搜索学生
+        const response = await studentApi.getStudents({
+          search: searchKey
+        })
+        
+        console.log('搜索API响应:', response)
+        
+        // 处理API响应
+        let data = response.data
+        let results = []
+        
+        // 处理不同的响应格式
+        if (Array.isArray(data)) {
+          results = data
+        } else if (data && Array.isArray(data.results)) {
+          results = data.results
+        } else if (data && Array.isArray(data.data)) {
+          results = data.data
+        } else {
+          results = []
+        }
+        
+        console.log('API返回的搜索结果:', results)
+        
+        // 转换为搜索结果所需的格式
+        this.searchResults = results.map(student => ({
+          id: student.id,
+          name: student.student_name || student.username,
+          studentId: student.student_no || '',
+          currentClass: student.class_name || '未分配班级'
+        }))
+        
+        console.log('最终搜索结果:', this.searchResults)
+        
+        // 如果搜索结果为空，显示提示信息
+        if (this.searchResults.length === 0) {
+          this.showMessage('没有找到匹配的学生，请尝试其他关键词', 'info')
+        }
+      } catch (error) {
+        console.error('搜索学生失败:', error)
+        this.showMessage('搜索学生失败，请稍后重试', 'error')
+        this.searchResults = []
+      } finally {
+        this.searching = false
+      }
     },
+    
+    // 切换学生选择状态
+    toggleStudentSelection(studentId) {
+      const index = this.selectedStudents.indexOf(studentId)
+      if (index > -1) {
+        this.selectedStudents.splice(index, 1)
+      } else {
+        this.selectedStudents.push(studentId)
+      }
+    },
+    
+    // 全选/取消全选
+    selectAllStudents() {
+      if (this.selectedStudents.length === this.searchResults.length) {
+        this.selectedStudents = []
+      } else {
+        this.selectedStudents = this.searchResults.map(s => s.id)
+      }
+    },
+    
+    // 分配学生到班级
+    async assignStudentsToClass() {
+      if (this.selectedStudents.length === 0) {
+        this.showMessage('请选择要分配的学生', 'warning')
+        return
+      }
+      
+      if (!this.assigningClassId) {
+        this.showMessage('请选择班级', 'warning')
+        return
+      }
+      
+      this.assigning = true
+      try {
+        // 调用真实API更新学生班级
+        const selectedClass = this.classes.find(cls => cls.id === parseInt(this.assigningClassId))
+        const className = selectedClass ? selectedClass.name : '未知班级'
+        
+        // 使用updateStudent方法逐个更新学生的班级
+        let successCount = 0
+        const errorMessages = []
+        
+        for (const studentId of this.selectedStudents) {
+          try {
+            await studentApi.updateStudent(studentId, {
+              class_id: this.assigningClassId
+            })
+            successCount++
+          } catch (error) {
+            console.error(`更新学生${studentId}失败:`, error)
+            errorMessages.push(`学生ID ${studentId} 更新失败`)
+          }
+        }
+        
+        // 显示结果消息
+        if (successCount > 0) {
+          this.showMessage(`成功分配${successCount}名学生到班级`, 'success')
+        }
+        
+        if (errorMessages.length > 0) {
+          this.showMessage(`${errorMessages.length}名学生分配失败，请检查网络或学生信息`, 'error')
+          console.error('分配失败详情:', errorMessages)
+        }
+        
+        this.closeModal()
+        
+        // 刷新学生列表，获取最新数据
+        await this.loadStudents()
+        
+        console.log('学生分配到班级操作完成', {
+          totalSelected: this.selectedStudents.length,
+          successCount: successCount,
+          classId: this.assigningClassId,
+          className: className
+        })
+      } catch (error) {
+        console.error('分配学生失败:', error)
+        this.showMessage('分配学生失败，请稍后重试', 'error')
+        this.closeModal()
+      } finally {
+        this.assigning = false
+      }
+    },
+    
+    // 显示消息提示
+    showMessage(text, type) {
+      this.message = text
+      this.messageType = type
+      setTimeout(() => {
+        this.message = ''
+        this.messageType = ''
+      }, 3000)
+    },
+    
+    // 关闭模态框
     closeModal() {
       this.showAddModal = false
-      this.newStudent = {
-        name: '',
-        studentId: '',
-        classId: '',
-        email: '',
-        phone: ''
-      }
+      // 重置搜索和选择状态
+      this.searchExistingStudent = ''
+      this.searchResults = []
+      this.selectedStudents = []
+      this.assigningClassId = ''
+      this.searching = false
+      this.assigning = false
     },
     closeMessageModal() {
       this.showMessageModal = false
@@ -568,6 +818,11 @@ export default {
 </script>
 
 <style scoped>
+/* 全局动画定义 */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 .student-management {
   padding: 24px;
   background: #f8fafc;

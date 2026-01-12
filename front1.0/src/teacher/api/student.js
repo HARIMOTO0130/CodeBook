@@ -68,6 +68,12 @@ export const studentApi = {
     return api.post(`/students/${studentId}/message/`, data)
   },
   
+  // 批量分配学生到班级
+  assignStudentsToClass(data) {
+    // data: { student_ids: [], class_id: number }
+    return api.post('/students/assign-class/', data)
+  },
+  
   // 以下是兼容旧代码的方法
   getStudentProfile(id) {
     return this.getStudentDetail(id)

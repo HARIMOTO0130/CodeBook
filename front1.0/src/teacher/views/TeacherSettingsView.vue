@@ -631,7 +631,7 @@ export default {
       }
       alert('界面设置已保存！')
     },
-    changePassword() {
+    async changePassword() {
       if (this.passwordForm.new !== this.passwordForm.confirm) {
         alert('两次输入的密码不一致！')
         return
@@ -640,9 +640,21 @@ export default {
         alert('密码强度不足，请设置更复杂的密码！')
         return
       }
-      alert('密码修改成功！')
-      this.showPasswordModal = false
-      this.passwordForm = { current: '', new: '', confirm: '' }
+      
+      try {
+        // 调用后端API修改密码
+        await teacherApi.changePassword({
+          old_password: this.passwordForm.current,
+          new_password: this.passwordForm.new
+        })
+        
+        alert('密码修改成功！')
+        this.showPasswordModal = false
+        this.passwordForm = { current: '', new: '', confirm: '' }
+      } catch (error) {
+        console.error('修改密码失败:', error)
+        alert('修改密码失败，请检查当前密码是否正确！')
+      }
     },
     triggerAvatarUpload() {
       // 触发隐藏的文件输入框
