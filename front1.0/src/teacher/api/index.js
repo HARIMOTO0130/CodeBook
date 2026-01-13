@@ -1,6 +1,7 @@
 import axios from 'axios'
 
-const API_BASE_URL = 'http://127.0.0.1:8000/api/teacher'
+// 使用相对路径，让Vite代理处理
+const API_BASE_URL = '/api/teacher'
 
 const api = axios.create({
   baseURL: API_BASE_URL,

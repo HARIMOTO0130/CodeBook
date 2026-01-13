@@ -307,8 +307,22 @@ export default {
       this.loading = true
       try {
         const response = await notificationApi.getNotifications()
-        if (response.data && Array.isArray(response.data)) {
-          this.notifications = response.data.map(notif => ({
+        
+        // 处理分页格式的响应
+        let notificationsData = []
+        if (response.data) {
+          // 检查是否是分页格式的响应
+          if (Array.isArray(response.data)) {
+            // 非分页格式
+            notificationsData = response.data
+          } else if (Array.isArray(response.data.results)) {
+            // 分页格式
+            notificationsData = response.data.results
+          }
+        }
+        
+        if (notificationsData.length > 0) {
+          this.notifications = notificationsData.map(notif => ({
             id: notif.id,
             title: notif.notice_title,
             preview: notif.notice_content ? (notif.notice_content.substring(0, 50) + '...') : '',
@@ -321,6 +335,8 @@ export default {
             class_name: notif.class_name || '',
             actionUrl: null
           }))
+        } else {
+          this.notifications = []
         }
       } catch (error) {
         console.error('加载通知失败:', error)
@@ -351,11 +367,14 @@ export default {
     async deleteNotification(notification) {
       if (confirm('确定要删除这条通知吗？')) {
         try {
-          // 注意：后端可能没有delete接口，这里先只从前端移除
-        const index = this.notifications.findIndex(n => n.id === notification.id)
-        if (index !== -1) {
-          this.notifications.splice(index, 1)
+          // 调用后端API删除通知
+          await notificationApi.deleteNotification(notification.id)
+          // 从本地状态中移除已删除的通知
+          const index = this.notifications.findIndex(n => n.id === notification.id)
+          if (index !== -1) {
+            this.notifications.splice(index, 1)
           }
+          alert('通知删除成功！')
         } catch (error) {
           console.error('删除失败:', error)
           alert('删除失败: ' + (error.response?.data?.error || error.message))

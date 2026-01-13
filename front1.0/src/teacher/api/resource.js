@@ -19,8 +19,8 @@ export const resourceApi = {
     return api.delete(`/resources/${resourceId}/`)
   },
   
-  downloadResource(resourceId) {
-    return api.get(`/resources/${resourceId}/download/`, {
+  downloadTeachingResource(resourceId) {
+    return api.get(`/teaching_resources/${resourceId}/download/`, {
       responseType: 'blob'
     })
   },
@@ -31,11 +31,13 @@ export const resourceApi = {
     return api.get('/teaching_resources/', { params })
   },
   
-  uploadTeachingResource(formData) {
+  uploadTeachingResource(formData, onProgress) {
     // formData: file, chapter_id, resource_name, resource_type, resource_desc
-    return api.post('/teaching_resources/', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    })
+    const config = {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      onUploadProgress: onProgress
+    }
+    return api.post('/teaching_resources/', formData, config)
   },
   
   deleteTeachingResource(resourceId) {

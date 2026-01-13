@@ -22,7 +22,7 @@ from .views import (
     # StudentResourceViewSet,
     # StudentNoticeViewSet,
 )
-# from .views_ai_assistant import AIAssistantView, CodeCompletionView
+from .views_ai_assistant import AIAssistantView, CodeCompletionView
 # from .views_code_sandbox import get_languages, get_code_template, validate_language
 
 router = DefaultRouter()
@@ -54,4 +54,7 @@ urlpatterns = [
     path('knowledge-graph/relations/', KnowledgeGraphAPIView.get_relations, name='get-knowledge-relations'),
     path('knowledge-graph/nodes/add/', KnowledgeGraphAPIView.add_node, name='add-knowledge-node'),
     # path('knowledge-graph/relations/add/', KnowledgeGraphAPIView.add_relation, name='add-knowledge-relation'),
+    # AI助手相关路由
+    path('ai-assistant/', AIAssistantView.as_view(), name='ai-assistant'),
+    path('ai-assistant/code-completion/', CodeCompletionView.as_view(), name='code-completion'),
 ]
