@@ -212,12 +212,39 @@
       </div>
       
       <!-- 加载状态 -->
-      <div v-if="loading" class="loading-container">
-        <div class="loading-spinner"></div>
-        <p class="loading-text">正在分析您的学习数据，生成智能推荐...</p>
-      </div>
       <div class="template-grid">
+        <!-- 骨架屏 -->
         <div
+          v-if="loading"
+          v-for="i in 4"
+          :key="`skeleton-${i}`"
+          class="roadmap-card"
+        >
+          <div class="roadmap-card-inner">
+            <div class="skeleton skeleton-badge"></div>
+            <div class="roadmap-header">
+              <div class="skeleton skeleton-title"></div>
+            </div>
+            <div class="roadmap-image-placeholder">
+              <div class="roadmap-image-bg"></div>
+            </div>
+            <div class="skeleton skeleton-content"></div>
+            <div class="skeleton skeleton-content"></div>
+            <div class="skeleton skeleton-content"></div>
+            <div class="roadmap-meta">
+              <div class="skeleton skeleton-tag"></div>
+              <div class="skeleton skeleton-tag"></div>
+              <div class="skeleton skeleton-tag"></div>
+            </div>
+            <div class="tags">
+              <div class="skeleton skeleton-tag"></div>
+              <div class="skeleton skeleton-tag"></div>
+            </div>
+          </div>
+        </div>
+        <!-- 实际内容 -->
+        <div
+          v-else
           v-for="roadmap in roadmaps"
           :key="roadmap.id"
           class="roadmap-card"
@@ -1413,11 +1440,21 @@ export default {
     async loadRecommendedRoadmaps() {
       try {
         this.loading = true;
-        // 调用后端智能推荐API，需要认证
-        const data = await httpGet('/learning/recommendations/roadmap/', true);
+        
+        // 并行加载路线图和用户画像数据
+        const [roadmapData, profileData] = await Promise.all([
+          httpGet('/learning/recommendations/roadmap/', true).catch(error => {
+            console.error('Failed to load roadmaps, using fallback:', error);
+            return { roadmaps: [] };
+          }),
+          this.loadUserProfile().catch(error => {
+            console.error('Failed to load user profile, using fallback:', error);
+            return null;
+          })
+        ]);
         
         // 处理推荐路线图数据
-        this.roadmaps = data.roadmaps || [];
+        this.roadmaps = roadmapData.roadmaps || [];
         
         // 如果API返回数据，确保包含必要的推荐属性
         if (this.roadmaps.length > 0) {
@@ -1427,9 +1464,6 @@ export default {
             if (!roadmap.matching_score) roadmap.matching_score = 90 - (index * 3);
           });
         }
-        
-        // 加载用户画像数据
-        await this.loadUserProfile();
         
         // 显示推荐成功消息
         if (this.$message && this.roadmaps.length > 0) {
@@ -2939,6 +2973,67 @@ export default {
   line-height: 1.5;
 }
 
+/* 骨架屏样式 */
+.skeleton {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s infinite;
+  border-radius: 4px;
+}
+
+@keyframes skeleton-loading {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.skeleton-card {
+  padding: 16px;
+  border-radius: 12px;
+  background: white;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.skeleton-title {
+  width: 70%;
+  height: 24px;
+  margin-bottom: 12px;
+}
+
+.skeleton-subtitle {
+  width: 50%;
+  height: 16px;
+  margin-bottom: 16px;
+}
+
+.skeleton-content {
+  width: 100%;
+  height: 12px;
+  margin-bottom: 8px;
+}
+
+.skeleton-content:last-child {
+  width: 80%;
+  margin-bottom: 0;
+}
+
+.skeleton-badge {
+  width: 60px;
+  height: 20px;
+  display: inline-block;
+  margin-bottom: 12px;
+}
+
+.skeleton-footer {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 16px;
+}
+
+.skeleton-tag {
+  width: 40px;
+  height: 20px;
+}
+
 /* 页面容器样式 */
 .learning-path-view {
   padding: 20px;
@@ -2949,6 +3044,7 @@ export default {
 /* 顶部导航样式增强 */
 .path-header {
   display: flex;
+  flex-direction: column;
   justify-content: space-between;
   align-items: flex-start;
   background: white;
@@ -2958,6 +3054,13 @@ export default {
   margin-bottom: 24px;
   transition: all 0.3s ease;
   border: 1px solid transparent;
+}
+
+@media (max-width: 768px) {
+  .path-header {
+    padding: 16px 20px;
+    margin-bottom: 16px;
+  }
 }
 
 .path-header:hover {
@@ -3091,6 +3194,34 @@ h1::before {
   gap: 16px;
   flex-wrap: wrap;
   animation: fadeInRight 0.6s ease-out 0.6s both;
+}
+
+@media (max-width: 768px) {
+  .subtitle-actions-container {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    margin-top: 8px;
+  }
+  
+  .header-actions {
+    width: 100%;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 8px;
+  }
+  
+  .header-actions button {
+    flex: 1;
+    min-width: 90px;
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+  
+  .btn-icon {
+    font-size: 12px;
+    margin-right: 4px;
+  }
 }
 
 @keyframes fadeInRight {
@@ -3729,6 +3860,66 @@ button span {
   overflow-y: auto;
 }
 
+@media (max-width: 768px) {
+  .knowledge-graph-stats-panel {
+    padding: 12px;
+  }
+  
+  .knowledge-graph-explanation {
+    width: 250px;
+    bottom: 10px;
+    right: 10px;
+  }
+  
+  .knowledge-graph-edit-controls {
+    padding: 12px;
+    flex-wrap: wrap;
+  }
+  
+  .knowledge-graph-edit-controls button {
+    flex: 1;
+    min-width: 100px;
+    padding: 6px 12px;
+    font-size: 13px;
+  }
+  
+  .node-detail-panel {
+    width: calc(100% - 20px);
+    left: 10px;
+    right: 10px;
+    top: 10px;
+    max-height: calc(70% - 20px);
+  }
+  
+  .node-detail-header h4 {
+    font-size: 16px;
+  }
+  
+  .node-basic-info .info-row {
+    font-size: 13px;
+  }
+  
+  .related-nodes-section h5, .llm-suggestions-section h5 {
+    font-size: 15px;
+  }
+  
+  .related-node-item {
+    font-size: 13px;
+    padding: 8px;
+  }
+  
+  .generated-suggestions li {
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  
+  .node-actions button {
+    width: 48%;
+    padding: 8px;
+    font-size: 13px;
+  }
+}
+
 .node-detail-header {
   display: flex;
   justify-content: space-between;
@@ -4179,6 +4370,55 @@ button span {
   margin-bottom: 20px;
 }
 
+@media (max-width: 768px) {
+  .smart-path-container {
+    padding: 16px;
+    margin-top: 16px;
+  }
+  
+  .smart-path-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  
+  .smart-path-header h4 {
+    font-size: 16px;
+  }
+  
+  .btn-refresh {
+    padding: 5px 12px;
+    font-size: 13px;
+  }
+  
+  .smart-path-explanation {
+    padding: 10px 12px;
+    margin-bottom: 16px;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  
+  .smart-path-visualization {
+    padding: 10px;
+    margin-bottom: 16px;
+  }
+  
+  /* 调整路径节点大小 */
+  .path-node .node-circle {
+    r: 20 !important;
+  }
+  
+  .path-node .node-title {
+    font-size: 10px;
+  }
+  
+  .path-node .node-level {
+    font-size: 8px;
+    dy: 18;
+  }
+}
+
 .path-svg {
   display: block;
   margin: 0 auto;
@@ -4530,6 +4770,77 @@ button span {
   
   .user-profile-summary {
     padding: 16px;
+  }
+  
+  .summary-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  
+  .summary-title-section h3 {
+    font-size: 18px;
+  }
+  
+  .summary-subtitle {
+    font-size: 13px;
+  }
+  
+  .refresh-profile-btn {
+    padding: 6px;
+    font-size: 16px;
+  }
+  
+  .learning-stats {
+    padding: 16px;
+    margin-top: 16px;
+  }
+  
+  .learning-stats h4 {
+    font-size: 16px;
+    margin-bottom: 12px;
+  }
+  
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+  
+  .stat-label {
+    font-size: 12px;
+  }
+  
+  .stat-value {
+    font-size: 14px;
+  }
+  
+  .professional-group-detail {
+    padding: 16px;
+    margin-top: 16px;
+  }
+  
+  .professional-group-detail h4 {
+    font-size: 16px;
+    margin-bottom: 12px;
+  }
+  
+  .group-details {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  
+  .group-features h5, .group-tools h5, .group-career h5 {
+    font-size: 14px;
+  }
+  
+  .feature-tags, .tool-tags, .career-tags {
+    gap: 6px;
+  }
+  
+  .feature-tag, .tool-tag, .career-tag {
+    font-size: 12px;
+    padding: 4px 8px;
   }
   
   .learning-path-section {

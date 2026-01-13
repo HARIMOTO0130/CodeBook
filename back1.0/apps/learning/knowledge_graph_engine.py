@@ -51,18 +51,22 @@ class KnowledgeGraphEngine:
                 )
         
         # 2. 获取节点
-        # 对于专业组图谱，确保包含所有相关节点
-        if professional_group:
-            # 获取所有节点，然后关联到专业组图谱
-            # 这样可以确保专业组图谱包含所有相关节点，包括新添加的节点
+        # 查询该图谱的节点
+        nodes_query = KnowledgeNode.objects.filter(graph=graph)
+        
+        # 如果没有节点或只有少量节点，添加必要的节点
+        if not nodes_query.exists():
+            # 获取所有节点，将它们关联到当前图谱
             all_nodes = KnowledgeNode.objects.all()
-            # 将它们关联到当前图谱
             for node in all_nodes:
-                node.graph = graph
-                node.save()
-            # 查询该图谱的节点
+                if not hasattr(node, 'graph') or node.graph != graph:
+                    node.graph = graph
+                    node.save()
+            # 重新查询节点
             nodes_query = KnowledgeNode.objects.filter(graph=graph)
-            # 对于专业组特异性图谱，优先显示该专业组的节点
+        
+        # 对于专业组特异性图谱，优先显示该专业组的节点
+        if professional_group:
             nodes_query = nodes_query.order_by(
                 '-professional_group',  # 相同专业组的节点排在前面
                 'level',
@@ -70,51 +74,35 @@ class KnowledgeGraphEngine:
                 'difficulty'
             )
         else:
-            # 非专业组图谱，使用原有逻辑
-            nodes_query = KnowledgeNode.objects.filter(graph=graph)
-            
-            # 如果没有找到关联到该图谱的节点，将所有现有节点关联到该图谱
-            if not nodes_query.exists():
-                # 获取所有没有关联图谱的节点
-                all_nodes = KnowledgeNode.objects.all()
-                # 将它们关联到当前图谱
-                for node in all_nodes:
-                    node.graph = graph
-                    node.save()
-                # 重新查询节点
-                nodes_query = KnowledgeNode.objects.filter(graph=graph)
+            # 非专业组图谱，按重要性和难度排序
+            nodes_query = nodes_query.order_by(
+                'level',
+                'importance',
+                'difficulty'
+            )
         nodes = nodes_query
         
         # 3. 获取关系
-        # 对于专业组图谱，确保包含所有相关关系
-        if professional_group:
-            # 获取所有关系，然后关联到专业组图谱
+        # 查询该图谱的关系
+        relations_query = KnowledgeRelation.objects.filter(graph=graph)
+        
+        # 如果没有关系或只有少量关系，添加必要的关系
+        if not relations_query.exists():
+            # 获取所有关系，将它们关联到当前图谱
             all_relations = KnowledgeRelation.objects.all()
-            # 将它们关联到当前图谱
             for relation in all_relations:
-                relation.graph = graph
-                relation.save()
-            # 查询该图谱的关系
+                if not hasattr(relation, 'graph') or relation.graph != graph:
+                    relation.graph = graph
+                    relation.save()
+            # 重新查询关系
             relations_query = KnowledgeRelation.objects.filter(graph=graph)
-            # 对于专业组特异性图谱，优先显示与该专业组相关的关系
+        
+        # 对于专业组特异性图谱，只显示与该专业组相关的关系
+        if professional_group:
             relations_query = relations_query.filter(
                 Q(source__professional_group=professional_group) | 
                 Q(target__professional_group=professional_group)
             )
-        else:
-            # 非专业组图谱，使用原有逻辑
-            relations_query = KnowledgeRelation.objects.filter(graph=graph)
-            
-            # 如果没有找到关联到该图谱的关系，将所有现有关系关联到该图谱
-            if not relations_query.exists():
-                # 获取所有没有关联图谱的关系
-                all_relations = KnowledgeRelation.objects.all()
-                # 将它们关联到当前图谱
-                for relation in all_relations:
-                    relation.graph = graph
-                    relation.save()
-                # 重新查询关系
-                relations_query = KnowledgeRelation.objects.filter(graph=graph)
         relations = relations_query
         
         # 4. 构建图结构

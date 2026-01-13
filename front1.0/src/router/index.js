@@ -65,7 +65,7 @@ const router = createRouter({
 // 全局路由守卫
 router.beforeEach(async (to, from, next) => {
   // 设置页面标题
-  document.title = to.meta.title || 'CodeBook+——交互式非计算机专业计算机教育数字教材平台'
+  document.title = to.meta.title || 'CodeBook+——交互式人工智能通识教育数字教材平台'
   
   // 登录/注册页面和404页面不需要任何检查，直接通过
   if (to.path === '/' || to.name === 'Auth' || to.name === 'NotFound') {

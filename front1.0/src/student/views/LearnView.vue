@@ -532,9 +532,23 @@ export default {
     // 代码沙盒功能已移除，不再需要复制代码功能
     
     // 获取章节详细内容 - 增强版，添加更详细的调试日志和确保content字段正确显示
+    const chapterContentCache = new Map()
     const fetchChapterContent = async (chapterId) => {
       try {
         console.log(`🔄 fetchChapterContent called for chapter: ${chapterId}`);
+        
+        // 检查缓存，如果已经获取过相同章节内容，直接返回
+        if (chapterContentCache.has(chapterId)) {
+          console.log('📚 使用缓存的章节内容');
+          const cachedData = chapterContentCache.get(chapterId);
+          currentChapterContent.value = cachedData;
+          
+          // 设置代码语言
+          codeLanguage.value = cachedData.language || 'javascript';
+          console.log('🌐 设置语言:', codeLanguage.value);
+          console.log('🎉 章节内容已从缓存获取并渲染完成');
+          return cachedData;
+        }
         
         // 修复API调用参数 - 只需要chapterId
         const chapterData = await api.getChapterContent(chapterId);
@@ -581,6 +595,10 @@ export default {
         // 设置代码语言
         codeLanguage.value = chapterData.language || 'javascript';
         console.log('🌐 设置语言:', codeLanguage.value);
+        
+        // 缓存章节内容
+        chapterContentCache.set(chapterId, chapterData);
+        console.log('💾 章节内容已缓存');
         
         console.log('🎉 章节内容获取成功并渲染完成');
         return chapterData;
@@ -760,8 +778,19 @@ export default {
     }
     
     // 监听路由参数变化，重新加载内容
-    watch(() => [bookId.value, sectionId.value], () => {
-      loadContent();
+    watch(() => [bookId.value, sectionId.value], ([newBookId, newSectionId], [oldBookId, oldSectionId]) => {
+      // 如果只是章节ID变化，且书籍ID相同，可以复用book数据，只加载章节内容
+      if (newBookId === oldBookId && newBookId) {
+        console.log(`🔄 章节ID变化: ${oldSectionId} → ${newSectionId}, 复用book数据`);
+        findCurrentSection();
+        if (currentSection.value && currentSection.value.id) {
+          fetchChapterContent(currentSection.value.id);
+        }
+      } else {
+        // 书籍ID变化，重新加载所有数据
+        console.log(`🔄 书籍ID变化: ${oldBookId} → ${newBookId}, 重新加载所有数据`);
+        loadContent();
+      }
     })
     
     // 展开代码块

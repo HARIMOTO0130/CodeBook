@@ -256,14 +256,14 @@ class FileUploadHandler:
         else:
             storage_path = f'{self.storage_path_prefix}/{filename}'
         
+        # 计算文件哈希值（在保存前计算，确保文件指针位置正确）
+        file_hash = FileHashCalculator.calculate_md5(file)
+        
         # 保存文件
         saved_path = default_storage.save(storage_path, file)
         
         # 获取完整存储路径
         full_storage_path = default_storage.path(saved_path) if hasattr(default_storage, 'path') else saved_path
-        
-        # 计算文件哈希值
-        file_hash = FileHashCalculator.calculate_md5(file)
         
         # 获取MIME类型
         mime_type = file.content_type or mimetypes.guess_type(file.name)[0]

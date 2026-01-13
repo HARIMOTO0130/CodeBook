@@ -92,7 +92,7 @@ class LearningRecordViewSet(viewsets.ModelViewSet):
         # 用户只能查看自己的学习记录
         return LearningRecord.objects.filter(user=self.request.user)
     
-    @action(detail=False, methods=['post'], permission_classes=[AllowAny], authentication_classes=[])
+    # 定义为普通方法而不是action，以便直接在urls.py中使用
     def execute(self, request):
         """在线执行代码（简易沙箱：临时目录 + 超时限制）"""
         language = (request.data.get('language') or '').lower()
@@ -103,6 +103,19 @@ class LearningRecordViewSet(viewsets.ModelViewSet):
             return Response({'error': '暂不支持该语言'}, status=status.HTTP_400_BAD_REQUEST)
         if not code:
             return Response({'error': '代码为空'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # 定义decode_output函数在方法顶部
+        def decode_output(output_bytes):
+            try:
+                # 优先尝试UTF-8
+                return output_bytes.decode('utf-8')
+            except UnicodeDecodeError:
+                try:
+                    # 尝试GBK编码（Windows系统常见）
+                    return output_bytes.decode('gbk')
+                except UnicodeDecodeError:
+                    # 最后使用replace模式，确保不会崩溃
+                    return output_bytes.decode('utf-8', errors='replace')
         
         start = time.time()
         max_time = 5
@@ -167,18 +180,6 @@ class LearningRecordViewSet(viewsets.ModelViewSet):
                     exit_code = 0
                     cmd = None
                 
-                def decode_output(output_bytes):
-                    try:
-                        # 优先尝试UTF-8
-                        return output_bytes.decode('utf-8')
-                    except UnicodeDecodeError:
-                        try:
-                            # 尝试GBK编码（Windows系统常见）
-                            return output_bytes.decode('gbk')
-                        except UnicodeDecodeError:
-                            # 最后使用replace模式，确保不会崩溃
-                            return output_bytes.decode('utf-8', errors='replace')
-                
                 if cmd:
                     # 设置环境变量，确保Python使用UTF-8编码输出
                     env = os.environ.copy()
@@ -195,7 +196,6 @@ class LearningRecordViewSet(viewsets.ModelViewSet):
                     stdout_text = decode_output(proc.stdout)
                     stderr_text = decode_output(proc.stderr)
                     exit_code = proc.returncode
-        
         except subprocess.TimeoutExpired:
             stderr_text = f'执行超时（>{max_time}s），代码可能存在死循环或执行时间过长'
             exit_code = -1
@@ -276,6 +276,196 @@ class LearningRecordViewSet(viewsets.ModelViewSet):
             'durationMs': duration_ms,
             'stats': stats
         })
+
+
+# 独立的代码执行视图函数，允许匿名访问
+from rest_framework.decorators import api_view, permission_classes, authentication_classes
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@authentication_classes([])
+def execute_code(request):
+    """在线执行代码（简易沙箱：临时目录 + 超时限制）"""
+    language = (request.data.get('language') or '').lower()
+    code = request.data.get('code') or ''
+    stdin_data = request.data.get('input') or ''
+    
+    if language not in ['python', 'javascript', 'java', 'c', 'html']:
+        return Response({'error': '暂不支持该语言'}, status=status.HTTP_400_BAD_REQUEST)
+    if not code:
+        return Response({'error': '代码为空'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    # 定义decode_output函数在方法顶部
+    def decode_output(output_bytes):
+        try:
+            # 优先尝试UTF-8
+            return output_bytes.decode('utf-8')
+        except UnicodeDecodeError:
+            try:
+                # 尝试GBK编码（Windows系统常见）
+                return output_bytes.decode('gbk')
+            except UnicodeDecodeError:
+                # 最后使用replace模式，确保不会崩溃
+                return output_bytes.decode('utf-8', errors='replace')
+    
+    start = time.time()
+    max_time = 5
+    stdout_text = ''
+    stderr_text = ''
+    exit_code = None
+    
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cwd = tmpdir
+            cmd = None
+            
+            if language == 'python':
+                filename = os.path.join(cwd, 'main.py')
+                with open(filename, 'w', encoding='utf-8') as f:
+                    f.write(code)
+                cmd = ['python', '-B', filename]
+            elif language == 'javascript':
+                filename = os.path.join(cwd, 'main.js')
+                with open(filename, 'w', encoding='utf-8') as f:
+                    f.write(code)
+                cmd = ['node', filename]
+            elif language == 'java':
+                filename = os.path.join(cwd, 'Main.java')
+                with open(filename, 'w', encoding='utf-8') as f:
+                    f.write(code)
+                compile_cmd = ['javac', 'Main.java']
+                compile_proc = subprocess.run(
+                    compile_cmd,
+                    cwd=cwd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    timeout=max_time // 2
+                )
+                if compile_proc.returncode != 0:
+                    stderr_text = decode_output(compile_proc.stderr)
+                    exit_code = compile_proc.returncode
+                else:
+                    cmd = ['java', 'Main']
+            elif language == 'c':
+                filename = os.path.join(cwd, 'main.c')
+                with open(filename, 'w', encoding='utf-8') as f:
+                    f.write(code)
+                compile_cmd = ['gcc', 'main.c', '-o', 'main.exe']
+                compile_proc = subprocess.run(
+                    compile_cmd,
+                    cwd=cwd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    timeout=max_time // 2
+                )
+                if compile_proc.returncode != 0:
+                    stderr_text = decode_output(compile_proc.stderr)
+                    exit_code = compile_proc.returncode
+                else:
+                    cmd = ['./main.exe']
+            elif language == 'html':
+                filename = os.path.join(cwd, 'index.html')
+                with open(filename, 'w', encoding='utf-8') as f:
+                    f.write(code)
+                stdout_text = 'HTML文件已生成，在实际环境中可以通过浏览器打开查看'
+                exit_code = 0
+                cmd = None
+            
+            if cmd:
+                # 设置环境变量，确保Python使用UTF-8编码输出
+                env = os.environ.copy()
+                env['PYTHONIOENCODING'] = 'utf-8'
+                proc = subprocess.run(
+                    cmd,
+                    input=stdin_data.encode('utf-8'),
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    cwd=cwd,
+                    timeout=max_time,
+                    env=env  # 使用修改后的环境变量
+                )
+                stdout_text = decode_output(proc.stdout)
+                stderr_text = decode_output(proc.stderr)
+                exit_code = proc.returncode
+    except subprocess.TimeoutExpired:
+        stderr_text = f'执行超时（>{max_time}s），代码可能存在死循环或执行时间过长'
+        exit_code = -1
+    except FileNotFoundError as e:
+        stderr_text = '执行环境缺失，请安装所需运行时（如 Python 或 Node.js）'
+        exit_code = -1
+    except PermissionError as e:
+        stderr_text = f'权限错误：{str(e)}'
+        exit_code = -1
+    except Exception as e:
+        stderr_text = f'执行错误: {str(e)}'
+        exit_code = -1
+    
+    duration_ms = int((time.time() - start) * 1000)
+    
+    # 限制输出长度，防止过大响应
+    max_len = 10000
+    if len(stdout_text) > max_len:
+        stdout_text = stdout_text[:max_len] + '\n...[输出过长已截断]'
+    if len(stderr_text) > max_len:
+        stderr_text = stderr_text[:max_len] + '\n...[输出过长已截断]'
+    
+    # 添加执行统计信息
+    stats = {
+        'language': language,
+        'codeLength': len(code),
+        'executionTime': duration_ms,
+        'timestamp': time.strftime('%Y-%m-%d %H:%M:%S')
+    }
+
+    # 根据测试脚本期望的格式返回响应
+    success = exit_code == 0 and not stderr_text
+    output = stdout_text if stdout_text else stderr_text
+    
+    # 构建错误信息
+    error = None
+    if stderr_text and exit_code != 0:
+        error_type = 'execution_error'
+        error_code = 'EXECUTION_ERROR'
+        error_message = '代码执行失败'
+        
+        if '超时' in stderr_text:
+            error_type = 'timeout_error'
+            error_code = 'TIMEOUT_ERROR'
+            error_message = '执行超时'
+        elif '环境缺失' in stderr_text:
+            error_type = 'environment_error'
+            error_code = 'ENVIRONMENT_ERROR'
+            error_message = '执行环境缺失'
+        elif '权限错误' in stderr_text:
+            error_type = 'permission_error'
+            error_code = 'PERMISSION_ERROR'
+            error_message = '权限错误'
+        elif language in ['java', 'c', 'cpp'] and any(term in stderr_text for term in ['error:', 'warning:', 'undefined reference']):
+            error_type = 'compile_error'
+            error_code = 'COMPILE_ERROR'
+            error_message = '编译失败'
+        elif language == 'python' and any(term in stderr_text for term in ['SyntaxError:', 'IndentationError:', 'NameError: name']):
+            error_type = 'compile_error'
+            error_code = 'COMPILE_ERROR'
+            error_message = '语法错误'
+        
+        error = {
+            'type': error_type,
+            'code': error_code,
+            'message': error_message,
+            'details': stderr_text
+        }
+    
+    return Response({
+        'success': success,
+        'output': output,
+        'error': error,
+        # 保留原有字段以保持向后兼容
+        'stdout': stdout_text,
+        'stderr': stderr_text,
+        'exitCode': exit_code,
+        'durationMs': duration_ms,
+        'stats': stats
+    })
 
 
 class PracticeRecordViewSet(viewsets.ModelViewSet):
@@ -1007,19 +1197,360 @@ class NoteViewSet(viewsets.ModelViewSet):
             return NoteDetailSerializer
         elif self.action == 'create':
             return NoteCreateSerializer
-        elif self.action == 'update' or self.action == 'partial_update':
+        elif self.action == 'update':
             return NoteUpdateSerializer
         return NoteSerializer
     
-    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+    
+    @note_permission_required('更新')
+    def perform_update(self, serializer):
+        serializer.save(updated_at=timezone.now())
+    
+    @note_permission_required('删除')
+    def perform_destroy(self, instance):
+        instance.delete()
+    
+    @action(detail=False, methods=['get'])
+    def search(self, request):
+        """搜索笔记"""
+        keyword = request.query_params.get('keyword', '')
+        if not keyword:
+            return Response([], status=status.HTTP_200_OK)
+        
+        # 搜索标题和内容包含关键字的笔记
+        notes = Note.objects.filter(
+            models.Q(user=request.user) & (models.Q(title__icontains=keyword) | models.Q(content__icontains=keyword))
+        ).order_by('-updated_at')
+        
+        serializer = NoteListSerializer(notes, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def recent(self, request):
+        """获取最近更新的笔记"""
+        notes = Note.objects.filter(user=request.user).order_by('-updated_at')[:10]
+        serializer = NoteListSerializer(notes, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'])
+    def add_tag(self, request, pk=None):
+        """为笔记添加标签"""
+        note = self.get_object()
+        tag_name = request.data.get('tag_name')
+        
+        if not tag_name:
+            return Response({'error': '标签名称不能为空'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # 获取或创建标签
+        tag, created = NoteTag.objects.get_or_create(user=request.user, name=tag_name)
+        
+        # 将标签添加到笔记
+        note.tags.add(tag)
+        
+        return Response({'success': True, 'tag_id': tag.id})
+    
+    @action(detail=True, methods=['post'])
+    def remove_tag(self, request, pk=None):
+        """从笔记移除标签"""
+        note = self.get_object()
+        tag_id = request.data.get('tag_id')
+        
+        if not tag_id:
+            return Response({'error': '标签ID不能为空'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            tag = NoteTag.objects.get(id=tag_id, user=request.user)
+            note.tags.remove(tag)
+            return Response({'success': True})
+        except NoteTag.DoesNotExist:
+            return Response({'error': '标签不存在'}, status=status.HTTP_404_NOT_FOUND)
+    
+    @action(detail=False, methods=['get'])
     def tags(self, request):
-        """获取用户的所有笔记标签"""
-        from .models import NoteTag, NoteTagRelation
-        # 获取用户所有笔记关联的标签
-        tags = NoteTag.objects.filter(
-            id__in=NoteTagRelation.objects.filter(
-                note__user=request.user
-            ).values_list('tag_id', flat=True)
-        ).distinct()
+        """获取用户的所有标签"""
+        tags = NoteTag.objects.filter(user=request.user).order_by('name')
         serializer = NoteTagSerializer(tags, many=True)
         return Response(serializer.data)
+
+
+class JupyterDocumentViewSet(viewsets.ModelViewSet):
+    """Jupyter文档视图集"""
+    queryset = JupyterDocument.objects.all()
+    serializer_class = JupyterDocumentSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        # 用户只能查看自己的Jupyter文档
+        return JupyterDocument.objects.filter(user=self.request.user)
+    
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+    
+    @action(detail=False, methods=['post'])
+    def create_document(self, request):
+        """创建Jupyter文档"""
+        serializer = CreateJupyterDocumentSerializer(data=request.data)
+        if serializer.is_valid():
+            document = serializer.save(user=request.user)
+            return Response({
+                'id': document.id,
+                'title': document.title,
+                'content': document.content,
+                'created_at': document.created_at,
+                'updated_at': document.updated_at
+            }, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=True, methods=['put'])
+    def update_document(self, request, pk=None):
+        """更新Jupyter文档"""
+        document = self.get_object()
+        serializer = UpdateJupyterDocumentSerializer(document, data=request.data)
+        if serializer.is_valid():
+            updated_document = serializer.save()
+            return Response({
+                'id': updated_document.id,
+                'title': updated_document.title,
+                'content': updated_document.content,
+                'updated_at': updated_document.updated_at
+            })
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class LearningStyleViewSet(viewsets.ModelViewSet):
+    """学习风格视图集"""
+    queryset = LearningStyle.objects.all()
+    serializer_class = LearningStyleSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        # 用户只能查看自己的学习风格
+        return LearningStyle.objects.filter(user=self.request.user)
+    
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+    
+    @action(detail=False, methods=['put'])
+    def update_style(self, request):
+        """更新学习风格"""
+        user = request.user
+        serializer = UpdateLearningStyleSerializer(data=request.data)
+        
+        if serializer.is_valid():
+            # 获取或创建学习风格记录
+            learning_style, created = LearningStyle.objects.get_or_create(user=user)
+            
+            # 更新学习风格
+            learning_style.visual = serializer.validated_data.get('visual', learning_style.visual)
+            learning_style.auditory = serializer.validated_data.get('auditory', learning_style.auditory)
+            learning_style.kinesthetic = serializer.validated_data.get('kinesthetic', learning_style.kinesthetic)
+            learning_style.read_write = serializer.validated_data.get('read_write', learning_style.read_write)
+            learning_style.social = serializer.validated_data.get('social', learning_style.social)
+            learning_style.solitary = serializer.validated_data.get('solitary', learning_style.solitary)
+            learning_style.save()
+            
+            return Response({
+                'success': True,
+                'learning_style': LearningStyleSerializer(learning_style).data
+            })
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class KnowledgeMasteryViewSet(viewsets.ModelViewSet):
+    """知识掌握度视图集"""
+    queryset = KnowledgeMastery.objects.all()
+    serializer_class = KnowledgeMasterySerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        # 用户只能查看自己的知识掌握度
+        return KnowledgeMastery.objects.filter(user=self.request.user)
+    
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+    
+    @action(detail=False, methods=['put'])
+    def update_mastery(self, request):
+        """更新知识掌握度"""
+        user = request.user
+        serializer = UpdateKnowledgeMasterySerializer(data=request.data)
+        
+        if serializer.is_valid():
+            knowledge_id = serializer.validated_data['knowledge_id']
+            mastery_level = serializer.validated_data['mastery_level']
+            
+            # 获取或创建知识掌握度记录
+            knowledge_mastery, created = KnowledgeMastery.objects.update_or_create(
+                user=user,
+                knowledge_id=knowledge_id,
+                defaults={'mastery_level': mastery_level}
+            )
+            
+            return Response({
+                'success': True,
+                'knowledge_mastery': KnowledgeMasterySerializer(knowledge_mastery).data
+            })
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class LearningRecommendationViewSet(viewsets.ModelViewSet):
+    """学习推荐视图集"""
+    queryset = LearningRecommendation.objects.all()
+    serializer_class = LearningRecommendationSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        # 用户只能查看自己的学习推荐
+        return LearningRecommendation.objects.filter(user=self.request.user)
+    
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+    
+    @action(detail=False, methods=['post'])
+    def feedback(self, request):
+        """反馈学习推荐"""
+        serializer = FeedbackRecommendationSerializer(data=request.data)
+        if serializer.is_valid():
+            recommendation_id = serializer.validated_data['recommendation_id']
+            feedback = serializer.validated_data['feedback']
+            
+            try:
+                recommendation = LearningRecommendation.objects.get(id=recommendation_id, user=request.user)
+                recommendation.feedback = feedback
+                recommendation.save()
+                return Response({'success': True})
+            except LearningRecommendation.DoesNotExist:
+                return Response({'error': '学习推荐不存在'}, status=status.HTTP_404_NOT_FOUND)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class LearningPreferenceViewSet(viewsets.ModelViewSet):
+    """学习偏好视图集"""
+    queryset = LearningPreference.objects.all()
+    serializer_class = LearningPreferenceSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        # 用户只能查看自己的学习偏好
+        return LearningPreference.objects.filter(user=self.request.user)
+    
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+    
+    @action(detail=False, methods=['put'])
+    def update_preference(self, request):
+        """更新学习偏好"""
+        user = request.user
+        data = request.data
+        
+        # 获取或创建学习偏好记录
+        learning_preference, created = LearningPreference.objects.get_or_create(user=user)
+        
+        # 更新学习偏好
+        if 'preferred_language' in data:
+            learning_preference.preferred_language = data['preferred_language']
+        if 'preferred_difficulty' in data:
+            learning_preference.preferred_difficulty = data['preferred_difficulty']
+        if 'learning_goal' in data:
+            learning_preference.learning_goal = data['learning_goal']
+        if 'preferred_content_type' in data:
+            learning_preference.preferred_content_type = data['preferred_content_type']
+        
+        learning_preference.save()
+        
+        return Response({
+            'success': True,
+            'learning_preference': LearningPreferenceSerializer(learning_preference).data
+        })
+
+
+class KnowledgeNodeViewSet(viewsets.ModelViewSet):
+    """知识节点视图集"""
+    queryset = KnowledgeNode.objects.all()
+    serializer_class = KnowledgeNodeSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        # 用户只能查看公开的或自己创建的知识节点
+        return KnowledgeNode.objects.filter(models.Q(is_public=True) | models.Q(creator=self.request.user))
+    
+    def perform_create(self, serializer):
+        serializer.save(creator=self.request.user)
+
+
+class KnowledgeRelationViewSet(viewsets.ModelViewSet):
+    """知识关系视图集"""
+    queryset = KnowledgeRelation.objects.all()
+    serializer_class = KnowledgeRelationSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        # 用户只能查看公开的或自己创建的知识关系
+        return KnowledgeRelation.objects.filter(models.Q(is_public=True) | models.Q(creator=self.request.user))
+    
+    def perform_create(self, serializer):
+        serializer.save(creator=self.request.user)
+
+@decorators.api_view(['GET'])
+@decorators.permission_classes([IsAuthenticated])
+def get_recommended_roadmaps(request):
+    """获取推荐的学习路线图
+    
+    返回：
+    - roadmaps: 推荐路线图列表
+    """
+    from .recommendation_engine import RecommendationEngine
+    
+    # 创建推荐引擎实例
+    recommendation_engine = RecommendationEngine(request.user)
+    
+    # 获取推荐路线图
+    recommended_roadmaps = recommendation_engine.recommend_roadmaps(limit=5)
+    
+    # 序列化结果
+    serialized_roadmaps = []
+    for recommendation in recommended_roadmaps:
+        roadmap_data = {
+            'id': recommendation.roadmap.id if hasattr(recommendation, 'roadmap') else recommendation.id,
+            'title': recommendation.roadmap.title if hasattr(recommendation, 'roadmap') else recommendation.title,
+            'description': recommendation.roadmap.description if hasattr(recommendation, 'roadmap') else recommendation.description,
+            'difficulty_level': recommendation.roadmap.difficulty_level if hasattr(recommendation, 'roadmap') else recommendation.difficulty_level,
+            'estimated_hours': recommendation.roadmap.estimated_hours if hasattr(recommendation, 'roadmap') else recommendation.estimated_hours,
+            'tags': recommendation.roadmap.tags if hasattr(recommendation, 'roadmap') else recommendation.tags,
+            'is_recommended': True,
+            'recommendation_reason': recommendation.reason if hasattr(recommendation, 'reason') else '智能推荐路线图',
+            'matching_score': recommendation.score if hasattr(recommendation, 'score') else 90
+        }
+        serialized_roadmaps.append(roadmap_data)
+    
+    return Response({'roadmaps': serialized_roadmaps})
+
+
+class AIInteractionRecordViewSet(viewsets.ModelViewSet):
+    """AI交互记录视图集"""
+    queryset = AIInteractionRecord.objects.all()
+    serializer_class = AIInteractionRecordSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        # 用户只能查看自己的AI交互记录
+        return AIInteractionRecord.objects.filter(user=self.request.user)
+    
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+    
+    @action(detail=False, methods=['post'])
+    def create_interaction(self, request):
+        """创建AI交互记录"""
+        serializer = AIInteractionRecordCreateSerializer(data=request.data)
+        if serializer.is_valid():
+            interaction = serializer.save(user=request.user)
+            return Response({
+                'id': interaction.id,
+                'user_query': interaction.user_query,
+                'ai_response': interaction.ai_response,
+                'created_at': interaction.created_at
+            }, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

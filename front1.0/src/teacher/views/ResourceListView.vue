@@ -83,14 +83,14 @@
             :class="{ active: viewMode === 'grid' }"
             @click="viewMode = 'grid'"
           >
-            ⊞
+            📋
           </button>
           <button
             class="view-btn"
             :class="{ active: viewMode === 'list' }"
             @click="viewMode = 'list'"
           >
-            ☰
+            📄
           </button>
         </div>
       </div>
@@ -114,7 +114,7 @@
       </div>
       <div class="folder-card add-folder" @click="showFolderModal = true">
         <div class="folder-icon add">
-          ➕
+          +
         </div>
         <div class="folder-info">
           <h4>新建文件夹</h4>
@@ -144,7 +144,7 @@
             {{ formatSize(resource.size) }} · {{ formatDate(resource.uploadTime) }}
           </p>
           <div class="resource-stats">
-            <span class="stat">👁️ {{ resource.views }}</span>
+            <span class="stat">👁️{{ resource.views }}</span>
             <span class="stat">📥 {{ resource.downloads }}</span>
           </div>
         </div>
@@ -156,7 +156,7 @@
             🔗
           </button>
           <button class="action-btn" @click.stop="moreOptions(resource)" title="更多">
-            ⋯
+⠿
           </button>
         </div>
       </div>
@@ -207,7 +207,7 @@
                   🔗
                 </button>
                 <button class="action-btn small" @click.stop="moreOptions(resource)">
-                  ⋯
+                  •••
                 </button>
               </div>
             </td>
@@ -222,17 +222,17 @@
         :disabled="currentPage === 1"
         @click="currentPage--"
       >
-        ← 上一页
+        上一页
       </button>
       <span class="page-info">
-        第 {{ currentPage }} 页 / 共 {{ totalPages }} 页
+        第{{ currentPage }}页 / 第{{ totalPages }}页
       </span>
       <button
         class="page-btn"
         :disabled="currentPage === totalPages"
         @click="currentPage++"
       >
-        下一页 →
+        下一页
       </button>
     </div>
 
@@ -246,7 +246,7 @@
           <div class="upload-zone" @drop.prevent="handleDrop" @dragover.prevent>
             <div class="upload-content">
               <div class="upload-icon">📤</div>
-              <p>拖拽文件到此处，或 <label for="fileInput" class="upload-link">点击选择文件</label></p>
+              <p>拖拽文件到此处，或<label for="fileInput" class="upload-link">点击选择文件</label></p>
               <input
                 type="file"
                 id="fileInput"
@@ -268,11 +268,35 @@
               <div class="file-info">
                 <span class="file-name">{{ file.name }}</span>
                 <span class="file-size">{{ formatSize(file.size) }}</span>
+                
+                <!-- 上传进度条 -->
+                <div v-if="isUploading && uploadProgress[file.name] !== undefined" class="upload-progress">
+                  <div 
+                    class="progress-bar" 
+                    :style="{ width: uploadProgress[file.name] + '%' }"
+                  ></div>
+                  <span class="progress-text">{{ uploadProgress[file.name] }}%</span>
+                </div>
               </div>
-              <button type="button" class="remove-btn" @click="removeFile(index)">
+              <button 
+                type="button" 
+                class="remove-btn" 
+                @click="removeFile(index)"
+                :disabled="isUploading"
+              >
                 ×
               </button>
             </div>
+          </div>
+
+          <!-- 资源元数据表单字段 -->
+          <div class="form-group">
+            <label>资源标题</label>
+            <input 
+              type="text" 
+              v-model="uploadData.title" 
+              placeholder="请输入资源标题"
+            />
           </div>
 
           <div class="form-group">
@@ -295,13 +319,26 @@
             </select>
           </div>
 
+          
+
+          
+
           <div class="form-group">
             <label>资源描述</label>
             <textarea
               v-model="uploadData.description"
               rows="3"
-              placeholder="请输入资源描述..."
+              placeholder="请输入资源描述.."
             ></textarea>
+          </div>
+
+          <div class="form-group">
+            <label>标签（用逗号分隔）</label>
+            <input 
+              type="text" 
+              v-model="uploadData.tags" 
+              placeholder="例如：课程 练习, 复习"
+            />
           </div>
 
           <div class="form-actions">
@@ -324,7 +361,7 @@
         </div>
         <form @submit.prevent="createFolder" class="modal-body">
           <div class="form-group">
-            <label>文件夹名称 *</label>
+            <label>文件夹名称*</label>
             <input type="text" v-model="newFolder.name" required />
           </div>
           <div class="form-group">
@@ -365,6 +402,58 @@
         </form>
       </div>
     </div>
+    
+    <!-- 预览模态框 -->
+    <div v-if="showPreviewModal" class="modal-overlay" @click.self="showPreviewModal = false">
+      <div class="modal preview-modal">
+        <div class="modal-header">
+          <h3>{{ previewResource?.name || '资源预览' }}</h3>
+          <button class="close-btn" @click="closePreview">&times;</button>
+        </div>
+        <div class="modal-body">
+          <!-- 图片预览 -->
+          <div v-if="previewType === 'image'" class="preview-content image-preview">
+            <img :src="previewResource?.temp_url" alt="资源预览" />
+          </div>
+          
+          <!-- 视频预览 -->
+          <div v-else-if="previewType === 'video'" class="preview-content video-preview">
+            <video controls>
+              <source :src="previewResource?.temp_url" type="video/mp4">
+              您的浏览器不支持视频预览。
+            </video>
+          </div>
+          
+          <!-- 文档预览（提示下载） -->
+          <div v-else-if="previewType === 'document'" class="preview-content document-preview">
+            <div class="document-info">
+              <div class="document-icon">📄</div>
+              <h4>文档预览</h4>
+              <p>此资源为文档类型，无法直接在浏览器中预览。</p>
+              <button class="btn btn-primary" @click="downloadResource(previewResource)">
+                下载文档
+              </button>
+            </div>
+          </div>
+          
+          <!-- 其他类型资源 -->
+          <div v-else class="preview-content other-preview">
+            <div class="other-info">
+              <div class="other-icon">📎</div>
+              <h4>资源预览</h4>
+              <p>此资源类型不支持预览。</p>
+              <button class="btn btn-primary" @click="downloadResource(previewResource)">
+                下载资源
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" @click="showPreviewModal = false">关闭</button>
+          <button class="btn btn-primary" @click="downloadResource(previewResource)">下载</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -385,13 +474,20 @@ export default {
       pageSize: 16,
       showUploadModal: false,
       showFolderModal: false,
+      showPreviewModal: false,
+      previewResource: null,
+      previewType: '',
       selectedFolder: null,
       uploadFiles: [],
       uploadData: {
         folderId: '',
         classId: '',
-        description: ''
+        title: '',
+        description: '',
+        tags: ''
       },
+      uploadProgress: {}, // 存储每个文件的上传进度，键为文件名
+      isUploading: false, // 上传状态标记
       newFolder: {
         name: '',
         icon: '📁',
@@ -406,7 +502,16 @@ export default {
         { id: 4, name: '视频教程', icon: '🎬', color: '#ef4444', count: 6 }
       ],
       classes: [],
-      resources: []
+      resources: [],
+      // 文件验证配置
+      allowedFileTypes: {
+        'document': ['pdf', 'doc', 'docx', 'txt'],
+        'ppt': ['ppt', 'pptx'],
+        'video': ['mp4', 'avi', 'mov', 'wmv'],
+        'image': ['jpg', 'jpeg', 'png', 'gif'],
+        'other': []
+      },
+      maxFileSize: 50 * 1024 * 1024 // 50MB
     }
   },
   computed: {
@@ -521,11 +626,13 @@ export default {
         pdf: 'document',
         doc: 'document',
         docx: 'document',
-        ppt: 'document',
-        pptx: 'document',
+        txt: 'document',
+        ppt: 'ppt',
+        pptx: 'ppt',
         mp4: 'video',
         avi: 'video',
         mov: 'video',
+        wmv: 'video',
         jpg: 'image',
         jpeg: 'image',
         png: 'image',
@@ -550,11 +657,77 @@ export default {
     selectFolder(folder) {
       this.selectedFolder = folder
     },
-    viewResource(resource) {
-      console.log('Viewing resource:', resource.name)
+    // 确定资源的预览类型
+    getPreviewType(resource) {
+      const resourceType = resource.type;
+      if (resourceType === 'image') {
+        return 'image';
+      } else if (resourceType === 'video') {
+        return 'video';
+      } else if (resourceType === 'document' || resourceType === 'ppt') {
+        return 'document';
+      } else {
+        return 'other';
+      }
     },
-    downloadResource(resource) {
-      console.log('Downloading resource:', resource.name)
+    
+    // 打开预览模态框
+    async viewResource(resource) {
+      this.previewResource = resource;
+      this.previewType = this.getPreviewType(resource);
+      
+      // 如果是图片或视频，通过API获取资源内容
+      if (this.previewType === 'image' || this.previewType === 'video') {
+        try {
+          // 调用API获取文件blob
+          const response = await resourceApi.downloadTeachingResource(resource.id);
+          // 创建临时URL用于预览
+          this.previewResource.temp_url = window.URL.createObjectURL(new Blob([response.data]));
+        } catch (error) {
+          console.error('预览资源获取失败:', error);
+          alert('预览资源获取失败: ' + (error.response?.data?.error || error.message || '未知错误'));
+          return;
+        }
+      }
+      
+      this.showPreviewModal = true;
+    },
+    
+    // 关闭预览模态框
+    closePreview() {
+      // 释放临时URL
+      if (this.previewResource && this.previewResource.temp_url) {
+        window.URL.revokeObjectURL(this.previewResource.temp_url);
+      }
+      
+      this.showPreviewModal = false;
+      this.previewResource = null;
+      this.previewType = '';
+    },
+    async downloadResource(resource) {
+      try {
+        // 调用API获取文件blob
+        const response = await resourceApi.downloadTeachingResource(resource.id)
+        
+        // 创建下载链接
+        const url = window.URL.createObjectURL(new Blob([response.data]))
+        const link = document.createElement('a')
+        link.href = url
+        link.setAttribute('download', resource.name)
+        document.body.appendChild(link)
+        link.click()
+        
+        // 清理
+        window.URL.revokeObjectURL(url)
+        document.body.removeChild(link)
+        
+        // 更新本地下载次数
+        resource.downloads = (resource.downloads || 0) + 1;
+        console.log('下载成功:', resource.name)
+      } catch (error) {
+        console.error('下载资源失败:', error)
+        alert('下载资源失败: ' + (error.response?.data?.error || error.message || '未知错误'))
+      }
     },
     shareResource(resource) {
       console.log('Sharing resource:', resource.name)
@@ -562,13 +735,73 @@ export default {
     moreOptions(resource) {
       console.log('More options for:', resource.name)
     },
+    
+    // 文件验证函数
+    validateFile(file) {
+      // 验证文件大小
+      if (file.size > this.maxFileSize) {
+        return `文件"${file.name}"大小超过限制（最大10MB）`
+      }
+      
+      // 验证文件格式
+      const ext = file.name.split('.').pop().toLowerCase()
+      let isValidType = false
+      for (const type in this.allowedFileTypes) {
+        if (this.allowedFileTypes[type].includes(ext)) {
+          isValidType = true
+          break
+        }
+      }
+      
+      if (!isValidType) {
+        return `文件"${file.name}"格式不支持，支持的格式：${this.getAllowedFormats()}`
+      }
+      
+      return null // 验证通过
+    },
+    
+    // 获取所有允许的文件格式
+    getAllowedFormats() {
+      let formats = []
+      for (const type in this.allowedFileTypes) {
+        formats = [...formats, ...this.allowedFileTypes[type]]
+      }
+      return formats.join(', ')
+    },
+    
     handleFileSelect(event) {
       const files = Array.from(event.target.files)
-      this.uploadFiles.push(...files)
+      this.addFiles(files)
     },
+    
     handleDrop(event) {
       const files = Array.from(event.dataTransfer.files)
-      this.uploadFiles.push(...files)
+      this.addFiles(files)
+    },
+    
+    // 添加文件前进行验证
+    addFiles(files) {
+      const validFiles = []
+      const errorMessages = []
+      
+      for (const file of files) {
+        const validationError = this.validateFile(file)
+        if (validationError) {
+          errorMessages.push(validationError)
+        } else {
+          validFiles.push(file)
+        }
+      }
+      
+      // 添加验证通过的文件
+      if (validFiles.length > 0) {
+        this.uploadFiles.push(...validFiles)
+      }
+      
+      // 显示验证错误信息
+      if (errorMessages.length > 0) {
+        alert(errorMessages.join('\n'))
+      }
     },
     removeFile(index) {
       this.uploadFiles.splice(index, 1)
@@ -580,66 +813,108 @@ export default {
       }
 
       try {
+        this.isUploading = true
+        this.uploadProgress = {} // 重置进度
+        
         // 为每个文件创建FormData并上传
         for (const file of this.uploadFiles) {
+          // 初始化该文件的进度
+          this.uploadProgress[file.name] = 0
+          
           const formData = new FormData()
           formData.append('file', file)
-          formData.append('title', file.name)
-          formData.append('description', this.uploadData.description || '')
+          // 使用自定义标题，如果没有则使用文件名
+          formData.append('resource_name', this.uploadData.title || file.name)
+          formData.append('resource_desc', this.uploadData.description || '')
           formData.append('resource_type', this.getResourceType(file))
           formData.append('is_public', true)
           formData.append('category', this.uploadData.folderId || '')
+          formData.append('tags', this.uploadData.tags || '')
           
-          // 使用正确的API方法上传教学资源
-          await resourceApi.uploadTeachingResource(formData)
+          // 定义进度回调函数
+          const onProgress = (progressEvent) => {
+            if (progressEvent.total) {
+              const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+              this.uploadProgress[file.name] = percentCompleted
+            }
+          }
+          
+          // 使用正确的API方法上传教学资源，传入进度回调
+          await resourceApi.uploadTeachingResource(formData, onProgress)
         }
 
-        alert('文件上传成功！')
+        // 上传成功提示
+        alert(`成功上传${this.uploadFiles.length}个文件！`)
         this.closeUploadModal()
         // 刷新资源列表
         this.loadResources()
       } catch (error) {
         console.error('上传失败:', error)
         console.error('错误详情:', error.response?.data)
-        let errorMessage = '上传失败，请重试'
         
-        if (error.response?.data) {
+        let errorTitle = '上传失败'
+        let errorMessage = '上传资源时发生错误，请稍后重试'
+        
+        // 根据错误类型提供更具体的信息
+        if (error.response) {
+          // 服务器返回错误
+          const status = error.response.status
           const errorData = error.response.data
           
-          // 优先使用message字段
-          if (errorData.message) {
+          if (status === 400) {
+            errorTitle = '请求错误'
+            errorMessage = '上传的文件或参数格式不正确'
+          } else if (status === 401) {
+            errorTitle = '未授权'
+            errorMessage = '您的登录已过期，请重新登录后再试'
+          } else if (status === 403) {
+            errorTitle = '权限不足'
+            errorMessage = '您没有权限上传资源'
+          } else if (status === 413) {
+            errorTitle = '文件过大'
+            errorMessage = '上传的文件大小超过了服务器限制'
+          } else if (status >= 500) {
+            errorTitle = '服务器错误'
+            errorMessage = '服务器暂时无法处理请求，请稍后重试'
+          }
+          
+          // 优先使用服务器返回的错误信息
+          if (errorData?.message) {
             errorMessage = errorData.message
-          } else if (errorData.error) {
+          } else if (errorData?.error) {
             errorMessage = errorData.error
           }
           
           // 如果有details，添加详细信息
-          if (errorData.details) {
+          if (errorData?.details) {
             const detailsStr = typeof errorData.details === 'string' 
               ? errorData.details 
               : JSON.stringify(errorData.details, null, 2)
             errorMessage += '\n\n详细信息:\n' + detailsStr
           }
-          
-          // 如果有resource_data（调试信息），也显示
-          if (errorData.resource_data) {
-            console.log('资源数据:', errorData.resource_data)
-          }
-        } else if (error.message) {
-          errorMessage = error.message
+        } else if (error.request) {
+          // 请求已发送但没有收到响应
+          errorTitle = '网络错误'
+          errorMessage = '无法连接到服务器，请检查网络连接后重试'
+        } else {
+          // 请求配置错误
+          errorTitle = '请求错误'
+          errorMessage = error.message || '上传资源时发生错误，请稍后重试'
         }
         
-        // 显示更友好的错误提示
-        alert(`上传资源失败:\n${errorMessage}`)
+        // 显示友好的错误提示
+        alert(`${errorTitle}:\n${errorMessage}`)
+      } finally {
+        this.isUploading = false
+        this.uploadProgress = {} // 清空进度
       }
     },
     getResourceType(file) {
       const ext = file.name.split('.').pop().toLowerCase()
-      if (['pdf', 'doc', 'docx', 'txt'].includes(ext)) return 'document'
-      if (['ppt', 'pptx'].includes(ext)) return 'ppt'
+      if (['pdf', 'doc', 'docx', 'txt', 'ppt', 'pptx'].includes(ext)) return 'document'
       if (['mp4', 'avi', 'mov', 'wmv'].includes(ext)) return 'video'
       if (['jpg', 'jpeg', 'png', 'gif'].includes(ext)) return 'image'
-      return 'other'
+      return 'document' // 默认使用document类型，与后端验证器兼容
     },
     async loadClasses() {
       try {
@@ -690,14 +965,15 @@ export default {
           views: 0, // 后端未返回浏览次数
           downloads: 0, // 后端未返回下载次数
           folderId: item.category || '', // 使用category字段作为分类
-          classId: '' // 教学资源不属于特定班级
+          classId: '', // 教学资源不属于特定班级
+          resource_url: item.file || item.resource_url // 使用file字段作为资源URL
         }))
         
         // 确保分页数据正确
         this.currentPage = 1
         this.totalPages = Math.max(1, Math.ceil(this.resources.length / this.pageSize))
         
-        console.log('加载的资源数据:', this.resources)
+        console.log('加载的资源数据', this.resources)
       } catch (error) {
         console.error('加载资源失败:', error)
         // 出错时显示空数组
@@ -711,7 +987,14 @@ export default {
     closeUploadModal() {
       this.showUploadModal = false
       this.uploadFiles = []
-      this.uploadData = { folderId: '', classId: '', description: '' }
+      // 重置所有上传数据
+      this.uploadData = {
+        folderId: '',
+        classId: '',
+        title: '',
+        description: '',
+        tags: ''
+      }
     },
     createFolder() {
       console.log('Creating folder:', this.newFolder)
@@ -1215,6 +1498,58 @@ export default {
   overflow-y: auto;
 }
 
+/* 预览模态框专用样式 */
+.preview-modal {
+  max-width: 95%;
+  max-height: 95vh;
+  width: auto;
+}
+
+.preview-modal .modal-header {
+  padding: 20px;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.preview-modal .modal-body {
+  padding: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 50vh;
+}
+
+.preview-modal .preview-content {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+}
+
+.preview-modal .image-preview img {
+  max-width: 100%;
+  max-height: 85vh;
+  object-fit: contain;
+}
+
+.preview-modal .video-preview video {
+  max-width: 100%;
+  max-height: 85vh;
+  object-fit: contain;
+}
+
+.preview-modal .modal-footer {
+  padding: 20px;
+  border-top: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 .modal.upload-modal {
   max-width: 560px;
 }
@@ -1414,5 +1749,38 @@ export default {
 .color-option.active {
   transform: scale(1.1);
   border-color: #1e293b;
+}
+
+/* 上传进度条样式 */
+.upload-progress {
+  margin-top: 8px;
+  width: 100%;
+  height: 6px;
+  background-color: #f0f0f0;
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
+}
+
+.progress-bar {
+  height: 100%;
+  background-color: #3b82f6;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.progress-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 12px;
+  color: #333;
+  font-weight: 500;
+}
+
+.remove-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 </style>

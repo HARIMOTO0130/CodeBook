@@ -216,6 +216,39 @@ class StudentHomework(models.Model):
         return f"{self.homework.homework_name} - {self.student.student_name}"
 
 
+class StudentHomeworkFile(models.Model):
+    """学生作业文件模型 - 对应数据库student_homework_file表"""
+    UPLOAD_STATUS_CHOICES = [
+        ('uploading', '上传中'),
+        ('completed', '已完成'),
+        ('failed', '失败'),
+    ]
+    
+    id = models.AutoField(primary_key=True)
+    student_homework = models.ForeignKey(StudentHomework, on_delete=models.CASCADE, related_name='files', verbose_name='作业提交', db_column='student_homework_id')
+    file_name = models.CharField(max_length=255, verbose_name='文件名')
+    file_path = models.CharField(max_length=255, verbose_name='文件存储路径')
+    storage_path = models.TextField(blank=True, null=True, verbose_name='完整存储路径', db_column='storage_path')
+    file_size = models.BigIntegerField(verbose_name='文件大小（字节）', db_column='file_size')
+    file_hash = models.CharField(max_length=64, blank=True, null=True, verbose_name='文件哈希值', db_column='file_hash')
+    mime_type = models.CharField(max_length=100, blank=True, null=True, verbose_name='文件MIME类型', db_column='mime_type')
+    upload_status = models.CharField(max_length=20, choices=UPLOAD_STATUS_CHOICES, default='completed', verbose_name='上传状态', db_column='upload_status')
+    upload_time = models.DateTimeField(auto_now_add=True, verbose_name='上传时间', db_column='upload_time')
+    upload_ip = models.GenericIPAddressField(blank=True, null=True, verbose_name='上传IP地址', db_column='upload_ip')
+
+    class Meta:
+        db_table = 'student_homework_file'
+        verbose_name = '学生作业文件'
+        verbose_name_plural = '学生作业文件'
+        indexes = [
+            models.Index(fields=['student_homework']),
+            models.Index(fields=['file_hash']),
+        ]
+
+    def __str__(self):
+        return f"{self.student_homework} - {self.file_name}"
+
+
 class Notice(models.Model):
     """通知模型 - 对应数据库notice表"""
     NOTICE_TYPE_CHOICES = [('system', '系统通知'), ('assignment', '作业提醒'), ('student', '学生消息'), ('announcement', '公告')]
@@ -336,6 +369,7 @@ class TeachingResource(models.Model):
     mime_type = models.CharField(max_length=100, blank=True, null=True, verbose_name='文件MIME类型', db_column='mime_type')
     upload_ip = models.GenericIPAddressField(blank=True, null=True, verbose_name='上传IP地址', db_column='upload_ip')
     retry_count = models.IntegerField(default=0, verbose_name='重试次数', db_column='retry_count')
+    download_count = models.IntegerField(default=0, verbose_name='下载次数', db_column='download_count')
 
     class Meta:
         db_table = 'teacher_teachingresource'

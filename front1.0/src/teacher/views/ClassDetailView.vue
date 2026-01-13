@@ -31,10 +31,12 @@
             </p>
             <p class="class-description">{{ classInfo.description || '暂无描述' }}</p>
           </div>
-        </div>
-        <div class="header-actions">
-          <button class="btn btn-primary" @click="editClass">编辑班级</button>
-          <button class="btn btn-secondary" @click="addStudent">添加学生</button>
+          
+          <!-- 头部操作按钮 -->
+          <div class="header-actions">
+            <button class="btn btn-small btn-primary" @click="editClass">编辑班级</button>
+            <button class="btn btn-small btn-secondary" @click="addStudent">添加学生</button>
+          </div>
         </div>
       </div>
 
@@ -81,18 +83,18 @@
             v-for="student in classInfo.students" 
             :key="student.id"
             class="student-card"
-            @click="goToStudentDetail(student.user?.id || student.id)"
+            @click="goToStudentDetail(student.id)"
           >
             <div class="student-avatar">
-              {{ (student.user?.username || student.username || 'S').charAt(0).toUpperCase() }}
+              {{ (student.student_name || student.username || 'S').charAt(0).toUpperCase() }}
             </div>
             <div class="student-info">
-              <h4>{{ student.user?.username || student.username || '未知' }}</h4>
-              <p>{{ student.student_id || '学号未设置' }}</p>
+              <h4>{{ student.student_name || student.username || '未知' }}</h4>
+              <p>{{ student.student_no || '学号未设置' }}</p>
             </div>
             <div class="student-actions">
-              <button class="btn-icon" @click.stop="viewStudentProgress(student.user?.id || student.id)">📊</button>
-              <button class="btn-icon btn-danger" @click.stop="confirmRemoveStudent(student.user?.id || student.id, student.user?.username || student.username || '未知')">×</button>
+              <button class="btn-icon" @click.stop="viewStudentProgress(student.id)">📊</button>
+              <button class="btn-icon btn-danger" @click.stop="confirmRemoveStudent(student.id, student.student_name || student.username || '未知')">×</button>
             </div>
           </div>
         </div>
@@ -201,11 +203,69 @@
       </div>
     </div>
 
-    <!-- 错误提示 -->
-    <div v-else class="error-container">
-      <p>加载失败，请重试</p>
-      <button class="btn btn-primary" @click="loadClassDetail">重新加载</button>
+    <!-- 添加学生模态框 -->
+    <div v-if="showAddStudentModal" class="modal-overlay" @click.self="showAddStudentModal = false">
+      <div class="modal add-student-modal">
+        <div class="modal-header">
+          <h2>添加学生</h2>
+          <button class="close-btn" @click="showAddStudentModal = false">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label>搜索学生</label>
+            <div class="search-box">
+              <input 
+                type="text" 
+                v-model="searchQuery" 
+                @input="searchStudents" 
+                placeholder="输入学生姓名或学号" 
+                :disabled="loadingStudents"
+              />
+              <button class="btn btn-small" @click="searchStudents" :disabled="loadingStudents">
+                <span v-if="loadingStudents">搜索中...</span>
+                <span v-else>搜索</span>
+              </button>
+            </div>
+          </div>
+          
+          <div class="search-results" v-if="searchResults.length > 0">
+            <div 
+              v-for="student in searchResults" 
+              :key="student.id"
+              class="student-item"
+              :class="{ 'selected': selectedStudents.includes(student.id) }"
+              @click="toggleStudentSelection(student.id)"
+            >
+              <div class="student-info">
+                <h4>{{ student.student_name || student.username }}</h4>
+                <p>{{ student.student_no || '学号未设置' }}</p>
+              </div>
+              <div class="student-status" v-if="isStudentInClass(student.id)">
+                <span class="tag tag-success">已在班</span>
+              </div>
+            </div>
+          </div>
+          <div v-else-if="loadingStudents" class="loading-state">
+            <p>搜索中...</p>
+          </div>
+          <div v-else-if="searchQuery" class="empty-state">
+            <p>未找到匹配的学生</p>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" @click="showAddStudentModal = false">取消</button>
+          <button 
+            class="btn btn-primary" 
+            @click="confirmAddStudents" 
+            :disabled="selectedStudents.length === 0"
+          >
+            添加选中的学生 ({{ selectedStudents.length }})
+          </button>
+        </div>
+      </div>
     </div>
+
+    
   </div>
 </template>
 
@@ -215,6 +275,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { classApi } from '../api/class'
 import { assignmentApi } from '../api/assignment'
 import { resourceApi } from '../api/resource'
+import { studentApi } from '../api/student'
 import { formatDate } from '../utils/dataFormatter'
 
 export default {
@@ -235,6 +296,13 @@ export default {
       description: ''
     })
     const selectedFile = ref(null)
+    
+    // 添加学生相关状态
+    const showAddStudentModal = ref(false)
+    const searchQuery = ref('')
+    const searchResults = ref([])
+    const loadingStudents = ref(false)
+    const selectedStudents = ref([])
 
     const loadClassDetail = async () => {
       loading.value = true
@@ -260,20 +328,16 @@ export default {
         } else if (Array.isArray(classData.students)) {
           // 确保每个学生对象都有正确的结构
           classData.students = classData.students.map(student => {
-            // 如果学生数据已经是正确格式，直接返回
-            if (student.user || student.username) {
-              return student
-            }
-            // 否则尝试从其他字段构建
+            // 处理后端返回的学生数据格式
             return {
               id: student.id,
               user: {
                 id: student.id,
-                username: student.username || '未知',
-                email: student.email || ''
+                username: student.student_name || '未知',
+                email: ''
               },
-              username: student.username || '未知',
-              student_id: student.student_id || null
+              username: student.student_name || '未知',
+              student_id: student.student_no || null
             }
           })
         }
@@ -362,7 +426,85 @@ export default {
     }
 
     const addStudent = () => {
-      alert('添加学生功能开发中...')
+      showAddStudentModal.value = true
+      searchQuery.value = ''
+      searchResults.value = []
+      selectedStudents.value = []
+    }
+    
+    const searchStudents = async () => {
+      const query = searchQuery.value.trim()
+      if (!query) {
+        searchResults.value = []
+        return
+      }
+      
+      loadingStudents.value = true
+      try {
+        // 调用搜索学生API
+        const response = await studentApi.getStudents({
+          search: query
+        })
+        
+        let students = []
+        if (response.data && Array.isArray(response.data)) {
+          students = response.data
+        } else if (response.data && Array.isArray(response.data.results)) {
+          students = response.data.results
+        }
+        
+        searchResults.value = students
+      } catch (error) {
+        console.error('搜索学生失败:', error)
+        searchResults.value = []
+        alert('搜索学生失败: ' + (error.response?.data?.error || error.message))
+      } finally {
+        loadingStudents.value = false
+      }
+    }
+    
+    const toggleStudentSelection = (studentId) => {
+      const index = selectedStudents.value.indexOf(studentId)
+      if (index === -1) {
+        // 检查学生是否已在班级中
+        if (!isStudentInClass(studentId)) {
+          selectedStudents.value.push(studentId)
+        }
+      } else {
+        selectedStudents.value.splice(index, 1)
+      }
+    }
+    
+    const isStudentInClass = (studentId) => {
+      if (!classInfo.value || !classInfo.value.students) {
+        return false
+      }
+      return classInfo.value.students.some(student => student.id === studentId)
+    }
+    
+    const confirmAddStudents = async () => {
+      if (selectedStudents.value.length === 0) {
+        alert('请先选择要添加的学生')
+        return
+      }
+      
+      try {
+        const classId = route.params.id
+        
+        // 批量添加学生到班级
+        for (const studentId of selectedStudents.value) {
+          await classApi.addStudent(classId, studentId)
+        }
+        
+        alert('学生添加成功！')
+        showAddStudentModal.value = false
+        
+        // 刷新班级详情数据
+        await loadClassDetail()
+      } catch (error) {
+        console.error('添加学生失败:', error)
+        alert('添加学生失败: ' + (error.response?.data?.error || error.message))
+      }
     }
 
     const editClass = () => {
@@ -387,7 +529,7 @@ export default {
           await loadClassDetail()
         } catch (error) {
           console.error('移除学生失败:', error)
-          alert('移除学生失败: ' + (error.response?.data?.error || error.message))
+          alert('移除学生失败: ' + (error.response?.data?.error || error.message || '请稍后重试'))
         }
       }
     }
@@ -567,15 +709,23 @@ export default {
   padding: 32px;
   margin-bottom: 24px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
 }
 
 .header-content {
   display: flex;
   gap: 24px;
+  align-items: flex-start;
+  width: 100%;
+}
+
+.class-info {
   flex: 1;
+}
+
+.header-actions {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
 }
 
 .class-avatar-large {
@@ -830,11 +980,6 @@ export default {
   text-align: center;
   padding: 40px 20px;
   color: #94a3b8;
-}
-
-.error-container {
-  text-align: center;
-  padding: 60px 20px;
 }
 
 .btn {

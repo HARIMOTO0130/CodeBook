@@ -92,21 +92,15 @@
               class="markdown-preview"
               v-html="renderMarkdown(cell.content)"
               @click="(event) => {
-                try {
-                  const selection = window.getSelection?.()
-                  if (selection && selection.rangeCount > 0) {
-                    const range = selection.getRangeAt(0)
-                    const preCaretRange = range.cloneRange()
-                    preCaretRange.selectNodeContents(event.currentTarget)
-                    preCaretRange.setEnd(range.endContainer, range.endOffset)
-                    const clickOffset = preCaretRange.toString().length
-                    toggleCellEdit(index, true, clickOffset)
-                  } else {
-                    toggleCellEdit(index, true)
-                  }
-                } catch (error) {
-                  console.error('处理点击事件时出错:', error)
-                  // 即使出错也确保切换到编辑模式
+                const selection = window.getSelection?.()
+                if (selection && selection.rangeCount > 0) {
+                  const range = selection.getRangeAt(0)
+                  const preCaretRange = range.cloneRange()
+                  preCaretRange.selectNodeContents(event.currentTarget)
+                  preCaretRange.setEnd(range.endContainer, range.endOffset)
+                  const clickOffset = preCaretRange.toString().length
+                  toggleCellEdit(index, true, clickOffset)
+                } else {
                   toggleCellEdit(index, true)
                 }
               }"
@@ -136,7 +130,14 @@
               <div class="output-header">输出</div>
               <div class="output-content">
                 <div v-for="(outputLine, lineIndex) in cell.output" :key="lineIndex" class="output-line">
-                  <span :class="getOutputClass(outputLine)">{{ outputLine }}</span>
+                  <!-- 处理对象格式的输出行 -->
+                  <span v-if="typeof outputLine === 'object' && outputLine !== null" :class="getOutputClass(outputLine)">
+                    {{ outputLine.content }}
+                  </span>
+                  <!-- 处理字符串格式的输出行（保持向后兼容） -->
+                  <span v-else :class="getOutputClass(outputLine)">
+                    {{ outputLine }}
+                  </span>
                 </div>
               </div>
             </div>
@@ -260,6 +261,19 @@ export default {
         // 可以在这里处理公开状态变化的逻辑
         console.log('公开状态已更新:', newValue)
       }
+    )
+    
+    // 监听initialContent变化，重新加载内容
+    watch(
+      () => props.initialContent,
+      (newContent, oldContent) => {
+        if (newContent && newContent !== oldContent) {
+          console.log('📄 initialContent已变化，重新加载文档内容');
+          // 重新加载内容
+          loadDocument();
+        }
+      },
+      { immediate: false } // 初始加载已经在onMounted中处理
     )
     
     // 初始化默认单元格
@@ -593,57 +607,24 @@ export default {
       return extensionMap[language] || 'txt'
     }
     
-    // 简单的Markdown渲染
+    // 简单的Markdown渲染 - 优化版，添加缓存机制
+    const markdownCache = new Map()
     const renderMarkdown = (text) => {
       if (!text) return ''
       
-      return text
+      // 检查缓存，如果已经渲染过相同内容，直接返回
+      if (markdownCache.has(text)) {
+        return markdownCache.get(text)
+      }
+      
+      // 使用一次性的正则替换来优化性能
+      let result = text
         // 代码块
         .replace(/```([\s\S]*?)```/g, (match, code) => {
           const [lang, content] = code.split('\n', 2)
           return `<pre><code class="language-${lang}">${content || lang}</code></pre>`
         })
-        // 图片 - 支持所有格式：简单格式和完整格式
-        .replace(/!\[(.*?)\]\((.*?)\)|.*?图片\s+(image_\d+)(?:_([\w]+))?.*?/g, (match, altText, imagePath, imageName, imageId) => {
-          // 如果没有匹配到imageName，尝试从altText或imagePath中提取
-          if (!imageName) {
-            // 从altText中提取
-            const altNameMatch = (altText || '').match(/(image_\d+)(?:_([\w]+))?/);
-            // 从imagePath中提取
-            const pathNameMatch = (imagePath || '').match(/(image_\d+)(?:_([\w]+))?/);
-            
-            if (altNameMatch) {
-              imageName = altNameMatch[1];
-              imageId = altNameMatch[2] || '';
-            } else if (pathNameMatch) {
-              imageName = pathNameMatch[1];
-              imageId = pathNameMatch[2] || '';
-            } else {
-              // 仅提取imageName
-              const simpleMatch = (altText || '').match(/image_(\d+)/) || 
-                               (imagePath || '').match(/image_(\d+)/);
-              if (simpleMatch) {
-                imageName = `image_${simpleMatch[1]}`;
-                imageId = '';
-              } else {
-                return match; // 如果都没有匹配到，返回原内容
-              }
-            }
-          }
-          
-          // 构造图片URL
-          let imageUrl;
-          if (imageId) {
-            // 包含ID的完整格式
-            imageUrl = `http://127.0.0.1:8000/media/book_images/${props.bookId || 0}/${imageName}_${imageId}.png`;
-          } else {
-            // 不包含ID的简单格式
-            imageUrl = `http://127.0.0.1:8000/media/book_images/${props.bookId || 0}/${imageName}.png`;
-          }
-          
-          return `<img src="${imageUrl}" alt="图片 ${imageName}" class="markdown-image">`;
-        })
-        // 标题
+        // 标题 (从最多#到最少#，避免部分匹配)
         .replace(/#{6}\s+(.*?)$/gm, '<h6>$1</h6>')
         .replace(/#{5}\s+(.*?)$/gm, '<h5>$1</h5>')
         .replace(/#{4}\s+(.*?)$/gm, '<h4>$1</h4>')
@@ -671,6 +652,10 @@ export default {
         .replace(/^(?!<[hlu])(.*?)$/gm, (match, p1) => {
           return p1.trim() ? `<p>${p1}</p>` : ''
         })
+      
+      // 缓存渲染结果
+      markdownCache.set(text, result)
+      return result
     }
     
     // 从Markdown解析单元格
@@ -706,70 +691,13 @@ export default {
       
       let currentContent = '';
       let inCodeBlock = false;
-      let inTableCodeBlock = false;
       let codeLanguage = '';
       
       for (let i = 0; i < lines.length; i++) {
-        // 不trim()，保持原始行内容以便匹配图片标记
-        const line = lines[i];
-        const trimmedLine = line.trim();
+        const line = lines[i].trim();
         
-        // 检测特殊表格代码块开始（| #例开头）
-        const tableCodeStartMatch = line.match(/^\|\s*#例/);
-        if (tableCodeStartMatch && !inCodeBlock && !inTableCodeBlock) {
-          // 表格代码块开始
-          inTableCodeBlock = true;
-          
-          // 保存前面的Markdown内容
-          if (currentContent.trim() !== '') {
-            cells.push({
-              id: (cellId++).toString(),
-              type: 'markdown',
-              content: currentContent.trim(),
-              output: [],
-              isSystemGenerated: true,
-              isEditing: false
-            });
-            currentContent = '';
-          }
-          
-          // 提取代码内容，去掉前后的|符号
-          let codeLine = line.replace(/^\|\s*/, '').replace(/\s*\|\s*$/, '');
-          currentContent = codeLine;
-          continue;
-        }
-        
-        // 检测特殊表格代码块结束（| --- |）
-        if (trimmedLine === '| --- |' && inTableCodeBlock) {
-          // 表格代码块结束
-          inTableCodeBlock = false;
-          
-          // 保存代码内容为code单元格
-          if (currentContent.trim() !== '') {
-            cells.push({
-              id: (cellId++).toString(),
-              type: 'code',
-              content: currentContent.trim(),
-              language: 'python',
-              output: [],
-              isRunning: false,
-              isSystemGenerated: true
-            });
-            currentContent = '';
-          }
-          continue;
-        }
-        
-        // 收集表格代码块内容
-        if (inTableCodeBlock) {
-          // 提取代码内容，去掉前后的|符号
-          let codeLine = line.replace(/^\|\s*/, '').replace(/\s*\|\s*$/, '');
-          currentContent += (currentContent ? '\n' : '') + codeLine;
-          continue;
-        }
-        
-        // 检测标准代码块开始（```后面可能有语言标识）
-        const codeBlockStartMatch = trimmedLine.match(/^```(\w*)/);
+        // 检测代码块开始（```后面可能有语言标识）
+        const codeBlockStartMatch = line.match(/^```(\w*)/);
         if (codeBlockStartMatch && !inCodeBlock) {
           // 代码块开始
           inCodeBlock = true;
@@ -791,7 +719,7 @@ export default {
         }
         
         // 检测代码块结束
-        if (trimmedLine === '```' && inCodeBlock) {
+        if (line === '```' && inCodeBlock) {
           // 代码块结束
           inCodeBlock = false;
           
@@ -813,14 +741,13 @@ export default {
         
         // 收集代码块内容
         if (inCodeBlock) {
-          currentContent += (currentContent ? '\n' : '') + line;
+          currentContent += (currentContent ? '\n' : '') + lines[i];
         }
         // 收集Markdown内容
         else {
-          // 检查是否是图片标记（简单匹配）
-          const isImageLine = line.includes('图片 image_') || line.includes('!图片');
-          
-          if (isImageLine) {
+          // 检查是否是图片Markdown语法
+          const imageMatch = line.match(/^!\[(.*?)\]\((.*?)\)$/);
+          if (imageMatch) {
             // 保存当前的普通内容（如果有）
             if (currentContent.trim() !== '') {
               cells.push({
@@ -833,25 +760,12 @@ export default {
               });
               currentContent = '';
             }
-            
-            // 从行中提取图片的核心ID部分
-            const imageIdMatch = line.match(/image_(\d+_[0-9a-f]+)/i);
-            const imageId = imageIdMatch ? imageIdMatch[1] : '0_0';
-            
-            // 构造图片URL，支持两种格式：
-            // 1. 不包含UUID前缀的格式（前端生成的）
-            // 2. 包含UUID前缀的格式（后端实际存储的）
-            const imageUrl = `http://127.0.0.1:8000/media/book_images/${props.bookId || 0}/image_${imageId}.png`;
-            
-            // 设置图片替代文本
-            const altText = `图片 image_${imageId}`;
-            
             // 创建图片单元格
             cells.push({
               id: (cellId++).toString(),
               type: 'image',
-              imageUrl: imageUrl,
-              altText: altText,
+              imageUrl: imageMatch[2],
+              altText: imageMatch[1] || '',
               width: null,
               height: null,
               isLoading: false,
@@ -1272,28 +1186,62 @@ const toggleCellEdit = (index, isEditing, clickOffset = null) => {
         
         // 处理输出
         if (result.stdout) {
-          cell.output = cell.output.concat(result.stdout.split('\n'))
+          // 将stdout拆分为多行，使用统一的对象格式
+          const stdoutLines = result.stdout.split('\n')
+          cell.output = cell.output.concat(stdoutLines.map(line => ({
+            content: line
+          })))
         }
         
         // 处理错误信息
         if (result.error) {
-          cell.output.push(`错误: ${result.error.message}`)
+          // 设置错误行的isError属性
+          cell.output.push({
+            content: `错误: ${result.error.message}`,
+            isError: true
+          })
           if (result.error.details) {
-            cell.output = cell.output.concat(result.error.details.split('\n'))
+            // 将错误详情拆分为多行，并为包含错误信息的行设置isError属性
+            const detailsLines = result.error.details.split('\n')
+            cell.output = cell.output.concat(detailsLines.map(line => ({
+              content: line,
+              isError: typeof line === 'string' && (line.includes('Error') || line.includes('^') || line.includes('File "'))
+            })))
           }
         } else if (result.stderr) {
-          cell.output = cell.output.concat(result.stderr.split('\n'))
+          // 将stderr拆分为多行，并为可能的错误行设置isError属性
+          const stderrLines = result.stderr.split('\n')
+          cell.output = cell.output.concat(stderrLines.map(line => ({
+            content: line,
+            isError: typeof line === 'string' && (line.includes('Error') || line.includes('error'))
+          })))
         }
         
         // 添加执行信息
-        cell.output.push(`[执行时间: ${result.durationMs}ms]`)
+        cell.output.push({
+          content: `[执行时间: ${result.durationMs}ms]`
+        })
         
       } catch (error) {
         console.error('代码执行错误:', error)
-        cell.output = ['执行错误:', error.message]
+        // 使用统一的对象格式并设置isError属性
+        cell.output = [
+          {
+            content: '执行错误:',
+            isError: true
+          },
+          {
+            content: error.message,
+            isError: true
+          }
+        ]
         // 如果有错误详细信息，也显示出来
         if (error.response?.data?.error?.details) {
-          cell.output.push(error.response.data.error.details)
+          const detailsLines = error.response.data.error.details.split('\n')
+          cell.output = cell.output.concat(detailsLines.map(line => ({
+            content: line,
+            isError: typeof line === 'string' && (line.includes('Error') || line.includes('^') || line.includes('File "'))
+          })))
         }
       } finally {
         cell.isRunning = false
@@ -1819,7 +1767,13 @@ const toggleCellEdit = (index, isEditing, clickOffset = null) => {
     
     // 获取输出行样式类
     const getOutputClass = (line) => {
-      if (line.includes('错误') || line.includes('Error') || line.startsWith('Traceback')) {
+      // 获取行内容，处理对象格式的输出行
+      const lineContent = typeof line === 'object' && line !== null ? line.content : line
+      
+      // 检查是否为错误行
+      if (typeof lineContent === 'string' && 
+          (lineContent.includes('错误') || lineContent.includes('Error') || 
+           lineContent.startsWith('Traceback') || line.isError)) {
         return 'error-line'
       }
       return 'normal-line'

@@ -13,13 +13,13 @@ from django.core.files.storage import default_storage
 import os
 
 from .models import (
-    Class, Student, StudentClass, StudentLearningProgress, Homework, StudentHomework,
+    Class, Student, StudentClass, StudentLearningProgress, Homework, StudentHomework, StudentHomeworkFile,
     Notice, StudentNoticeRead, ClassResource, TeachingResource,
     CourseDesign, TeacherSetting, Report
 )
 from .serializers import (
     ClassSerializer, ClassDetailSerializer, StudentSerializer,
-    StudentLearningProgressSerializer, HomeworkSerializer, StudentHomeworkSerializer,
+    StudentLearningProgressSerializer, HomeworkSerializer, StudentHomeworkSerializer, StudentHomeworkFileSerializer,
     NoticeSerializer, StudentNoticeReadSerializer, ClassResourceSerializer,
     TeachingResourceSerializer, CourseDesignSerializer, TeacherSettingSerializer,
     TeacherInfoSerializer, ReportSerializer, StudentClassSerializer
@@ -129,8 +129,8 @@ class ClassViewSet(viewsets.ModelViewSet):
     def students(self, request, pk=None):
         """获取班级学生列表"""
         class_obj = self.get_object()
-        # 由于Student模型中的class_obj已被替换为class_name，我们需要修改查询方式
-        students = Student.objects.filter(class_name=class_obj.name)
+        # 使用StudentClass关系获取班级学生
+        students = Student.objects.filter(student_classes__class_obj=class_obj, student_classes__is_active=True)
         serializer = StudentSerializer(students, many=True)
         return Response(serializer.data)
     
@@ -141,23 +141,33 @@ class ClassViewSet(viewsets.ModelViewSet):
         student_id = request.data.get('student_id')
         try:
             student = Student.objects.get(id=student_id)
-            # 由于Student模型中的class_obj已被替换为class_name，我们需要修改设置方式
+            # 使用StudentClass关系添加学生到班级
+            student_class, created = StudentClass.objects.get_or_create(
+                student=student,
+                class_obj=class_obj,
+                defaults={'is_active': True}
+            )
+            if not created:
+                student_class.is_active = True
+                student_class.left_at = None
+                student_class.save()
+            # 同时更新Student模型的class_name字段以保持兼容性
             student.class_name = class_obj.name
             student.save()
             return Response({'message': '学生添加成功'}, status=status.HTTP_200_OK)
         except Student.DoesNotExist:
             return Response({'error': '学生不存在'}, status=status.HTTP_404_NOT_FOUND)
     
-    @action(detail=True, methods=['delete'])
-    def remove_student(self, request, pk=None):
+    @action(detail=True, methods=['delete'], url_path='students/(?P<student_id>[^/.]+)')
+    def remove_student(self, request, pk=None, student_id=None):
         """从班级移除学生"""
         class_obj = self.get_object()
-        student_id = request.data.get('student_id')
         try:
+            student = Student.objects.get(id=student_id)
             # 查找学生与班级的关系
             student_class = StudentClass.objects.filter(
-                student=student_id,
-                class_obj=class_obj.id,
+                student=student,
+                class_obj=class_obj,
                 is_active=True
             ).first()
             
@@ -170,13 +180,9 @@ class ClassViewSet(viewsets.ModelViewSet):
             student_class.save()
             
             # 清除Student模型的class_name字段（如果需要）
-            try:
-                student = Student.objects.get(id=student_id)
-                if student.class_name == class_obj.name:
-                    student.class_name = None
-                    student.save()
-            except Student.DoesNotExist:
-                pass
+            if student.class_name == class_obj.name:
+                student.class_name = None
+                student.save()
             
             return Response({'message': '学生移除成功'}, status=status.HTTP_200_OK)
         except Exception as e:
@@ -186,8 +192,8 @@ class ClassViewSet(viewsets.ModelViewSet):
     def progress(self, request, pk=None):
         """获取班级学习进度"""
         class_obj = self.get_object()
-        # 由于Student模型中的class_obj已被替换为class_name，我们需要修改查询方式
-        students = Student.objects.filter(class_name=class_obj.name)
+        # 使用StudentClass关系获取班级学生
+        students = Student.objects.filter(student_classes__class_obj=class_obj, student_classes__is_active=True)
         
         # 统计学习进度
         progress_data = StudentLearningProgress.objects.filter(
@@ -207,8 +213,8 @@ class ClassViewSet(viewsets.ModelViewSet):
     def analytics(self, request, pk=None):
         """获取班级分析数据"""
         class_obj = self.get_object()
-        # 由于Student模型中的class_obj已被替换为class_name，我们需要修改查询方式
-        students = Student.objects.filter(class_name=class_obj.name)
+        # 使用StudentClass关系获取班级学生
+        students = Student.objects.filter(student_classes__class_obj=class_obj, student_classes__is_active=True)
         
         # 学生统计
         total_students = students.count()
@@ -625,12 +631,12 @@ class HomeworkViewSet(viewsets.ModelViewSet):
         homework.save()
         
         # 为班级所有学生创建作业提交记录
-        # 由于Student模型中的class_obj已被替换为class_name，我们需要修改查询方式
-        students = Student.objects.filter(class_name=homework.class_obj.name)
-        for student in students:
+        # 使用StudentClass中间表获取班级所有学生
+        student_classes = StudentClass.objects.filter(class_obj=homework.class_obj, is_active=True)
+        for sc in student_classes:
             StudentHomework.objects.get_or_create(
                 homework=homework,
-                student=student,
+                student=sc.student,
                 defaults={'status': 1}
             )
         
@@ -839,7 +845,7 @@ class NoticeViewSet(viewsets.ModelViewSet):
                 'read_records': []
             })
     
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['post'])
     def unread_count(self, request):
         """获取未读通知数量"""
         try:
@@ -884,10 +890,25 @@ class ResourceViewSet(viewsets.ViewSet):
             resource.save()
             
             # 返回文件
+            import mimetypes
             if resource.resource_url and default_storage.exists(resource.resource_url):
                 file = default_storage.open(resource.resource_url, 'rb')
                 response = FileResponse(file)
-                response['Content-Disposition'] = f'attachment; filename="{resource.resource_name}"'
+                
+                # 设置正确的Content-Type
+                content_type, _ = mimetypes.guess_type(resource.resource_url)
+                if content_type:
+                    response['Content-Type'] = content_type
+                
+                # 确保文件名包含扩展名
+                filename = resource.resource_name
+                if '.' not in filename and resource.resource_url:
+                    # 从文件路径中提取扩展名
+                    import os
+                    _, ext = os.path.splitext(resource.resource_url)
+                    filename += ext
+                    
+                response['Content-Disposition'] = f'attachment; filename="{filename}"'
                 return response
             else:
                 return Response({'error': '文件不存在'}, status=status.HTTP_404_NOT_FOUND)
@@ -904,6 +925,41 @@ class TeachingResourceViewSet(viewsets.ModelViewSet):
     filterset_fields = ['resource_type', 'category', 'is_public', 'teacher']
     search_fields = ['title', 'description']
     ordering_fields = ['created_at', 'title']
+    
+    @action(detail=True, methods=['get'])
+    def download(self, request, pk=None):
+        """下载教学资源"""
+        try:
+            resource = self.get_object()
+            # 增加下载次数
+            resource.download_count = (resource.download_count or 0) + 1
+            resource.save()
+            
+            # 返回文件
+            import mimetypes
+            if resource.file and default_storage.exists(resource.file):
+                file = default_storage.open(resource.file, 'rb')
+                response = FileResponse(file)
+                
+                # 设置正确的Content-Type
+                content_type, _ = mimetypes.guess_type(resource.file)
+                if content_type:
+                    response['Content-Type'] = content_type
+                
+                # 确保文件名包含扩展名
+                filename = resource.title
+                if '.' not in filename and resource.file:
+                    # 从文件路径中提取扩展名
+                    import os
+                    _, ext = os.path.splitext(resource.file)
+                    filename += ext
+                    
+                response['Content-Disposition'] = f'attachment; filename="{filename}"'
+                return response
+            else:
+                return Response({'error': '文件不存在'}, status=status.HTTP_404_NOT_FOUND)
+        except TeachingResource.DoesNotExist:
+            return Response({'error': '资源不存在'}, status=status.HTTP_404_NOT_FOUND)
     
     def create(self, request, *args, **kwargs):
         """创建教学资源，处理文件上传"""
@@ -952,7 +1008,8 @@ class TeachingResourceViewSet(viewsets.ModelViewSet):
             # 暂时注释掉重复文件检查，因为数据库表中没有file_hash字段
             # 检查重复文件（通过哈希值）
             # from .utils import FileHashCalculator
-            # upload_handler = FileUploadHandler(storage_path_prefix='teaching_resources')
+            from .utils import FileUploadHandler
+            upload_handler = FileUploadHandler(storage_path_prefix='teaching_resources')
             # file_hash = FileHashCalculator.calculate_md5(file)
             # existing_resource = upload_handler.check_duplicate(file_hash, TeachingResource)
             # 
@@ -1450,7 +1507,7 @@ class StudentSideViewSet(viewsets.ViewSet):
             student_classes = StudentClass.objects.filter(student=student.id, is_active=True)
             if student_classes.exists():
                 # 获取所有班级的班级ID
-                class_ids = [sc.class_obj for sc in student_classes]
+                class_ids = [sc.class_obj.id for sc in student_classes]
                 # 获取所有班级的已发布作业
                 homeworks = Homework.objects.filter(class_obj__in=class_ids, status=2)
                 serializer = HomeworkSerializer(homeworks, many=True)
@@ -1468,14 +1525,56 @@ class StudentSideViewSet(viewsets.ViewSet):
             
             # 获取学生所在的所有班级
             student_classes = StudentClass.objects.filter(student=student.id, is_active=True)
+            
+            # 获取班级资源
+            class_resources = []
             if student_classes.exists():
                 # 获取所有班级的班级ID
-                class_ids = [sc.class_obj for sc in student_classes]
-                # 获取所有班级的资源
-                resources = ClassResource.objects.filter(class_obj__in=class_ids)
-                serializer = ClassResourceSerializer(resources, many=True)
-                return Response(serializer.data)
-            return Response([], status=status.HTTP_200_OK)
+                class_ids = [sc.class_obj.id for sc in student_classes]
+                
+                # 检查是否有课程筛选条件
+                class_filter = request.query_params.get('class_id')
+                if class_filter:
+                    # 如果提供了课程ID，且该课程在学生所在班级列表中
+                    if int(class_filter) in class_ids:
+                        class_resources = ClassResource.objects.filter(class_obj_id=class_filter)
+                else:
+                    # 获取所有班级的资源
+                    class_resources = ClassResource.objects.filter(class_obj__in=class_ids)
+            
+            # 获取公开的教学资源
+            teaching_resources = TeachingResource.objects.filter(is_public=True)
+            
+            # 序列化班级资源
+            class_serializer = ClassResourceSerializer(class_resources, many=True)
+            class_resources_data = class_serializer.data
+            
+            # 序列化教学资源并转换为与班级资源兼容的格式
+            teaching_serializer = TeachingResourceSerializer(teaching_resources, many=True)
+            teaching_resources_data = teaching_serializer.data
+            
+            # 转换教学资源字段为班级资源格式
+            for resource in teaching_resources_data:
+                # 将教学资源转换为班级资源格式
+                resource['resource_name'] = resource['title']
+                resource['resource_desc'] = resource['description']
+                resource['resource_url'] = resource['file']
+                resource['upload_time'] = resource['created_at']
+                
+                # 移除不兼容的字段
+                del resource['title']
+                del resource['description']
+                del resource['file']
+                del resource['created_at']
+                del resource['updated_at']
+                del resource['category']
+                del resource['is_public']
+            
+            # 合并所有资源并按上传时间排序
+            all_resources = class_resources_data + teaching_resources_data
+            all_resources.sort(key=lambda x: x['upload_time'], reverse=True)
+            
+            return Response(all_resources)
         except AttributeError:
             return Response({'error': '用户不是学生'}, status=status.HTTP_403_FORBIDDEN)
     
@@ -1490,7 +1589,7 @@ class StudentSideViewSet(viewsets.ViewSet):
             student_classes = StudentClass.objects.filter(student=student.id, is_active=True)
             if student_classes.exists():
                 # 获取所有班级的班级ID
-                class_ids = [sc.class_obj for sc in student_classes]
+                class_ids = [sc.class_obj.id for sc in student_classes]
                 # 获取所有班级的通知和全局通知
                 notices = Notice.objects.filter(Q(class_obj__in=class_ids) | Q(class_obj__isnull=True), status=1)
                 serializer = NoticeSerializer(notices, many=True)
@@ -1557,6 +1656,202 @@ class StudentSideViewSet(viewsets.ViewSet):
             return Response({'error': '用户不是学生'}, status=status.HTTP_403_FORBIDDEN)
         except Homework.DoesNotExist:
             return Response({'error': '作业不存在'}, status=status.HTTP_404_NOT_FOUND)
+    
+    @action(detail=True, methods=['post'])
+    def download(self, request, pk=None):
+        """记录资源下载并提供下载"""
+        try:
+            # 获取当前学生的学生档案
+            student = request.user.student_profile
+            
+            # 尝试从班级资源中查找
+            try:
+                resource = ClassResource.objects.get(id=pk)
+                resource_type = 'class'
+                file_path = resource.resource_url
+                filename = resource.resource_name
+            except ClassResource.DoesNotExist:
+                # 尝试从教学资源中查找
+                try:
+                    resource = TeachingResource.objects.get(id=pk)
+                    resource_type = 'teaching'
+                    file_path = resource.file
+                    filename = resource.title
+                except TeachingResource.DoesNotExist:
+                    return Response({'error': '资源不存在'}, status=status.HTTP_404_NOT_FOUND)
+            
+            # 检查学生是否有权限访问该资源
+            if resource_type == 'class':
+                # 对于班级资源，检查学生是否在该班级中
+                is_in_class = StudentClass.objects.filter(
+                    student=student.id, 
+                    class_obj=resource.class_obj.id, 
+                    is_active=True
+                ).exists()
+                if not is_in_class:
+                    return Response({'error': '无权限访问该资源'}, status=status.HTTP_403_FORBIDDEN)
+            
+            # 增加下载次数
+            resource.download_count = (resource.download_count or 0) + 1
+            resource.save()
+            
+            # 返回文件
+            import mimetypes
+            if file_path and default_storage.exists(file_path):
+                file = default_storage.open(file_path, 'rb')
+                response = FileResponse(file)
+                
+                # 设置正确的Content-Type
+                content_type, _ = mimetypes.guess_type(file_path)
+                if content_type:
+                    response['Content-Type'] = content_type
+                
+                # 确保文件名包含扩展名
+                if '.' not in filename and file_path:
+                    # 从文件路径中提取扩展名
+                    import os
+                    _, ext = os.path.splitext(file_path)
+                    filename += ext
+                    
+                response['Content-Disposition'] = f'attachment; filename="{filename}"'
+                return response
+            else:
+                return Response({'error': '文件不存在'}, status=status.HTTP_404_NOT_FOUND)
+            
+        except AttributeError:
+            return Response({'error': '用户不是学生'}, status=status.HTTP_403_FORBIDDEN)
+        except Exception as e:
+            return Response({'error': f'下载失败: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(detail=True, methods=['post'])
+    def draft(self, request, pk=None):
+        """保存作业草稿"""
+        try:
+            # 获取当前学生的学生档案
+            student = request.user.student_profile
+            # 获取作业
+            homework = Homework.objects.get(id=pk, status=2)
+            # 检查作业是否属于学生所在的任何一个班级
+            is_in_class = StudentClass.objects.filter(
+                student=student.id, 
+                class_obj=homework.class_obj.id, 
+                is_active=True
+            ).exists()
+            if is_in_class:
+                # 检查是否已存在草稿或提交
+                submission, created = StudentHomework.objects.get_or_create(
+                    homework=homework,
+                    student=student,
+                    defaults={'status': 1}
+                )
+                # 更新草稿内容
+                submission.submit_content = request.data.get('content')
+                submission.status = 1  # 草稿状态
+                submission.save()
+                serializer = StudentHomeworkSerializer(submission)
+                return Response(serializer.data)
+            return Response({'error': '无权限访问该作业'}, status=status.HTTP_403_FORBIDDEN)
+        except AttributeError:
+            return Response({'error': '用户不是学生'}, status=status.HTTP_403_FORBIDDEN)
+        except Homework.DoesNotExist:
+            return Response({'error': '作业不存在'}, status=status.HTTP_404_NOT_FOUND)
+    
+    @action(detail=True, methods=['get'])
+    def history(self, request, pk=None):
+        """获取作业提交历史"""
+        try:
+            # 获取当前学生的学生档案
+            student = request.user.student_profile
+            # 获取作业
+            homework = Homework.objects.get(id=pk, status=2)
+            # 检查作业是否属于学生所在的任何一个班级
+            is_in_class = StudentClass.objects.filter(
+                student=student.id, 
+                class_obj=homework.class_obj.id, 
+                is_active=True
+            ).exists()
+            if is_in_class:
+                # 获取该学生的所有作业提交历史
+                submissions = StudentHomework.objects.filter(
+                    homework=homework,
+                    student=student
+                ).order_by('-submit_time')
+                serializer = StudentHomeworkSerializer(submissions, many=True)
+                return Response(serializer.data)
+            return Response({'error': '无权限访问该作业'}, status=status.HTTP_403_FORBIDDEN)
+        except AttributeError:
+            return Response({'error': '用户不是学生'}, status=status.HTTP_403_FORBIDDEN)
+        except Homework.DoesNotExist:
+            return Response({'error': '作业不存在'}, status=status.HTTP_404_NOT_FOUND)
+    
+    @action(detail=True, methods=['post'])
+    def upload_file(self, request, pk=None):
+        """上传作业文件"""
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        from .utils import FileUploadValidator, FileUploadHandler, get_client_ip
+        
+        try:
+            # 获取当前学生的学生档案
+            student = request.user.student_profile
+            # 获取作业
+            homework = Homework.objects.get(id=pk, status=2)
+            # 检查作业是否属于学生所在的任何一个班级
+            is_in_class = StudentClass.objects.filter(
+                student=student.id, 
+                class_obj=homework.class_obj.id, 
+                is_active=True
+            ).exists()
+            if is_in_class:
+                # 获取上传的文件
+                file = request.FILES.get('file')
+                if not file:
+                    return Response({'error': '缺少文件参数'}, status=status.HTTP_400_BAD_REQUEST)
+                
+                # 验证文件
+                is_valid, error_msg = FileUploadValidator.validate(file)
+                if not is_valid:
+                    logger.warning(f"File validation failed: {error_msg}")
+                    return Response({'error': error_msg}, status=status.HTTP_400_BAD_REQUEST)
+                
+                # 获取或创建作业提交记录
+                submission, created = StudentHomework.objects.get_or_create(
+                    homework=homework,
+                    student=student,
+                    defaults={'status': 1, 'submit_time': timezone.now()}
+                )
+                
+                # 上传文件
+                upload_handler = FileUploadHandler(storage_path_prefix='homework_files')
+                file_info = upload_handler.save_file(
+                    file, 
+                    subfolder=f'{student.id}/{homework.id}',
+                    get_client_ip=lambda: get_client_ip(request)
+                )
+                
+                # 创建文件记录
+                file_record = StudentHomeworkFile.objects.create(
+                    student_homework=submission,
+                    file_name=file.name,
+                    file_path=file_info['file_path'],
+                    storage_path=file_info['storage_path'],
+                    file_size=file_info['file_size'],
+                    file_hash=file_info['file_hash'],
+                    mime_type=file_info['mime_type'],
+                    upload_ip=file_info['upload_ip']
+                )
+                
+                serializer = StudentHomeworkFileSerializer(file_record)
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+            return Response({'error': '无权限访问该作业'}, status=status.HTTP_403_FORBIDDEN)
+        except AttributeError:
+            return Response({'error': '用户不是学生'}, status=status.HTTP_403_FORBIDDEN)
+        except Homework.DoesNotExist:
+            return Response({'error': '作业不存在'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error(f"Failed to upload homework file: {e}")
+            return Response({'error': f'文件上传失败: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     @action(detail=True, methods=['post'])
     def mark_notice_as_read(self, request, pk=None):

@@ -1,8 +1,8 @@
 import axios from 'axios'
 
-// AI助手API使用learning应用的URL前缀
+// AI助手API使用learning应用的URL前缀，使用相对路径以利用Vite代理
 const aiApi = axios.create({
-  baseURL: 'http://127.0.0.1:8000/api/learning',
+  baseURL: '/api/learning',
   headers: {
     'Content-Type': 'application/json'
   }

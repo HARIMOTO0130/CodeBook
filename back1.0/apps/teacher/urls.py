@@ -31,8 +31,19 @@ urlpatterns = [
     # 学生端作业提交
     path('student-side/homeworks/<int:pk>/submit/', StudentSideViewSet.as_view({'post': 'submit_homework'}), name='student-homework-submit'),
     
+    # 学生端作业草稿保存
+    path('student-side/homeworks/<int:pk>/draft/', StudentSideViewSet.as_view({'post': 'draft'}), name='student-homework-draft'),
+    
+    # 学生端作业提交历史
+    path('student-side/homeworks/<int:pk>/history/', StudentSideViewSet.as_view({'get': 'history'}), name='student-homework-history'),
+    
+    # 学生端作业文件上传
+    path('student-side/homeworks/<int:pk>/upload-file/', StudentSideViewSet.as_view({'post': 'upload_file'}), name='student-homework-upload-file'),
+    
     # 学生端学习资源
     path('student-side/resources/', StudentSideViewSet.as_view({'get': 'list_resources'}), name='student-resources'),
+    # 学生端资源下载
+    path('student-side/resources/<int:pk>/download/', StudentSideViewSet.as_view({'post': 'download'}), name='student-resource-download'),
     
     # 学生端通知列表
     path('student-side/notices/', StudentSideViewSet.as_view({'get': 'list_notices'}), name='student-notices'),

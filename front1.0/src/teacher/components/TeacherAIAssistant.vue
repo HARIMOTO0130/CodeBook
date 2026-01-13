@@ -140,7 +140,7 @@ export default {
   name: 'TeacherAIAssistant',
   setup() {
     const route = useRoute()
-    const isMinimized = ref(false)
+    const isMinimized = ref(true)
     const messages = ref([
       {
         content: '你好！我是教师AI助手。我可以帮你分析学生学习情况、提供教学建议。你可以选择学生或班级来获取更精准的分析。',

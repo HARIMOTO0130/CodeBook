@@ -92,6 +92,32 @@
               </div>
             </div>
 
+            <!-- 提交内容 -->
+            <div class="submission-content">
+              <h4>提交内容</h4>
+              <div v-if="submission.submit_content" class="content-text">
+                {{ submission.submit_content }}
+              </div>
+              <div v-else class="content-empty">
+                无文本内容
+              </div>
+            </div>
+
+            <!-- 提交文件 -->
+            <div class="submission-files" v-if="submission.files && submission.files.length > 0">
+              <h4>提交文件</h4>
+              <div class="file-list">
+                <div v-for="file in submission.files" :key="file.id" class="file-item">
+                  <div class="file-icon">📄</div>
+                  <div class="file-info">
+                    <div class="file-name">{{ file.file_name }}</div>
+                    <div class="file-meta">{{ formatFileSize(file.file_size) }} • {{ file.mime_type }}</div>
+                  </div>
+                  <a :href="file.file_url" target="_blank" class="file-download">下载</a>
+                </div>
+              </div>
+            </div>
+
             <!-- 批改表单 -->
             <div class="grading-form" v-if="editingSubmissionId === submission.id">
               <div class="form-group">
@@ -274,11 +300,9 @@ export default {
       }
 
       try {
-        const assignmentId = route.params.id
-        await assignmentApi.gradeAssignment(assignmentId, {
-          submission_id: submissionId,
+        await assignmentApi.gradeSubmission(submissionId, {
           score: gradingForm.value.score,
-          feedback: gradingForm.value.feedback || ''
+          correct_comment: gradingForm.value.feedback || ''
         })
         
         alert('批改成功！')
@@ -297,6 +321,14 @@ export default {
       if (percentage >= 80) return 'good'
       if (percentage >= 60) return 'average'
       return 'poor'
+    }
+
+    const formatFileSize = (bytes) => {
+      if (!bytes || bytes === 0) return '0 Bytes'
+      const k = 1024
+      const sizes = ['Bytes', 'KB', 'MB', 'GB']
+      const i = Math.floor(Math.log(bytes) / Math.log(k))
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
     }
 
     onMounted(() => {
@@ -319,7 +351,8 @@ export default {
       cancelGrading,
       submitGrading,
       getScoreClass,
-      formatDate
+      formatDate,
+      formatFileSize
     }
   }
 }
@@ -346,6 +379,99 @@ export default {
   font-size: 14px;
   padding: 8px 0;
   transition: color 0.2s;
+}
+
+/* 提交内容样式 */
+.submission-content {
+  margin: 16px 0;
+  padding: 16px;
+  background: #f8fafc;
+  border-radius: 8px;
+}
+
+.submission-content h4 {
+  margin-top: 0;
+  margin-bottom: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.content-text {
+  white-space: pre-wrap;
+  line-height: 1.6;
+  color: #475569;
+}
+
+.content-empty {
+  color: #94a3b8;
+  font-style: italic;
+}
+
+/* 提交文件样式 */
+.submission-files {
+  margin: 16px 0;
+  padding: 16px;
+  background: #f8fafc;
+  border-radius: 8px;
+}
+
+.submission-files h4 {
+  margin-top: 0;
+  margin-bottom: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.file-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.file-item {
+  display: flex;
+  align-items: center;
+  padding: 12px;
+  background: white;
+  border-radius: 4px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.file-icon {
+  font-size: 24px;
+  margin-right: 12px;
+}
+
+.file-info {
+  flex: 1;
+}
+
+.file-name {
+  font-weight: 500;
+  color: #3b82f6;
+  margin-bottom: 4px;
+}
+
+.file-meta {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.file-download {
+  color: #3b82f6;
+  text-decoration: none;
+  font-weight: 500;
+  padding: 6px 12px;
+  border: 1px solid #3b82f6;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.file-download:hover {
+  background: #3b82f6;
+  color: white;
 }
 
 .btn-back:hover {

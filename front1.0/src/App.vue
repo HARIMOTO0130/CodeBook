@@ -7,7 +7,7 @@
           :to="navType === 'provider' ? '/provider/books' : navType === 'teacher' ? '/teacher/dashboard' : '/student/books'" 
           class="logo"
         >
-          📚 CodeBook+——交互式非计算机专业计算机教育数字教材平台
+          📚 CodeBook+——交互式人工智能通识教育数字教材平台
         </router-link>
       </div>
       <div class="nav-right">

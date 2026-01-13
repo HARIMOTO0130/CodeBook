@@ -19,7 +19,7 @@
         <div class="notice-meta">
           <div class="meta-item">
             <span class="meta-label">发布教师:</span>
-            <span class="meta-value">{{ notice.teacher?.teacher_name || '未知教师' }}</span>
+            <span class="meta-value">{{ notice.teacher_name || '未知教师' }}</span>
           </div>
           <div class="meta-item">
             <span class="meta-label">发布时间:</span>
@@ -27,7 +27,7 @@
           </div>
           <div v-if="notice.class_obj" class="meta-item">
             <span class="meta-label">所属班级:</span>
-            <span class="meta-value">{{ notice.class_obj.name }}</span>
+            <span class="meta-value">{{ notice.class_name || '未知班级' }}</span>
           </div>
           <div v-else class="meta-item">
             <span class="meta-label">范围:</span>

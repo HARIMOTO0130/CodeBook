@@ -1,6 +1,6 @@
-// 使用绝对路径并正确导出
+// 使用相对路径，让Vite代理处理
 // 学生端API基础URL
-export const API_BASE_URL = 'http://127.0.0.1:8000/api/student';
+export const API_BASE_URL = '/api/student';
 
 const getToken = () => {
   try {
@@ -1333,10 +1333,106 @@ export const api = {
     return await res.json();
   },
   
-  // 学生端资源相关API
-  async getStudentResources() {
+  async saveHomeworkDraft(homeworkId, content) {
     // 直接使用教师端API路径
-    const teacherApiUrl = 'http://127.0.0.1:8000/api/teacher/student-side/resources/';
+    const teacherApiUrl = `http://127.0.0.1:8000/api/teacher/student-side/homeworks/${homeworkId}/draft/`;
+    const headers = {
+      'Content-Type': 'application/json'
+    };
+    const authHeader = authHeaders();
+    Object.assign(headers, authHeader);
+    const res = await fetch(teacherApiUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ content }),
+      credentials: 'omit'
+    });
+    if ((res.status === 401 || res.status === 403) && true) {
+      try { localStorage.removeItem('token') } catch {};
+      window.location.href = '/user/login';
+    }
+    // 草稿保存即使失败也不抛出错误，因为有本地存储作为备份
+    if (!res.ok) {
+      console.warn('保存草稿到服务器失败，将使用本地存储作为备份');
+      return { success: false, message: '保存草稿到服务器失败' };
+    }
+    return await res.json();
+  },
+  
+  async getHomeworkSubmissionHistory(homeworkId) {
+    // 直接使用教师端API路径
+    const teacherApiUrl = `http://127.0.0.1:8000/api/teacher/student-side/homeworks/${homeworkId}/history/`;
+    const headers = {
+      'Content-Type': 'application/json; charset=utf-8'
+    };
+    if (true) { // requireAuth
+      const authHeader = authHeaders();
+      Object.assign(headers, authHeader);
+    }
+    const res = await fetch(teacherApiUrl, { method: 'GET', headers, credentials: 'omit' });
+    if ((res.status === 401 || res.status === 403) && true) {
+      try { localStorage.removeItem('token') } catch {};
+      window.location.href = '/user/login';
+    }
+    if (!res.ok) {
+      // 如果获取历史记录失败，返回空数组
+      console.warn('获取作业提交历史失败');
+      return [];
+    }
+    return await res.json();
+  },
+  
+  async uploadHomeworkFile(homeworkId, file) {
+    // 直接使用教师端API路径
+    const teacherApiUrl = `http://127.0.0.1:8000/api/teacher/student-side/homeworks/${homeworkId}/upload-file/`;
+    
+    // 使用FormData上传文件
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    const headers = {};
+    const authHeader = authHeaders();
+    Object.assign(headers, authHeader);
+    
+    // 不设置Content-Type，让浏览器自动处理
+    const res = await fetch(teacherApiUrl, {
+      method: 'POST',
+      headers,
+      body: formData,
+      credentials: 'omit'
+    });
+    
+    if ((res.status === 401 || res.status === 403) && true) {
+      try { localStorage.removeItem('token') } catch {};
+      window.location.href = '/user/login';
+    }
+    
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({ error: '网络错误' }));
+      throw new Error(errorData.error || `请求失败: ${res.status}`);
+    }
+    
+    return await res.json();
+  },
+  
+  // 学生端资源相关API
+  async getStudentResources(params = {}) {
+    // 直接使用教师端API路径
+    const searchParams = new URLSearchParams();
+    // 添加分页参数
+    if (params.page) searchParams.append('page', params.page);
+    if (params.page_size) searchParams.append('page_size', params.page_size);
+    // 添加其他可能的参数
+    if (params.search) searchParams.append('search', params.search);
+    if (params.resource_type) searchParams.append('resource_type', params.resource_type);
+    if (params.class_id) searchParams.append('class_id', params.class_id);
+    if (params.order_by) searchParams.append('order_by', params.order_by);
+    
+    const queryString = searchParams.toString();
+    const teacherApiUrl = queryString 
+      ? `http://127.0.0.1:8000/api/teacher/student-side/resources/?${queryString}` 
+      : 'http://127.0.0.1:8000/api/teacher/student-side/resources/';
+      
     const headers = {
       'Content-Type': 'application/json; charset=utf-8'
     };
@@ -1354,6 +1450,38 @@ export const api = {
       throw new Error(errorData.error || `请求失败: ${res.status}`);
     }
     return await res.json();
+  },
+  
+  // 下载学生资源文件
+  async downloadStudentResource(resourceId) {
+    const apiUrl = `http://127.0.0.1:8000/api/teacher/student-side/resources/${resourceId}/download/`;
+    
+    const headers = {
+      'Content-Type': 'application/json; charset=utf-8'
+    };
+    if (true) { // requireAuth
+      const authHeader = authHeaders();
+      Object.assign(headers, authHeader);
+    }
+    
+    try {
+      const res = await fetch(apiUrl, { method: 'POST', headers, credentials: 'omit' });
+      if ((res.status === 401 || res.status === 403) && true) {
+        try { localStorage.removeItem('token') } catch {};
+        window.location.href = '/user/login';
+      }
+      
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: '下载失败' }));
+        throw new Error(errorData.error || `下载失败: ${res.status}`);
+      }
+      
+      const blob = await res.blob();
+      return { data: blob };
+    } catch (error) {
+      console.error('下载资源时发生错误:', error);
+      throw error;
+    }
   },
   
   // 学生端通知相关API

@@ -68,6 +68,11 @@ export default {
 
     // 跳转到指定章节
     const navigateToChapter = (chapterId) => {
+      // 如果已经是当前章节，不执行跳转，避免不必要的加载
+      if (chapterId === currentSectionId.value) {
+        return
+      }
+      
       router.push({
         name: 'StudentLearning',
         params: { bookId: props.bookId, chapterId }

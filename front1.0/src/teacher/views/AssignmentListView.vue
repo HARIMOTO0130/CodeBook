@@ -14,16 +14,24 @@
         v-for="assignment in assignments"
         :key="assignment.id"
         class="assignment-card"
-        @click="viewAssignment(assignment.id)"
       >
         <div class="assignment-header">
-          <h3>{{ assignment.title }}</h3>
-          <span class="status-badge" :class="getStatusClass(assignment)">
-            {{ getStatusText(assignment) }}
-          </span>
+          <h3 @click="viewAssignment(assignment.id)">{{ assignment.title }}</h3>
+          <div class="assignment-actions">
+            <span class="status-badge" :class="getStatusClass(assignment)">
+              {{ getStatusText(assignment) }}
+            </span>
+            <button
+              class="delete-btn"
+              @click.stop="deleteAssignment(assignment)"
+              title="删除作业"
+            >
+              🗑️
+            </button>
+          </div>
         </div>
-        <p class="assignment-description">{{ assignment.description || '无描述' }}</p>
-        <div class="assignment-meta">
+        <p class="assignment-description" @click="viewAssignment(assignment.id)">{{ assignment.description || '无描述' }}</p>
+        <div class="assignment-meta" @click="viewAssignment(assignment.id)">
           <span>📅 截止时间: {{ formatDate(assignment.due_date) }}</span>
           <span>📝 提交数: {{ assignment.submission_count || 0 }}</span>
         </div>
@@ -95,6 +103,19 @@ export default {
     },
     viewAssignment(id) {
       this.router.push(`/teacher/assignments/${id}`)
+    },
+    async deleteAssignment(assignment) {
+      if (confirm(`确定要删除作业"${assignment.title}"吗？此操作不可恢复。`)) {
+        try {
+          await assignmentApi.deleteAssignment(assignment.id)
+          // 从本地状态中移除已删除的作业
+          this.assignments = this.assignments.filter(a => a.id !== assignment.id)
+          alert('作业删除成功！')
+        } catch (error) {
+          console.error('删除作业失败:', error)
+          alert('删除作业失败: ' + (error.response?.data?.error || error.message))
+        }
+      }
     },
     getStatusClass(assignment) {
       const now = new Date()
@@ -190,8 +211,32 @@ export default {
 .assignment-header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   margin-bottom: 12px;
+}
+
+.assignment-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.delete-btn {
+  background: none;
+  border: none;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.delete-btn:hover {
+  background-color: rgba(220, 38, 38, 0.1);
+  color: #dc2626;
 }
 
 .assignment-header h3 {

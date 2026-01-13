@@ -132,6 +132,20 @@ class LLMService:
                 # 豆包大模型API调用 - 直接使用HTTP请求
                 try:
                     import requests
+                    from requests.adapters import HTTPAdapter
+                    from urllib3.util.retry import Retry
+                    
+                    # 构建重试策略
+                    retry_strategy = Retry(
+                        total=3,  # 最多重试3次
+                        status_forcelist=[429, 500, 502, 503, 504],  # 需要重试的状态码
+                        allowed_methods=["POST"],  # 仅对POST请求重试
+                        backoff_factor=1  # 重试间隔递增因子
+                    )
+                    adapter = HTTPAdapter(max_retries=retry_strategy)
+                    session = requests.Session()
+                    session.mount("https://", adapter)
+                    session.mount("http://", adapter)
                     
                     # 构建 messages
                     messages = []
@@ -157,8 +171,8 @@ class LLMService:
                         "max_tokens": max_tokens
                     }
                     
-                    # 发送HTTP请求
-                    response = requests.post(url, headers=headers, json=body, timeout=30)
+                    # 发送HTTP请求，增加超时时间到60秒
+                    response = session.post(url, headers=headers, json=body, timeout=60)
                     
                     # 打印响应状态和内容，便于调试
                     print(f"豆包API响应状态码: {response.status_code}")
@@ -167,13 +181,27 @@ class LLMService:
                     if response.status_code == 200:
                         # 解析响应
                         response_data = response.json()
-                        return response_data.get("choices", [{}])[0].get("message", {}).get("content", self._get_fallback_response(prompt))
+                        content = response_data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                        if content.strip():
+                            return content
+                        else:
+                            print("豆包API返回空内容，使用回退响应")
+                            return self._get_fallback_response(prompt)
                     else:
                         # 非200状态码，返回回退响应
                         print(f"豆包API调用失败: {response.status_code} {response.reason}")
+                        print(f"响应详情: {response.text}")
                         return self._get_fallback_response(prompt)
+                except requests.exceptions.Timeout as e:
+                    print(f"豆包API请求超时: {e}")
+                    return self._get_fallback_response(prompt)
+                except requests.exceptions.RequestException as e:
+                    print(f"豆包API请求异常: {e}")
+                    return self._get_fallback_response(prompt)
                 except Exception as e:
                     print(f"豆包API调用失败: {e}")
+                    import traceback
+                    traceback.print_exc()  # 打印详细的错误堆栈信息
                     return self._get_fallback_response(prompt)
             
             elif self.provider == 'baidu':

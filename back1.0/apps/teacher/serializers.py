@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.db import models
 from .models import (
-    Class, Student, StudentClass, StudentLearningProgress, Homework, StudentHomework,
+    Class, Student, StudentClass, StudentLearningProgress, Homework, StudentHomework, StudentHomeworkFile,
     Notice, StudentNoticeRead, ClassResource, TeachingResource,
     CourseDesign, TeacherSetting, Report
 )
@@ -134,7 +134,7 @@ class StudentSerializer(serializers.ModelSerializer):
 
 class ClassSerializer(serializers.ModelSerializer):
     """班级序列化器"""
-    teacher_name = serializers.CharField(source='teacher.username', read_only=True)
+    teacher_name = serializers.CharField(source='teacher.teacher_name', read_only=True)
     book_title = serializers.CharField(source='book.title', read_only=True)
     student_count = serializers.IntegerField(read_only=True)
     # 用于写入操作的教材ID
@@ -223,10 +223,15 @@ class ReportSerializer(serializers.ModelSerializer):
 
 class ClassDetailSerializer(serializers.ModelSerializer):
     """班级详情序列化器"""
-    teacher_name = serializers.CharField(source='teacher.username', read_only=True)
+    teacher_name = serializers.CharField(source='teacher.teacher_name', read_only=True)
     book = BookSimpleSerializer(read_only=True)
-    students = StudentSerializer(many=True, read_only=True)
+    students = serializers.SerializerMethodField()
     student_count = serializers.IntegerField(read_only=True)
+    
+    def get_students(self, obj):
+        """获取班级学生"""
+        students = Student.objects.filter(student_classes__class_obj=obj, student_classes__is_active=True)
+        return StudentSerializer(students, many=True).data
     
     class Meta:
         model = Class
@@ -255,17 +260,20 @@ class StudentLearningProgressSerializer(serializers.ModelSerializer):
 
 class HomeworkSerializer(serializers.ModelSerializer):
     """作业序列化器"""
-    teacher_name = serializers.CharField(source='teacher.username', read_only=True)
+    teacher_name = serializers.CharField(source='teacher.teacher_name', read_only=True)
     class_name = serializers.CharField(source='class_obj.name', read_only=True)
     chapter_title = serializers.CharField(source='chapter.title', read_only=True)
     submission_count = serializers.SerializerMethodField()
+    # 添加字段别名以兼容前端
+    title = serializers.CharField(source='homework_name', read_only=True)
+    due_date = serializers.DateTimeField(source='end_time', read_only=True)
     
     class Meta:
         model = Homework
         fields = [
-            'id', 'homework_name', 'teacher', 'teacher_name',
+            'id', 'homework_name', 'title', 'teacher', 'teacher_name',
             'class_obj', 'class_name', 'chapter', 'chapter_title',
-            'homework_content', 'start_time', 'end_time', 'total_score',
+            'homework_content', 'start_time', 'end_time', 'due_date', 'total_score',
             'status', 'submission_count', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'teacher', 'created_at', 'updated_at']
@@ -274,19 +282,38 @@ class HomeworkSerializer(serializers.ModelSerializer):
         return obj.submissions.count()
 
 
+class StudentHomeworkFileSerializer(serializers.ModelSerializer):
+    """学生作业文件序列化器"""
+    file_url = serializers.SerializerMethodField(read_only=True)
+    
+    class Meta:
+        model = StudentHomeworkFile
+        fields = [
+            'id', 'file_name', 'file_path', 'file_url', 'file_size', 'mime_type',
+            'upload_status', 'upload_time'
+        ]
+        read_only_fields = ['id', 'file_url', 'upload_time', 'file_path', 'file_size', 'mime_type']
+    
+    def get_file_url(self, obj):
+        """生成文件下载URL"""
+        from django.conf import settings
+        return f"{settings.MEDIA_URL}{obj.file_path}"
+
+
 class StudentHomeworkSerializer(serializers.ModelSerializer):
     """学生作业提交序列化器"""
     student_name = serializers.SerializerMethodField(read_only=True)
     student_no = serializers.SerializerMethodField(read_only=True)
     homework_name = serializers.SerializerMethodField(read_only=True)
+    files = StudentHomeworkFileSerializer(many=True, read_only=True)
     
     class Meta:
         model = StudentHomework
         fields = [
             'id', 'homework', 'homework_name', 'student', 'student_name', 'student_no',
-            'submit_content', 'score', 'feedback', 'submit_time', 'grade_time', 'status'
+            'submit_content', 'score', 'feedback', 'submit_time', 'grade_time', 'status', 'files'
         ]
-        read_only_fields = ['id', 'submit_time', 'grade_time']
+        read_only_fields = ['id', 'submit_time', 'grade_time', 'files']
     
     def get_student_name(self, obj):
         """安全获取学生姓名"""
@@ -312,7 +339,7 @@ class StudentHomeworkSerializer(serializers.ModelSerializer):
 
 class NoticeSerializer(serializers.ModelSerializer):
     """通知序列化器"""
-    teacher_name = serializers.CharField(source='teacher.username', read_only=True)
+    teacher_name = serializers.CharField(source='teacher.teacher_name', read_only=True)
     class_name = serializers.CharField(source='class_obj.name', read_only=True, allow_null=True)
     
     # 确保is_important和type字段有默认值
@@ -345,7 +372,7 @@ class StudentNoticeReadSerializer(serializers.ModelSerializer):
 
 class ClassResourceSerializer(serializers.ModelSerializer):
     """班级资源序列化器"""
-    teacher_name = serializers.CharField(source='teacher.username', read_only=True)
+    teacher_name = serializers.CharField(source='teacher.teacher_name', read_only=True)
     class_name = serializers.CharField(source='class_obj.name', read_only=True)
     
     class Meta:
@@ -425,7 +452,7 @@ class TeachingResourceSerializer(serializers.ModelSerializer):
 
 class CourseDesignSerializer(serializers.ModelSerializer):
     """课程设计序列化器"""
-    teacher_name = serializers.CharField(source='teacher.username', read_only=True)
+    teacher_name = serializers.CharField(source='teacher.teacher_name', read_only=True)
     class_name = serializers.CharField(source='class_obj.name', read_only=True)
     chapter_title = serializers.CharField(source='chapter.title', read_only=True)
     
