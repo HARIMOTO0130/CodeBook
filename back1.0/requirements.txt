@@ -15,8 +15,8 @@ matplotlib
 numpy
 Pillow
 langdetect==1.0.9
-torch==2.2.0
-torchvision==0.17.0
+torch
+torchvision
 networkx
 transformers==4.38.0
 spacy==3.7.2

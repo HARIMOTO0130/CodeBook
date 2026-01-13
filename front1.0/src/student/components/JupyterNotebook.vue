@@ -92,15 +92,21 @@
               class="markdown-preview"
               v-html="renderMarkdown(cell.content)"
               @click="(event) => {
-                const selection = window.getSelection?.()
-                if (selection && selection.rangeCount > 0) {
-                  const range = selection.getRangeAt(0)
-                  const preCaretRange = range.cloneRange()
-                  preCaretRange.selectNodeContents(event.currentTarget)
-                  preCaretRange.setEnd(range.endContainer, range.endOffset)
-                  const clickOffset = preCaretRange.toString().length
-                  toggleCellEdit(index, true, clickOffset)
-                } else {
+                try {
+                  const selection = window.getSelection?.()
+                  if (selection && selection.rangeCount > 0) {
+                    const range = selection.getRangeAt(0)
+                    const preCaretRange = range.cloneRange()
+                    preCaretRange.selectNodeContents(event.currentTarget)
+                    preCaretRange.setEnd(range.endContainer, range.endOffset)
+                    const clickOffset = preCaretRange.toString().length
+                    toggleCellEdit(index, true, clickOffset)
+                  } else {
+                    toggleCellEdit(index, true)
+                  }
+                } catch (error) {
+                  console.error('处理点击事件时出错:', error)
+                  // 即使出错也确保切换到编辑模式
                   toggleCellEdit(index, true)
                 }
               }"
@@ -597,6 +603,46 @@ export default {
           const [lang, content] = code.split('\n', 2)
           return `<pre><code class="language-${lang}">${content || lang}</code></pre>`
         })
+        // 图片 - 支持所有格式：简单格式和完整格式
+        .replace(/!\[(.*?)\]\((.*?)\)|.*?图片\s+(image_\d+)(?:_([\w]+))?.*?/g, (match, altText, imagePath, imageName, imageId) => {
+          // 如果没有匹配到imageName，尝试从altText或imagePath中提取
+          if (!imageName) {
+            // 从altText中提取
+            const altNameMatch = (altText || '').match(/(image_\d+)(?:_([\w]+))?/);
+            // 从imagePath中提取
+            const pathNameMatch = (imagePath || '').match(/(image_\d+)(?:_([\w]+))?/);
+            
+            if (altNameMatch) {
+              imageName = altNameMatch[1];
+              imageId = altNameMatch[2] || '';
+            } else if (pathNameMatch) {
+              imageName = pathNameMatch[1];
+              imageId = pathNameMatch[2] || '';
+            } else {
+              // 仅提取imageName
+              const simpleMatch = (altText || '').match(/image_(\d+)/) || 
+                               (imagePath || '').match(/image_(\d+)/);
+              if (simpleMatch) {
+                imageName = `image_${simpleMatch[1]}`;
+                imageId = '';
+              } else {
+                return match; // 如果都没有匹配到，返回原内容
+              }
+            }
+          }
+          
+          // 构造图片URL
+          let imageUrl;
+          if (imageId) {
+            // 包含ID的完整格式
+            imageUrl = `http://127.0.0.1:8000/media/book_images/${props.bookId || 0}/${imageName}_${imageId}.png`;
+          } else {
+            // 不包含ID的简单格式
+            imageUrl = `http://127.0.0.1:8000/media/book_images/${props.bookId || 0}/${imageName}.png`;
+          }
+          
+          return `<img src="${imageUrl}" alt="图片 ${imageName}" class="markdown-image">`;
+        })
         // 标题
         .replace(/#{6}\s+(.*?)$/gm, '<h6>$1</h6>')
         .replace(/#{5}\s+(.*?)$/gm, '<h5>$1</h5>')
@@ -660,13 +706,70 @@ export default {
       
       let currentContent = '';
       let inCodeBlock = false;
+      let inTableCodeBlock = false;
       let codeLanguage = '';
       
       for (let i = 0; i < lines.length; i++) {
-        const line = lines[i].trim();
+        // 不trim()，保持原始行内容以便匹配图片标记
+        const line = lines[i];
+        const trimmedLine = line.trim();
         
-        // 检测代码块开始（```后面可能有语言标识）
-        const codeBlockStartMatch = line.match(/^```(\w*)/);
+        // 检测特殊表格代码块开始（| #例开头）
+        const tableCodeStartMatch = line.match(/^\|\s*#例/);
+        if (tableCodeStartMatch && !inCodeBlock && !inTableCodeBlock) {
+          // 表格代码块开始
+          inTableCodeBlock = true;
+          
+          // 保存前面的Markdown内容
+          if (currentContent.trim() !== '') {
+            cells.push({
+              id: (cellId++).toString(),
+              type: 'markdown',
+              content: currentContent.trim(),
+              output: [],
+              isSystemGenerated: true,
+              isEditing: false
+            });
+            currentContent = '';
+          }
+          
+          // 提取代码内容，去掉前后的|符号
+          let codeLine = line.replace(/^\|\s*/, '').replace(/\s*\|\s*$/, '');
+          currentContent = codeLine;
+          continue;
+        }
+        
+        // 检测特殊表格代码块结束（| --- |）
+        if (trimmedLine === '| --- |' && inTableCodeBlock) {
+          // 表格代码块结束
+          inTableCodeBlock = false;
+          
+          // 保存代码内容为code单元格
+          if (currentContent.trim() !== '') {
+            cells.push({
+              id: (cellId++).toString(),
+              type: 'code',
+              content: currentContent.trim(),
+              language: 'python',
+              output: [],
+              isRunning: false,
+              isSystemGenerated: true
+            });
+            currentContent = '';
+          }
+          continue;
+        }
+        
+        // 收集表格代码块内容
+        if (inTableCodeBlock) {
+          // 提取代码内容，去掉前后的|符号
+          let codeLine = line.replace(/^\|\s*/, '').replace(/\s*\|\s*$/, '');
+          currentContent += (currentContent ? '\n' : '') + codeLine;
+          continue;
+        }
+        
+        // 检测标准代码块开始（```后面可能有语言标识）
+        const codeBlockStartMatch = trimmedLine.match(/^```(\w*)/);
         if (codeBlockStartMatch && !inCodeBlock) {
           // 代码块开始
           inCodeBlock = true;
@@ -688,7 +791,7 @@ export default {
         }
         
         // 检测代码块结束
-        if (line === '```' && inCodeBlock) {
+        if (trimmedLine === '```' && inCodeBlock) {
           // 代码块结束
           inCodeBlock = false;
           
@@ -710,13 +813,14 @@ export default {
         
         // 收集代码块内容
         if (inCodeBlock) {
-          currentContent += (currentContent ? '\n' : '') + lines[i];
+          currentContent += (currentContent ? '\n' : '') + line;
         }
         // 收集Markdown内容
         else {
-          // 检查是否是图片Markdown语法
-          const imageMatch = line.match(/^!\[(.*?)\]\((.*?)\)$/);
-          if (imageMatch) {
+          // 检查是否是图片标记（简单匹配）
+          const isImageLine = line.includes('图片 image_') || line.includes('!图片');
+          
+          if (isImageLine) {
             // 保存当前的普通内容（如果有）
             if (currentContent.trim() !== '') {
               cells.push({
@@ -729,12 +833,25 @@ export default {
               });
               currentContent = '';
             }
+            
+            // 从行中提取图片的核心ID部分
+            const imageIdMatch = line.match(/image_(\d+_[0-9a-f]+)/i);
+            const imageId = imageIdMatch ? imageIdMatch[1] : '0_0';
+            
+            // 构造图片URL，支持两种格式：
+            // 1. 不包含UUID前缀的格式（前端生成的）
+            // 2. 包含UUID前缀的格式（后端实际存储的）
+            const imageUrl = `http://127.0.0.1:8000/media/book_images/${props.bookId || 0}/image_${imageId}.png`;
+            
+            // 设置图片替代文本
+            const altText = `图片 image_${imageId}`;
+            
             // 创建图片单元格
             cells.push({
               id: (cellId++).toString(),
               type: 'image',
-              imageUrl: imageMatch[2],
-              altText: imageMatch[1] || '',
+              imageUrl: imageUrl,
+              altText: altText,
               width: null,
               height: null,
               isLoading: false,

@@ -70,9 +70,9 @@ export const providerApi = {
     return request('/import-pdf/', { method: 'POST', body: payload, auth: true, isFormData: true })
   },
 
-  // 上传DOCX文件
+  // 上传DOCX文件 - 使用新的独立端点
   async uploadDOCX(payload) {
-    return request('/import-docx/', { method: 'POST', body: payload, auth: true, isFormData: true })
+    return request('/upload-docx/', { method: 'POST', body: payload, auth: false, isFormData: true })
   },
 
   // 上传MD文件

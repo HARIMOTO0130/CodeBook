@@ -393,7 +393,7 @@ export default {
       console.log('刷新书籍列表...')
       // 添加视觉反馈
       const refreshBtn = document.querySelector('.refresh-button')
-      if (refreshBtn) {
+      if (refreshBtn && refreshBtn.classList) {
         refreshBtn.classList.add('refreshing')
       }
       
@@ -412,7 +412,7 @@ export default {
       } finally {
         // 移除视觉反馈
         setTimeout(() => {
-          if (refreshBtn) {
+          if (refreshBtn && refreshBtn.classList) {
             refreshBtn.classList.remove('refreshing')
           }
         }, 1000)

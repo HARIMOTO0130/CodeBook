@@ -115,8 +115,8 @@ class Student(models.Model):
 class StudentClass(models.Model):
     """学生班级中间表 - 对应数据库student_class表"""
     id = models.BigAutoField(primary_key=True, db_column='student_class_id')
-    student = models.IntegerField(db_column='student_id', verbose_name='学生ID')
-    class_obj = models.IntegerField(db_column='class_id', verbose_name='班级ID')
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='student_classes', verbose_name='学生', db_column='student_id')
+    class_obj = models.ForeignKey(Class, on_delete=models.CASCADE, related_name='student_classes', verbose_name='班级', db_column='class_id')
     is_active = models.BooleanField(default=True, verbose_name='是否有效', help_text='True-在班，False-已退班')
     joined_at = models.DateTimeField(auto_now_add=True, verbose_name='加入时间', db_column='join_time')
     left_at = models.DateTimeField(null=True, blank=True, verbose_name='离开时间', db_column='leave_time')
@@ -128,7 +128,7 @@ class StudentClass(models.Model):
         ordering = ['-joined_at']
     
     def __str__(self):
-        return f"学生 {self.student} - 班级 {self.class_obj}"
+        return f"学生 {self.student.student_name} - 班级 {self.class_obj.name}"
 
 
 class StudentLearningProgress(models.Model):
@@ -320,14 +320,14 @@ class TeachingResource(models.Model):
     id = models.AutoField(primary_key=True)
     title = models.CharField(max_length=200, verbose_name='资源标题', db_column='title', default='未命名资源')
     description = models.TextField(verbose_name='资源描述', blank=True, null=True, db_column='description')
-    file = models.TextField(verbose_name='文件存储路径', db_column='file', help_text='完整文件路径或文件名')
+    file = models.TextField(verbose_name='文件存储路径', db_column='file', help_text='完整文件路径或文件名', default='')
     resource_type = models.CharField(max_length=20, verbose_name='资源类型', db_column='resource_type', default='file')
     category = models.CharField(max_length=100, verbose_name='资源分类', blank=True, null=True, db_column='category')
     is_public = models.BooleanField(default=True, verbose_name='是否公开', db_column='is_public')
     file_size = models.BigIntegerField(verbose_name='文件大小（字节）', blank=True, null=True, db_column='file_size')
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间', db_column='created_at', null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间', db_column='updated_at', null=True, blank=True)
-    teacher = models.ForeignKey(Teacher, on_delete=models.CASCADE, related_name='teaching_resources', verbose_name='上传教师', db_column='teacher_id')
+    teacher = models.ForeignKey(Teacher, on_delete=models.CASCADE, related_name='teaching_resources', verbose_name='上传教师', db_column='teacher_id', null=True, blank=True)
     
     # 新增字段
     file_hash = models.CharField(max_length=64, blank=True, null=True, verbose_name='文件哈希值', db_column='file_hash', help_text='MD5或SHA256哈希值')

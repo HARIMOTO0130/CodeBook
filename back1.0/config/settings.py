@@ -3,12 +3,6 @@
 import os
 from pathlib import Path
 from dotenv import load_dotenv
-import pymysql
-
-# Use pymysql as MySQL driver
-# 配置 pymysql 使用 UTF-8 编码
-pymysql.install_as_MySQLdb()
-pymysql.charset = 'utf8mb4'
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent

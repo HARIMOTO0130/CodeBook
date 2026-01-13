@@ -93,6 +93,37 @@ class Book(models.Model):
     # 归档标记（代替物理删除，用于教材提供者端的“归档/下架”）
     is_archived = models.BooleanField(default=False, verbose_name='是否归档')
 
+    # 书籍状态
+    STATUS_CHOICES = [
+        ('draft', '草稿'),
+        ('published', '已发布'),
+        ('pending_review', '待审核'),
+        ('rejected', '已驳回'),
+    ]
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='draft',
+        verbose_name='书籍状态'
+    )
+
+    # ISBN信息
+    isbn = models.CharField(max_length=20, blank=True, null=True, verbose_name='ISBN')
+    # 语言
+    language = models.CharField(max_length=50, blank=True, null=True, default='zh-CN', verbose_name='语言')
+    # 出版日期
+    published_at = models.DateTimeField(blank=True, null=True, verbose_name='出版日期')
+    # 字数
+    word_count = models.IntegerField(default=0, verbose_name='字数')
+    # 各种格式的文件
+    docx_file = models.FileField(upload_to='book_docx/', null=True, blank=True, verbose_name='DOCX文件')
+    epub_file = models.FileField(upload_to='book_epub/', null=True, blank=True, verbose_name='EPUB文件')
+    md_file = models.FileField(upload_to='book_md/', null=True, blank=True, verbose_name='Markdown文件')
+    # 总章节数
+    total_chapters = models.IntegerField(default=0, verbose_name='总章节数')
+    # 旧版标签
+    old_tags = models.TextField(blank=True, default='[]', verbose_name='旧版标签')
+
     chapter_count = models.IntegerField(default=0, verbose_name='章节数')
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
     updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')

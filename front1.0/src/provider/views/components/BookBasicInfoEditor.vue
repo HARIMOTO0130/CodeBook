@@ -237,7 +237,11 @@
             class="form-textarea"
             rows="3"
             placeholder="简要描述书籍内容"
+            :class="{ 'input-error': errors.description }"
+            :aria-invalid="!!errors.description"
+            :aria-describedby="errors.description ? 'description-error' : undefined"
           ></textarea>
+          <p v-if="errors.description" id="description-error" class="error-message">{{ errors.description }}</p>
         </div>
 
         <!-- 详细介绍 -->
@@ -783,6 +787,15 @@ const formValidation = {
           delete errors.value.author
         }
         break
+      case 'description':
+        if (!value || value.trim() === '') {
+          errors.value.description = '请输入书籍简介'
+        } else if (value.length > 1000) {
+          errors.value.description = '简介不能超过1000个字符'
+        } else {
+          delete errors.value.description
+        }
+        break
       case 'isbn':
         if (value && value.length > 20) {
           errors.value.isbn = 'ISBN号不能超过20个字符'
@@ -809,6 +822,11 @@ const formValidation = {
       isValid = false
     }
     
+    if (!formData.value.description || formData.value.description.trim() === '') {
+      errors.value.description = '请输入书籍简介'
+      isValid = false
+    }
+    
     return isValid
   }
 }
@@ -820,6 +838,10 @@ watch(() => formData.value.title, (newVal) => {
 
 watch(() => formData.value.author, (newVal) => {
   formValidation.validateField('author', newVal)
+})
+
+watch(() => formData.value.description, (newVal) => {
+  formValidation.validateField('description', newVal)
 })
 
 watch(() => formData.value.isbn, (newVal) => {

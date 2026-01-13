@@ -154,6 +154,33 @@ class BookViewSet(viewsets.ModelViewSet):
             logger.info(f"当前版本: {instance.current_version}, 新版本: {new_version_str}")
             logger.info(f"书籍标签类型: {type(instance.tags)}, 值: {instance.tags}")
             
+            # 处理分类和标签的更新
+            # 获取分类和标签数据
+            categories_data = request.data.getlist('categories_write')
+            tags_data = request.data.getlist('tags_write')
+            logger.info(f"收到的分类数据: {categories_data}")
+            logger.info(f"收到的标签数据: {tags_data}")
+            
+            # 更新分类
+            if categories_data:
+                # 清除现有分类
+                instance.categories.clear()
+                # 添加新分类
+                for category_name in categories_data:
+                    category, _ = BookCategory.objects.get_or_create(name=category_name)
+                    instance.categories.add(category)
+                logger.info(f"成功更新书籍 {instance.id} 的分类")
+            
+            # 更新标签
+            if tags_data:
+                # 清除现有标签对象
+                instance.tag_objects.clear()
+                # 添加新标签对象
+                for tag_name in tags_data:
+                    tag, _ = BookTag.objects.get_or_create(name=tag_name)
+                    instance.tag_objects.add(tag)
+                logger.info(f"成功更新书籍 {instance.id} 的标签对象")
+            
             # 先调用父类的partial_update方法完成实际更新
             logger.info("调用父类的partial_update方法进行实际更新")
             response = super().partial_update(request, *args, **kwargs)

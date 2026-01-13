@@ -2271,7 +2271,7 @@ export default {
     // 平移相关方法
     startDrag(event) {
       // 只有在空白处点击才开始平移
-      if (event.target.tagName === 'svg' || event.target.tagName === 'g' || event.target.classList.contains('edges')) {
+      if (event.target && (event.target.tagName === 'svg' || event.target.tagName === 'g' || (event.target.classList && event.target.classList.contains('edges')))) {
         this.isDragging = true;
         this.lastMouseX = event.clientX;
         this.lastMouseY = event.clientY;

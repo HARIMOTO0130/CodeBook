@@ -555,14 +555,20 @@ export default {
     // 切换全屏模式
     const toggleFullscreen = () => {
       isFullscreen = !isFullscreen
-      const card = monacoContainer.value.closest('.monaco-card')
       
-      if (isFullscreen) {
-        card.classList.add('fullscreen')
-        document.body.style.overflow = 'hidden'
-      } else {
-        card.classList.remove('fullscreen')
-        document.body.style.overflow = 'auto'
+      // 添加严格的空值检查
+      if (monacoContainer.value) {
+        const card = monacoContainer.value.closest('.monaco-card')
+        
+        if (card) {
+          if (isFullscreen) {
+            card.classList.add('fullscreen')
+            document.body.style.overflow = 'hidden'
+          } else {
+            card.classList.remove('fullscreen')
+            document.body.style.overflow = 'auto'
+          }
+        }
       }
       
       // 通知父组件
