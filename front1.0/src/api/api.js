@@ -1,6 +1,6 @@
 // 使用相对路径，让Vite代理处理
 // export const API_BASE_URL = 'http://127.0.0.1:8000/api';
-export const API_BASE_URL = '';
+export const API_BASE_URL = 'http://127.0.0.1:8000/api';
 
 const getToken = () => {
   try {
@@ -581,7 +581,7 @@ export const api = {
   },
   async executeCode({ language, code, input = '' }) {
     // 正确的API路径是/learning/execute/
-    return httpPost('/learning/execute/', { language, code, input }, true);
+    return httpPost('/learning/execute/', { language, code, input }, false);
   },
   
   async getWrongQuestions() {

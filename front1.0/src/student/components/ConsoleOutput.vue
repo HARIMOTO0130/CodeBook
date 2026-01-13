@@ -201,6 +201,10 @@ export default {
     
     // 格式化输出行（处理ANSI颜色等）
     const formatLine = (content) => {
+      // 如果content是对象，提取其content属性
+      if (typeof content === 'object' && content !== null) {
+        content = content.content
+      }
       if (typeof content !== 'string') return content
       
       // 简单的ANSI颜色处理示例
@@ -218,6 +222,17 @@ export default {
         .replace(/\n/g, '<br>') // 换行处理
         .replace(/\t/g, '&nbsp;&nbsp;&nbsp;&nbsp;') // Tab处理
         .replace(/ /g, '&nbsp;') // 空格处理
+      
+      // 处理错误信息的高亮显示
+      if (typeof content === 'string' && (content.includes('SyntaxError') || content.includes('IndentationError') || 
+          content.includes('NameError') || content.includes('TypeError') || 
+          content.includes('AttributeError'))) {
+        // 高亮显示错误类型
+        formatted = formatted.replace(/(SyntaxError|IndentationError|NameError|TypeError|AttributeError):/g, '<span class="error-highlight">$1:</span>')
+      }
+      
+      // 高亮显示行号信息
+      formatted = formatted.replace(/(File ".*", line \d+)/g, '<span class="line-highlight">$1</span>')
       
       return formatted
     }
@@ -465,6 +480,18 @@ export default {
 .ansi-blue { color: #409eff; }
 .ansi-purple { color: #909399; }
 .ansi-cyan { color: #66b1ff; }
+
+/* 错误高亮样式 */
+.error-highlight {
+  color: #f56c6c;
+  font-weight: bold;
+}
+
+/* 行号高亮样式 */
+.line-highlight {
+  color: #409eff;
+  font-weight: bold;
+}
 
 /* 对象输出样式 */
 .object-output {

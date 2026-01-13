@@ -130,7 +130,14 @@
               <div class="output-header">输出</div>
               <div class="output-content">
                 <div v-for="(outputLine, lineIndex) in cell.output" :key="lineIndex" class="output-line">
-                  <span :class="getOutputClass(outputLine)">{{ outputLine }}</span>
+                  <!-- 处理对象格式的输出行 -->
+                  <span v-if="typeof outputLine === 'object' && outputLine !== null" :class="getOutputClass(outputLine)">
+                    {{ outputLine.content }}
+                  </span>
+                  <!-- 处理字符串格式的输出行（保持向后兼容） -->
+                  <span v-else :class="getOutputClass(outputLine)">
+                    {{ outputLine }}
+                  </span>
                 </div>
               </div>
             </div>
@@ -254,6 +261,19 @@ export default {
         // 可以在这里处理公开状态变化的逻辑
         console.log('公开状态已更新:', newValue)
       }
+    )
+    
+    // 监听initialContent变化，重新加载内容
+    watch(
+      () => props.initialContent,
+      (newContent, oldContent) => {
+        if (newContent && newContent !== oldContent) {
+          console.log('📄 initialContent已变化，重新加载文档内容');
+          // 重新加载内容
+          loadDocument();
+        }
+      },
+      { immediate: false } // 初始加载已经在onMounted中处理
     )
     
     // 初始化默认单元格
@@ -587,17 +607,24 @@ export default {
       return extensionMap[language] || 'txt'
     }
     
-    // 简单的Markdown渲染
+    // 简单的Markdown渲染 - 优化版，添加缓存机制
+    const markdownCache = new Map()
     const renderMarkdown = (text) => {
       if (!text) return ''
       
-      return text
+      // 检查缓存，如果已经渲染过相同内容，直接返回
+      if (markdownCache.has(text)) {
+        return markdownCache.get(text)
+      }
+      
+      // 使用一次性的正则替换来优化性能
+      let result = text
         // 代码块
         .replace(/```([\s\S]*?)```/g, (match, code) => {
           const [lang, content] = code.split('\n', 2)
           return `<pre><code class="language-${lang}">${content || lang}</code></pre>`
         })
-        // 标题
+        // 标题 (从最多#到最少#，避免部分匹配)
         .replace(/#{6}\s+(.*?)$/gm, '<h6>$1</h6>')
         .replace(/#{5}\s+(.*?)$/gm, '<h5>$1</h5>')
         .replace(/#{4}\s+(.*?)$/gm, '<h4>$1</h4>')
@@ -625,6 +652,10 @@ export default {
         .replace(/^(?!<[hlu])(.*?)$/gm, (match, p1) => {
           return p1.trim() ? `<p>${p1}</p>` : ''
         })
+      
+      // 缓存渲染结果
+      markdownCache.set(text, result)
+      return result
     }
     
     // 从Markdown解析单元格
@@ -1155,28 +1186,62 @@ const toggleCellEdit = (index, isEditing, clickOffset = null) => {
         
         // 处理输出
         if (result.stdout) {
-          cell.output = cell.output.concat(result.stdout.split('\n'))
+          // 将stdout拆分为多行，使用统一的对象格式
+          const stdoutLines = result.stdout.split('\n')
+          cell.output = cell.output.concat(stdoutLines.map(line => ({
+            content: line
+          })))
         }
         
         // 处理错误信息
         if (result.error) {
-          cell.output.push(`错误: ${result.error.message}`)
+          // 设置错误行的isError属性
+          cell.output.push({
+            content: `错误: ${result.error.message}`,
+            isError: true
+          })
           if (result.error.details) {
-            cell.output = cell.output.concat(result.error.details.split('\n'))
+            // 将错误详情拆分为多行，并为包含错误信息的行设置isError属性
+            const detailsLines = result.error.details.split('\n')
+            cell.output = cell.output.concat(detailsLines.map(line => ({
+              content: line,
+              isError: typeof line === 'string' && (line.includes('Error') || line.includes('^') || line.includes('File "'))
+            })))
           }
         } else if (result.stderr) {
-          cell.output = cell.output.concat(result.stderr.split('\n'))
+          // 将stderr拆分为多行，并为可能的错误行设置isError属性
+          const stderrLines = result.stderr.split('\n')
+          cell.output = cell.output.concat(stderrLines.map(line => ({
+            content: line,
+            isError: typeof line === 'string' && (line.includes('Error') || line.includes('error'))
+          })))
         }
         
         // 添加执行信息
-        cell.output.push(`[执行时间: ${result.durationMs}ms]`)
+        cell.output.push({
+          content: `[执行时间: ${result.durationMs}ms]`
+        })
         
       } catch (error) {
         console.error('代码执行错误:', error)
-        cell.output = ['执行错误:', error.message]
+        // 使用统一的对象格式并设置isError属性
+        cell.output = [
+          {
+            content: '执行错误:',
+            isError: true
+          },
+          {
+            content: error.message,
+            isError: true
+          }
+        ]
         // 如果有错误详细信息，也显示出来
         if (error.response?.data?.error?.details) {
-          cell.output.push(error.response.data.error.details)
+          const detailsLines = error.response.data.error.details.split('\n')
+          cell.output = cell.output.concat(detailsLines.map(line => ({
+            content: line,
+            isError: typeof line === 'string' && (line.includes('Error') || line.includes('^') || line.includes('File "'))
+          })))
         }
       } finally {
         cell.isRunning = false
@@ -1702,7 +1767,13 @@ const toggleCellEdit = (index, isEditing, clickOffset = null) => {
     
     // 获取输出行样式类
     const getOutputClass = (line) => {
-      if (line.includes('错误') || line.includes('Error') || line.startsWith('Traceback')) {
+      // 获取行内容，处理对象格式的输出行
+      const lineContent = typeof line === 'object' && line !== null ? line.content : line
+      
+      // 检查是否为错误行
+      if (typeof lineContent === 'string' && 
+          (lineContent.includes('错误') || lineContent.includes('Error') || 
+           lineContent.startsWith('Traceback') || line.isError)) {
         return 'error-line'
       }
       return 'normal-line'

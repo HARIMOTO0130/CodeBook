@@ -15,6 +15,14 @@ class PersonalizedLearningPathGenerator:
         self.llm_service = LLMService()
         # 初始化时不构建完整图谱，而是在需要时根据用户专业组构建
         # 这样可以节省资源，并确保使用最新的用户专业组信息
+        
+        # 添加缓存机制
+        self._graph_cache = {}
+        self._user_profile_cache = {}
+        self._path_cache = {}
+        
+        # 设置缓存过期时间（秒）
+        self._CACHE_EXPIRY = 300  # 5分钟
     
     def generate_learning_path(self, user: User, learning_goal: str, max_nodes: int = 10) -> Dict[str, Any]:
         """生成个性化学习路径
@@ -27,19 +35,67 @@ class PersonalizedLearningPathGenerator:
         Returns:
             个性化学习路径，包含路径节点、解释和建议
         """
+        import time
+        current_time = time.time()
+        
+        # 生成缓存键
+        user_id = user.id if hasattr(user, 'id') else 'anonymous'
+        path_cache_key = f"{user_id}:{learning_goal}:{max_nodes}"
+        
+        # 检查路径缓存
+        if path_cache_key in self._path_cache:
+            cached_data = self._path_cache[path_cache_key]
+            if current_time - cached_data['timestamp'] < self._CACHE_EXPIRY:
+                print(f"[DEBUG] 使用缓存的学习路径结果")
+                return cached_data['data']
+        
         try:
             print(f"\n[DEBUG] 开始生成个性化学习路径")
             print(f"[DEBUG] 学习目标: {learning_goal}")
             print(f"[DEBUG] 最大节点数量: {max_nodes}")
             
-            # 1. 获取用户画像
-            user_profile = self._get_user_profile(user)
+            # 1. 获取用户画像（带缓存）
+            user_profile_cache_key = f"user_profile:{user_id}"
+            if user_profile_cache_key in self._user_profile_cache:
+                cached_profile = self._user_profile_cache[user_profile_cache_key]
+                if current_time - cached_profile['timestamp'] < self._CACHE_EXPIRY:
+                    print(f"[DEBUG] 使用缓存的用户画像")
+                    user_profile = cached_profile['data']
+                else:
+                    user_profile = self._get_user_profile(user)
+                    self._user_profile_cache[user_profile_cache_key] = {
+                        'data': user_profile,
+                        'timestamp': current_time
+                    }
+            else:
+                user_profile = self._get_user_profile(user)
+                self._user_profile_cache[user_profile_cache_key] = {
+                    'data': user_profile,
+                    'timestamp': current_time
+                }
             print(f"[DEBUG] 用户画像: {user_profile}")
             
-            # 2. 根据用户专业组构建知识图谱
+            # 2. 根据用户专业组构建知识图谱（带缓存）
             professional_group = user_profile.get('professional_group', 'science')
-            print(f"[DEBUG] 使用专业组: {professional_group}构建知识图谱")
-            self.kg_engine.build_knowledge_graph(professional_group=professional_group)
+            graph_cache_key = f"graph:{professional_group}"
+            
+            if graph_cache_key in self._graph_cache:
+                cached_graph = self._graph_cache[graph_cache_key]
+                if current_time - cached_graph['timestamp'] < self._CACHE_EXPIRY:
+                    print(f"[DEBUG] 使用缓存的知识图谱")
+                    # 直接使用缓存的图谱数据，无需重新构建
+                else:
+                    print(f"[DEBUG] 使用专业组: {professional_group}构建知识图谱")
+                    self.kg_engine.build_knowledge_graph(professional_group=professional_group)
+                    self._graph_cache[graph_cache_key] = {
+                        'timestamp': current_time
+                    }
+            else:
+                print(f"[DEBUG] 使用专业组: {professional_group}构建知识图谱")
+                self.kg_engine.build_knowledge_graph(professional_group=professional_group)
+                self._graph_cache[graph_cache_key] = {
+                    'timestamp': current_time
+                }
             print(f"[DEBUG] 知识图谱构建完成，节点数量: {len(self.kg_engine.graph.nodes)}, 边数量: {len(self.kg_engine.graph.edges)}")
             
             # 3. 使用知识图谱生成初始路径
@@ -90,6 +146,13 @@ class PersonalizedLearningPathGenerator:
                 "suggestions": personalized_suggestions,
                 "user_profile": user_profile
             }
+            
+            # 更新路径缓存
+            self._path_cache[path_cache_key] = {
+                'data': result,
+                'timestamp': current_time
+            }
+            
             print(f"[DEBUG] 最终生成的学习路径结果: {result}")
             return result
         except Exception as e:

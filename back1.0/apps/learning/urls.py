@@ -21,6 +21,8 @@ from .views import (
     # StudentHomeworkViewSet,
     # StudentResourceViewSet,
     # StudentNoticeViewSet,
+    execute_code,
+    get_recommended_roadmaps,
 )
 from .views_ai_assistant import AIAssistantView, CodeCompletionView
 # from .views_code_sandbox import get_languages, get_code_template, validate_language
@@ -43,12 +45,14 @@ router.register(r'notes', NoteViewSet, basename='note')
 
 urlpatterns = [
     path('', include(router.urls)),
-    path('execute/', LearningRecordViewSet.as_view({'post': 'execute'})),
+    path('execute/', execute_code, name='execute-code'),
     # 个性化学习路径相关路由
     path('personalized-path/generate/', PersonalizedLearningPathAPIView.generate_path, name='generate-personalized-path'),
     path('personalized-path/update/', PersonalizedLearningPathAPIView.update_path, name='update-personalized-path'),
     path('personalized-path/feedback/', PersonalizedLearningPathAPIView.generate_feedback, name='generate-learning-feedback'),
     path('personalized-path/smart-path/', PersonalizedLearningPathAPIView.generate_smart_path, name='generate-smart-path'),
+    # 学习推荐相关路由
+    path('recommendations/roadmap/', get_recommended_roadmaps, name='get-recommended-roadmaps'),
     # 知识图谱相关路由
     path('knowledge-graph/nodes/', KnowledgeGraphAPIView.get_nodes, name='get-knowledge-nodes'),
     path('knowledge-graph/relations/', KnowledgeGraphAPIView.get_relations, name='get-knowledge-relations'),
