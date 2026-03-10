@@ -40,7 +40,8 @@ INSTALLED_APPS = [
     'apps.books',
     'apps.learning',
     'apps.teacher',
-    'toolkit',
+    'apps.toolkit',
+    'apps.review',
 ]
 
 MIDDLEWARE = [

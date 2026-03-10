@@ -277,8 +277,8 @@ class ClassViewSet(viewsets.ModelViewSet):
             
             # 检查学生是否已经在班级中
             existing = StudentClass.objects.filter(
-                student=student.id, 
-                class_obj=class_obj.id, 
+                student=student, 
+                class_obj=class_obj, 
                 is_active=True
             ).exists()
             
@@ -287,8 +287,8 @@ class ClassViewSet(viewsets.ModelViewSet):
             
             # 添加学生到班级
             StudentClass.objects.create(
-                student=student.id,
-                class_obj=class_obj.id,
+                student=student,
+                class_obj=class_obj,
                 is_active=True
             )
             
@@ -1369,7 +1369,7 @@ class StudentSideViewSet(viewsets.ViewSet):
             # 获取当前学生的学生档案
             student = request.user.student_profile
             # 获取学生的所有班级
-            student_classes = StudentClass.objects.filter(student=student.id, is_active=True)
+            student_classes = StudentClass.objects.filter(student=student, is_active=True)
             
             if student_classes.exists():
                 # 获取所有班级ID
@@ -1419,7 +1419,7 @@ class StudentSideViewSet(viewsets.ViewSet):
                 class_obj = serializer.validated_data['class_obj']
                 
                 # 检查是否已经加入该班级
-                existing = StudentClass.objects.filter(student=student.id, class_obj=class_obj.id).first()
+                existing = StudentClass.objects.filter(student=student, class_obj=class_obj).first()
                 if existing:
                     if existing.is_active:
                         return Response({'error': '您已经加入了该班级'}, status=status.HTTP_400_BAD_REQUEST)
@@ -1431,14 +1431,14 @@ class StudentSideViewSet(viewsets.ViewSet):
                         return Response({'message': '成功重新加入班级'}, status=status.HTTP_200_OK)
                 
                 # 创建新的学生班级关系
-                StudentClass.objects.create(student=student.id, class_obj=class_obj.id)
+            StudentClass.objects.create(student=student, class_obj=class_obj)
                 
-                # 如果是学生第一次加入班级，更新student表的class_name字段（兼容旧代码）
-                if not student.class_name:
-                    student.class_name = class_obj.name
-                    student.save()
+            # 如果是学生第一次加入班级，更新student表的class_name字段（兼容旧代码）
+            if not student.class_name:
+                student.class_name = class_obj.name
+                student.save()
                 
-                return Response({'message': '成功加入班级'}, status=status.HTTP_201_CREATED)
+            return Response({'message': '成功加入班级'}, status=status.HTTP_201_CREATED)
             
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         except AttributeError:
@@ -1465,7 +1465,7 @@ class StudentSideViewSet(viewsets.ViewSet):
                 return Response({'error': '无效的课程码'}, status=status.HTTP_404_NOT_FOUND)
             
             # 检查是否已经加入该班级
-            existing = StudentClass.objects.filter(student=student.id, class_obj=class_obj.id).first()
+            existing = StudentClass.objects.filter(student=student, class_obj=class_obj).first()
             if existing:
                 if existing.is_active:
                     return Response({'error': '您已经加入了该班级'}, status=status.HTTP_400_BAD_REQUEST)
@@ -1477,7 +1477,7 @@ class StudentSideViewSet(viewsets.ViewSet):
                     return Response({'message': '成功重新加入班级'}, status=status.HTTP_200_OK)
             
             # 创建新的学生班级关系
-            StudentClass.objects.create(student=student.id, class_obj=class_obj.id)
+            StudentClass.objects.create(student=student, class_obj=class_obj)
             
             # 如果是学生第一次加入班级，更新student表的class_name字段（兼容旧代码）
             if not student.class_name:
@@ -1504,7 +1504,7 @@ class StudentSideViewSet(viewsets.ViewSet):
             student = request.user.student_profile
             
             # 获取学生所在的所有班级
-            student_classes = StudentClass.objects.filter(student=student.id, is_active=True)
+            student_classes = StudentClass.objects.filter(student=student, is_active=True)
             if student_classes.exists():
                 # 获取所有班级的班级ID
                 class_ids = [sc.class_obj.id for sc in student_classes]
@@ -1524,7 +1524,7 @@ class StudentSideViewSet(viewsets.ViewSet):
             student = request.user.student_profile
             
             # 获取学生所在的所有班级
-            student_classes = StudentClass.objects.filter(student=student.id, is_active=True)
+            student_classes = StudentClass.objects.filter(student=student, is_active=True)
             
             # 获取班级资源
             class_resources = []
@@ -1586,7 +1586,7 @@ class StudentSideViewSet(viewsets.ViewSet):
             student = request.user.student_profile
             
             # 获取学生所在的所有班级
-            student_classes = StudentClass.objects.filter(student=student.id, is_active=True)
+            student_classes = StudentClass.objects.filter(student=student, is_active=True)
             if student_classes.exists():
                 # 获取所有班级的班级ID
                 class_ids = [sc.class_obj.id for sc in student_classes]
@@ -1609,8 +1609,8 @@ class StudentSideViewSet(viewsets.ViewSet):
             
             # 检查作业是否属于学生所在的任何一个班级
             is_in_class = StudentClass.objects.filter(
-                student=student.id, 
-                class_obj=homework.class_obj.id, 
+                student=student, 
+                class_obj=homework.class_obj, 
                 is_active=True
             ).exists()
             
@@ -1684,10 +1684,10 @@ class StudentSideViewSet(viewsets.ViewSet):
             if resource_type == 'class':
                 # 对于班级资源，检查学生是否在该班级中
                 is_in_class = StudentClass.objects.filter(
-                    student=student.id, 
-                    class_obj=resource.class_obj.id, 
-                    is_active=True
-                ).exists()
+                student=student, 
+                class_obj=resource.class_obj, 
+                is_active=True
+            ).exists()
                 if not is_in_class:
                     return Response({'error': '无权限访问该资源'}, status=status.HTTP_403_FORBIDDEN)
             
@@ -1898,7 +1898,7 @@ class StudentSideViewSet(viewsets.ViewSet):
             
             # 查找学生与班级的关系
             student_class = StudentClass.objects.filter(
-                student=student.id,
+                student=student,
                 class_obj=class_id,
                 is_active=True
             ).first()
@@ -2408,7 +2408,7 @@ class ReportViewSet(viewsets.ModelViewSet):
         # 班级整体报告
         elif report_type == 'class':
             # 获取班级学生
-            students = Student.objects.filter(class_name=class_obj.name)
+            students = Student.objects.filter(student_classes__class_obj=class_obj, student_classes__is_active=True)
             total_students = students.count()
             
             # 班级学习进度
@@ -2532,7 +2532,7 @@ class ReportViewSet(viewsets.ModelViewSet):
                 if not student_id:
                     return Response({'error': '学生个人报告必须指定学生'}, status=status.HTTP_400_BAD_REQUEST)
                 try:
-                    student = Student.objects.get(id=student_id, class_name=class_obj.name)
+                    student = Student.objects.get(id=student_id, student_classes__class_obj=class_obj, student_classes__is_active=True)
                 except Student.DoesNotExist:
                     return Response({'error': '学生不存在或不在该班级'}, status=status.HTTP_404_NOT_FOUND)
             

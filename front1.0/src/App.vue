@@ -28,47 +28,54 @@
         <!-- 学生端导航 - 只在学生端路由显示 -->
         <template v-else-if="navType === 'student'">
           <router-link to="/student/class" class="nav-item">
-            👥 我的班级
+            <span class="title-icon">👥</span> 我的班级
           </router-link>
           <router-link to="/student/profile/records" class="nav-item">
-              📊 学习记录
-            </router-link>
+            <span class="title-icon">📊</span> 学习记录
+          </router-link>
           <router-link to="/student/practice" class="nav-item">
-              📝 练习题
-            </router-link>
+            <span class="title-icon">📝</span> 练习题
+          </router-link>
           <router-link to="/student/learning-paths" class="nav-item">
-              🗺️ 学习路线图
-            </router-link>
+            <span class="title-icon">🗺️</span> 学习路线图
+          </router-link>
+          <router-link to="/student/learning-prediction" class="nav-item">
+            <span class="title-icon">📊</span> 学习效果预测
+          </router-link>
           <router-link to="/student/fullcode" class="nav-item">
-            💻 代码沙盒
+            <span class="title-icon">💻</span> 代码沙盒
           </router-link>
           <router-link to="/student/profile/settings" class="nav-item">
-            ⚙️ 设置
+            <span class="title-icon">⚙️</span> 设置
           </router-link>
           <router-link to="/" class="nav-item" v-if="!isAuthed">
-            ️🔑 登录
+            <span class="title-icon">🔑</span> 登录
           </router-link>
-          <button class="nav-item" v-else @click="onLogout">退出</button>
+          <button class="nav-item" v-else @click="onLogout">
+            <span class="title-icon">🚪</span> 退出
+          </button>
             <button class="notes-toggle" @click="toggleNotes">
-              📝 笔记/错题本
+              <span class="title-icon">📝</span> 笔记/错题本
             </button>
         </template>
         
         <!-- 教师端导航 - 只在教师端路由显示 -->
         <template v-else-if="navType === 'teacher'">
           <router-link to="/teacher/dashboard" class="nav-item">
-            📊 仪表盘
+            <span class="title-icon">📊</span> 仪表盘
           </router-link>
           <router-link to="/teacher/classes" class="nav-item">
-            👥 班级管理
+            <span class="title-icon">👥</span> 班级管理
           </router-link>
           <router-link to="/teacher/assignments" class="nav-item">
-            📝 作业管理
+            <span class="title-icon">📝</span> 作业管理
           </router-link>
           <router-link to="/teacher/students" class="nav-item">
-            🎓 学生管理
+            <span class="title-icon">🎓</span> 学生管理
           </router-link>
-          <button class="nav-item" @click="onLogout">退出</button>
+          <button class="nav-item" @click="onLogout">
+            <span class="title-icon">🚪</span> 退出
+          </button>
         </template>
         </div>
     </nav>
@@ -906,6 +913,13 @@ export default {
   padding: 8px 12px;
   border-radius: 4px;
   transition: all 0.3s;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.title-icon {
+  font-size: 16px;
 }
 
 .nav-item:hover {

@@ -184,6 +184,7 @@ export default {
         // 注意：后端目前只支持创建单个班级的作业，所以只使用第一个选中的班级
         const selectedClassId = formData.value.classes[0]
         
+
         // 验证班级是否被正确选择
         if (!selectedClassId) {
           alert('请选择一个班级')

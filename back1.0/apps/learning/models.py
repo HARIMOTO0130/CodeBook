@@ -5,6 +5,18 @@ from apps.books.models import Book, Chapter
 
 User = get_user_model()
 
+from .strategy_kg_models import (
+    StrategyKnowledgeNode,
+    StrategyRelation,
+    StrategyLearningPath,
+    StrategyPathNode,
+    UserStrategyPath,
+    UserNodeProgress,
+    StrategyRecommendation,
+    StrategyUserProfile,
+    StrategyResource,
+)
+
 
 class LearningRecord(models.Model):
     """学习记录模型"""

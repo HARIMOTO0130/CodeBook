@@ -33,6 +33,15 @@
               选择提供者端
             </button>
           </div>
+          
+          <div class="role-card" @click="selectRole('reviewer')">
+            <div class="role-icon">🔍</div>
+            <h3>教材审核端</h3>
+            <p>审核教材内容、管理审核任务</p>
+            <button class="role-button" @click.stop="selectRole('reviewer')">
+              选择审核端
+            </button>
+          </div>
         </div>
       </div>
       
@@ -106,6 +115,7 @@
 import { ref, reactive } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { api } from '../student/api/api.js'
+import { authApi as reviewAuthApi } from '../review/api/review.js'
 
 export default {
   name: 'AuthView',
@@ -125,7 +135,8 @@ export default {
       const names = {
         student: '学生端',
         teacher: '教师端',
-        provider: '教材提供者端'
+        provider: '教材提供者端',
+        reviewer: '教材审核端'
       }
       return names[role] || role
     }
@@ -140,7 +151,8 @@ export default {
       const paths = {
         student: '/student/books',
         teacher: '/teacher/dashboard',
-        provider: '/provider/books'
+        provider: '/provider/books',
+        reviewer: '/review/dashboard'
       }
       return paths[role] || '/student/books'
     }
@@ -155,13 +167,27 @@ export default {
       error.value = ''
       
       try {
-        const result = await api.login(loginForm)
+        let result
+        
+        // 根据角色选择不同的API
+        if (selectedRole.value === 'reviewer') {
+          // 调用审核端登录API
+          result = await reviewAuthApi.login(loginForm.username, loginForm.password)
+          if (result && result.token) {
+            localStorage.setItem('review_token', result.token)
+            localStorage.setItem('token', result.token) // 保持兼容
+          }
+        } else {
+          // 调用普通登录API
+          result = await api.login(loginForm)
+          if (result && result.token) {
+            localStorage.setItem('token', result.token)
+          }
+        }
         
         if (result && result.token) {
-          localStorage.setItem('token', result.token)
-          
           // 保存用户角色（优先使用后端返回的角色，其次使用用户选择的角色）
-          let userRole = result.role || selectedRole.value || 'student'
+          let userRole = result.user?.role || result.role || selectedRole.value || 'student'
           localStorage.setItem('userRole', userRole)
           
           // 更新App.vue中的认证状态
@@ -173,7 +199,7 @@ export default {
           console.log('登录成功，设置用户角色:', userRole)
           console.log('localStorage中的userRole:', localStorage.getItem('userRole'))
           console.log('用户选择的角色:', selectedRole.value)
-          console.log('后端返回的角色:', result.role)
+          console.log('后端返回的角色:', result.user?.role || result.role)
           
           // 根据角色跳转（如果有redirect参数则使用，否则根据角色跳转）
           const redirect = route.query.redirect || getRedirectPath(userRole)
@@ -188,6 +214,8 @@ export default {
             error.value = e.response.data.error
           } else if (e.response.data.debug_info) {
             error.value = `登录失败: ${e.response.data.debug_info}`
+          } else if (e.response.data.non_field_errors) {
+            error.value = e.response.data.non_field_errors[0]
           } else {
             error.value = '登录失败，请检查用户名和密码'
           }
@@ -231,17 +259,38 @@ export default {
       success.value = ''
       
       try {
-        const result = await api.register({
-          username: registerForm.username,
-          email: registerForm.email,
-          password: registerForm.password,
-          role: selectedRole.value
-        })
+        let result
+        
+        // 根据角色选择不同的API
+        if (selectedRole.value === 'reviewer') {
+          // 调用审核端注册API
+          result = await reviewAuthApi.register({
+            username: registerForm.username,
+            password: registerForm.password,
+            name: registerForm.username, // 使用用户名作为姓名
+            email: registerForm.email,
+            review_fields: [] // 默认空
+          })
+          if (result && result.token) {
+            localStorage.setItem('review_token', result.token)
+            localStorage.setItem('token', result.token) // 保持兼容
+          }
+        } else {
+          // 调用普通注册API
+          result = await api.register({
+            username: registerForm.username,
+            email: registerForm.email,
+            password: registerForm.password,
+            role: selectedRole.value
+          })
+          if (result && result.token) {
+            localStorage.setItem('token', result.token)
+          }
+        }
         
         if (result && result.token) {
-          localStorage.setItem('token', result.token)
           // 使用后端返回的角色（应该和选择的角色一致）
-          const userRole = result.role || selectedRole.value
+          const userRole = result.user?.role || result.role || selectedRole.value
           localStorage.setItem('userRole', userRole)
           
           // 更新App.vue中的认证状态

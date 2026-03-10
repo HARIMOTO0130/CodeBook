@@ -1,6 +1,6 @@
-// 使用相对路径，让Vite代理处理
-// export const API_BASE_URL = 'http://127.0.0.1:8000/api';
-export const API_BASE_URL = 'http://127.0.0.1:8000/api';
+// 使用绝对路径并正确导出
+// 学生端API基础URL
+export const API_BASE_URL = 'http://127.0.0.1:8000/api/student';
 
 const getToken = () => {
   try {
@@ -64,7 +64,7 @@ export async function httpGet(path, requireAuth = false) {
   }
 }
 
-async function httpPost(path, body, requireAuth = false, method = 'POST') {
+export async function httpPost(path, body, requireAuth = false, method = 'POST') {
   // 确保API路径格式正确，避免重复的/api前缀
   const apiPath = path.startsWith('/') ? path : `/${path}`;
   const fullUrl = `${API_BASE_URL}${apiPath}`;
@@ -76,67 +76,78 @@ async function httpPost(path, body, requireAuth = false, method = 'POST') {
   
   const requestBody = { ...body };
   
-  // 添加详细的请求日志
-  console.log(`[HTTP ${method}] 请求URL:`, fullUrl);
-  console.log(`[HTTP ${method}] 请求头:`, headers);
-  console.log(`[HTTP ${method}] 请求体:`, requestBody);
-  console.log(`[HTTP ${method}] 请求体JSON字符串:`, JSON.stringify(requestBody));
-  
-  const res = await fetch(fullUrl, {
-    method,
-    headers,
-    body: JSON.stringify(requestBody),
-    credentials: 'omit'
-  });
-  
-  // 添加详细的响应日志
-  console.log(`[HTTP ${method}] 响应状态:`, res.status, res.statusText);
-  console.log(`[HTTP ${method}] 响应头:`, res.headers);
-  const responseText = await res.text();
-  console.log(`[HTTP ${method}] 响应体文本:`, responseText);
-  
-  // 尝试解析响应体
-  let responseData;
-  try {
-    responseData = JSON.parse(responseText);
-    console.log(`[HTTP ${method}] 响应体JSON:`, responseData);
-  } catch (e) {
-    console.log(`[HTTP ${method}] 响应体不是JSON:`, e.message);
-    responseData = null;
+  // 添加请求日志（仅在开发环境）
+  if (process.env.NODE_ENV === 'development' || !process.env.NODE_ENV) {
+    console.log(`[HTTP ${method}] 请求URL:`, fullUrl);
+    console.log(`[HTTP ${method}] 请求头:`, headers);
+    console.log(`[HTTP ${method}] 请求体:`, requestBody);
   }
   
-  if ((res.status === 401 || res.status === 403) && requireAuth) {
-    // 只在需要认证的请求中处理认证错误
-    try { localStorage.removeItem('token') } catch {};
+  try {
+    const res = await fetch(fullUrl, {
+      method,
+      headers,
+      body: JSON.stringify(requestBody),
+      credentials: 'omit'
+    });
     
-    // 避免在登录页面上形成重定向循环
-    if (window.location.pathname !== '/') {
-      const redirect = encodeURIComponent(window.location.pathname + window.location.search);
-      window.location.href = `/?redirect=${redirect}`;
+    // 添加响应日志
+    if (process.env.NODE_ENV === 'development' || !process.env.NODE_ENV) {
+      console.log(`[HTTP ${method}] 响应状态:`, res.status, res.statusText);
     }
     
-    const error = new Error(`AUTH ${res.status}`);
-    error.response = { status: res.status, data: responseData || {} };
-    error.error = `AUTH ${res.status}`;
+    if ((res.status === 401 || res.status === 403) && requireAuth) {
+      // 只在需要认证的请求中处理认证错误
+      try { localStorage.removeItem('token') } catch {};
+      
+      // 避免在登录页面上形成重定向循环
+      if (window.location.pathname !== '/') {
+        const redirect = encodeURIComponent(window.location.pathname + window.location.search);
+        window.location.href = `/?redirect=${redirect}`;
+      }
+      
+      throw new Error(`AUTH ${res.status}`);
+    }
+    
+    // 解析响应体
+    const responseData = await res.json().catch(() => {
+      // 如果JSON解析失败，尝试获取原始文本
+      return res.text().then(text => ({ rawText: text })).catch(() => ({}));
+    });
+    
+    if (!res.ok) {
+      // 创建一个包含更多信息的错误对象
+      const error = new Error(`${method} ${path} ${res.status}`);
+      error.response = { status: res.status, data: responseData };
+      throw error;
+    }
+    
+    return responseData;
+  } catch (error) {
+    // 添加详细的错误日志
+    if (process.env.NODE_ENV === 'development' || !process.env.NODE_ENV) {
+      console.error(`[HTTP ${method}] 请求失败:`, error);
+      console.error(`[HTTP ${method}] 请求URL:`, fullUrl);
+    }
+    
+    // 处理网络错误
+    if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
+      error.message = '无法连接到服务器，请确保后端服务已启动（运行 python manage.py runserver）';
+    }
+    
+    if (!error.response) {
+      // 如果没有response属性，添加一个基本的response对象
+      error.response = { status: 0, data: { message: error.message || '网络请求失败' } };
+    }
     throw error;
   }
-  
-  if (!res.ok) {
-    // 创建一个包含更多信息的错误对象
-    const error = new Error(`${method} ${path} ${res.status}`);
-    // 存储完整的响应信息，便于前端处理
-    error.response = { status: res.status, data: responseData || {} };
-    // 兼容前端错误处理代码，添加detail属性
-    error.error = responseData?.error || responseData?.message || responseData?.detail || error.message;
-    throw error;
-  }
-  
-  return responseData || {};
 }
 
 // 添加缺失的httpDelete和httpPut函数
-export async function httpDelete(path, requireAuth = false) {
-  console.log(`[HTTP DELETE] 发送请求到: ${API_BASE_URL}${path}`);
+export async function httpDelete(path, requireAuth = false, body = null) {
+  if (body) {
+    return httpPost(path, body, requireAuth, 'DELETE');
+  }
   return httpPost(path, {}, requireAuth, 'DELETE');
 }
 
@@ -144,11 +155,11 @@ export async function httpPut(path, body, requireAuth = false) {
   return httpPost(path, body, requireAuth, 'PUT');
 }
 
-async function httpPostForm(path, formData, requireAuth = false, method = 'POST') {
+async function httpPostForm(path, formData, requireAuth = false) {
   // 确保API路径格式正确，避免重复的/api前缀
   const apiPath = path.startsWith('/') ? path : `/${path}`;
   const fullUrl = `${API_BASE_URL}${apiPath}`;
-  console.log(`[HTTP ${method}_FORM] 请求: ${fullUrl}`);
+  console.log(`[HTTP POST_FORM] 请求: ${fullUrl}`);
   
   const headers = {
     ...(requireAuth ? authHeaders() : {})
@@ -157,13 +168,13 @@ async function httpPostForm(path, formData, requireAuth = false, method = 'POST'
   
   try {
     const res = await fetch(fullUrl, {
-      method,
+      method: 'POST',
       headers,
       body: formData,
       credentials: 'omit'
     });
     
-    console.log(`[HTTP ${method}_FORM] 响应状态: ${res.status} ${res.statusText}`);
+    console.log(`[HTTP POST_FORM] 响应状态: ${res.status} ${res.statusText}`);
     
       if (res.status === 401 || res.status === 403) {
         try { localStorage.removeItem('token') } catch {}
@@ -179,10 +190,10 @@ async function httpPostForm(path, formData, requireAuth = false, method = 'POST'
       try {
         const errorData = await res.json();
         console.error('[HTTP POST_FORM] 错误详情:', errorData);
-        throw new Error(`${method}_FORM ${path} ${res.status}: ${errorData.error || res.statusText}`);
+        throw new Error(`POST_FORM ${path} ${res.status}: ${errorData.error || res.statusText}`);
       } catch (parseError) {
         console.error('[HTTP POST_FORM] 无法解析错误响应:', parseError);
-        throw new Error(`${method}_FORM ${path} ${res.status}`);
+        throw new Error(`POST_FORM ${path} ${res.status}`);
       }
     }
     
@@ -262,7 +273,7 @@ export const api = {
   async getAIAssistantResponse(question, requireAuth = false) {
     try {
       console.log('[API] 发送AI助手问题:', question);
-      const response = await httpPost('/api/learning/ai-assistant/', 
+      const response = await httpPost('/learning/ai-assistant/', 
         { question }, 
         requireAuth
       );
@@ -275,8 +286,9 @@ export const api = {
   },
   
   // 认证
-  async register({ username, email, password }) {
-    return httpPost('/users/register/', { username, email, password }, false);
+  async register({ username, email, password, role }) {
+    // 使用学生端注册接口
+    return httpPost('/users/register/', { username, email, password, role }, false);
   },
   async login({ username, password }) {
     try {
@@ -312,43 +324,41 @@ export const api = {
 
   // 用户
   async getUserInfo() {
-    return httpGet('/student/users/me/', true);
+    return httpGet('/users/me/', true);
   },
-  async updateUserInfo(userData, fileData = null) {
-    if (fileData) {
-      // 如果有文件数据，使用表单数据上传，使用POST方法
-      const formData = new FormData();
-      // 添加所有用户数据字段
-      Object.keys(userData).forEach(key => {
-        formData.append(key, userData[key]);
-      });
-      // 添加文件字段
-      Object.keys(fileData).forEach(key => {
-        formData.append(key, fileData[key]);
-      });
-      return httpPostForm('/student/users/me/', formData, true, 'POST');
-    } else {
-      // 否则使用普通JSON请求，使用PUT方法
-      return httpPut('/student/users/me/', userData, true);
-    }
+  async updateUserInfo(userData) {
+    return httpPut('/users/me/', userData, true);
   },
   async getUserPreferences() {
-    return httpGet('/student/users/preferences/', true);
+    return httpGet('/users/preferences/', true);
   },
   async updateUserPreferences(preferences) {
-    // 前端传入为 camelCase，转换成后端的 snake_case
-    const payload = {
-      ...(preferences.defaultLanguage !== undefined ? { default_language: preferences.defaultLanguage } : {}),
-      ...(preferences.editorTheme !== undefined ? { code_theme: preferences.editorTheme } : {}),
-      ...(preferences.autoPlayVideo !== undefined ? { auto_play_video: preferences.autoPlayVideo } : {}),
-      ...(preferences.enableKeyboardShortcuts !== undefined ? { keyboard_shortcuts: preferences.enableKeyboardShortcuts } : {}),
-      ...(preferences.showLineNumbers !== undefined ? { show_line_numbers: preferences.showLineNumbers } : {}),
-      ...(preferences.useVimMode !== undefined ? { use_vim_mode: preferences.useVimMode } : {})
-    };
-    return httpPut('/student/users/preferences/', payload, true);
+        // 前端传入为 camelCase，转换成后端的 snake_case
+        const payload = {
+            // 学习偏好设置
+            ...(preferences.defaultLanguage !== undefined ? { default_language: preferences.defaultLanguage } : {}),
+            ...(preferences.codeTheme !== undefined ? { code_theme: preferences.codeTheme } : {}),
+            ...(preferences.autoPlayVideo !== undefined ? { auto_play_video: preferences.autoPlayVideo } : {}),
+            ...(preferences.keyboardShortcuts !== undefined ? { keyboard_shortcuts: preferences.keyboardShortcuts } : {}),
+            ...(preferences.showLineNumbers !== undefined ? { show_line_numbers: preferences.showLineNumbers } : {}),
+            ...(preferences.useVimMode !== undefined ? { use_vim_mode: preferences.useVimMode } : {}),
+            
+            // 学习信息
+            ...(preferences.learning_goals !== undefined ? { learning_goals: preferences.learning_goals } : {}),
+            ...(preferences.major !== undefined ? { major: preferences.major } : {}),
+            ...(preferences.learning_stage !== undefined ? { learning_stage: preferences.learning_stage } : {}),
+            ...(preferences.interests !== undefined ? { interests: preferences.interests } : {}),
+            
+            // 通知设置
+            ...(preferences.enable_learning_reminders !== undefined ? { enable_learning_reminders: preferences.enable_learning_reminders } : {}),
+            ...(preferences.reminder_time !== undefined ? { reminder_time: preferences.reminder_time } : {}),
+            ...(preferences.daily_reminder !== undefined ? { daily_reminder: preferences.daily_reminder } : {}),
+            ...(preferences.deadline_reminder !== undefined ? { deadline_reminder: preferences.deadline_reminder } : {})
+        };
+        return httpPut('/users/preferences/', payload, true);
   },
   async changePassword(passwordData) {
-    return httpPost('/student/users/change-password/', passwordData, true);
+    return httpPost('/users/change-password/', passwordData, true);
   },
 
   // 书籍
@@ -539,15 +549,31 @@ export const api = {
 
   // 学习记录
   async getLearningRecords() {
-    const response = await httpGet('/learning/records/', true);
-    // 确保获取到的数据是数组
-    return Array.isArray(response) ? response : (response && response.data && Array.isArray(response.data) ? response.data : []);
+    return httpGet('/learning/records/', true);
+  },
+  async getLearningActivities(params = {}) {
+    const search = new URLSearchParams();
+    if (params.startDate) search.append('start_date', params.startDate);
+    if (params.endDate) search.append('end_date', params.endDate);
+    if (params.type && params.type !== 'all') search.append('type', params.type);
+    if (params.status && params.status !== 'all') search.append('status', params.status);
+    if (params.orderBy) search.append('order_by', params.orderBy);
+    if (params.page) search.append('page', params.page);
+    if (params.pageSize) search.append('page_size', params.pageSize);
+    const qs = search.toString();
+    const url = qs ? `/learning/records/activity/?${qs}` : '/learning/records/activity/';
+    return httpGet(url, true);
   },
   async getPracticeRecords() {
-    // 修改为学习模块下的练习记录API路径
-    const response = await httpGet('/learning/practice-records/', true);
-    // 确保获取到的数据是数组
-    return Array.isArray(response) ? response : (response && response.results && Array.isArray(response.results) ? response.results : []);
+    // 学习模块下的练习记录API，适配分页结构，统一返回数组
+    const res = await httpGet('/learning/practice-records/', true);
+    if (Array.isArray(res)) {
+      return res;
+    }
+    if (res && Array.isArray(res.results)) {
+      return res.results;
+    }
+    return [];
   },
   
   // 获取练习题列表 - 直接从学习模块获取
@@ -581,22 +607,74 @@ export const api = {
   },
   async executeCode({ language, code, input = '' }) {
     // 正确的API路径是/learning/execute/
-    return httpPost('/learning/execute/', { language, code, input }, false);
+    return httpPost('/learning/execute/', { language, code, input }, true);
   },
   
-  async getWrongQuestions() {
-    const response = await httpGet('/learning/wrong-questions/', true)
-    // 确保获取到的数据是数组
-    const list = Array.isArray(response) ? response : (response && response.data && Array.isArray(response.data) ? response.data : [])
-    // 映射为 RecordsView 期望的字段
-    return list.map(q => ({
-      id: q.id,
-      title: q.title,
-      difficulty: q.difficulty,
-      question_type: q.question_type,
-      practiceId: q.practice_id || q.practice,
-      attemptTime: q.attempt_time || q.created_at
-    }))
+  // 错题本相关API
+  async getWrongQuestions(filters = {}) {
+    try {
+      // 构建查询参数
+      const params = new URLSearchParams()
+      if (filters.status) params.append('status', filters.status)
+      if (filters.question_type) params.append('question_type', filters.question_type)
+      if (filters.difficulty) params.append('difficulty', filters.difficulty)
+      if (filters.book_id) params.append('book_id', filters.book_id)
+      if (filters.chapter_id) params.append('chapter_id', filters.chapter_id)
+      
+      const url = `/learning/wrong-questions/${params.toString() ? '?' + params.toString() : ''}`
+      const response = await httpGet(url, true)
+      // 确保获取到的数据是数组
+      const list = Array.isArray(response) ? response : (response && response.data && Array.isArray(response.data) ? response.data : [])
+      // 映射为统一的字段格式
+      return list.map(q => ({
+        id: q.id,
+        title: q.title,
+        difficulty: q.difficulty,
+        question_type: q.question_type,
+        question_type_display: q.question_type_display,
+        practiceId: q.practice || q.practice_id,
+        practice_id: q.practice_id || q.practice, // 保留原始字段名
+        exerciseId: q.exercise,
+        question_index: q.question_index,
+        question_content: q.question_content,
+        attemptTime: q.attempt_time || q.created_at,
+        attempt_count: q.attempt_count || 1,
+        error_time: q.error_time,
+        error_reason: q.error_reason,
+        knowledge_points: q.knowledge_points || [],
+        status: q.status,
+        status_display: q.status_display,
+        book_title: q.book_title,
+        book_id: q.book || q.book_id, // 添加book_id
+        chapter_title: q.chapter_title,
+        chapter_id: q.chapter || q.chapter_id, // 添加chapter_id
+        practice_title: q.practice_title,
+        practice: q.practice // 保留原始practice对象（如果有）
+      }))
+    } catch (error) {
+      console.error('获取错题列表失败:', error)
+      throw error
+    }
+  },
+  
+  async getWrongQuestionDetail(questionId) {
+    try {
+      const response = await httpGet(`/learning/wrong-questions/${questionId}/detail/`, true)
+      return response.data || response
+    } catch (error) {
+      console.error('获取错题详情失败:', error)
+      throw error
+    }
+  },
+  
+  async getWrongQuestionStatistics() {
+    try {
+      const response = await httpGet('/learning/wrong-questions/statistics/', true)
+      return response.data || response
+    } catch (error) {
+      console.error('获取错题统计失败:', error)
+      throw error
+    }
   },
   
   // 批量添加错题
@@ -630,6 +708,87 @@ export const api = {
       throw error
     }
   },
+  
+  // 重做错题
+  async redoWrongQuestion(questionId) {
+    try {
+      const response = await httpPost(`/learning/wrong-questions/${questionId}/redo/`, {}, true)
+      return response.data || response
+    } catch (error) {
+      console.error('开始重做错题失败:', error)
+      throw error
+    }
+  },
+  
+  // 完成错题重做
+  async completeWrongQuestionRedo(questionId, isCorrect) {
+    try {
+      const response = await httpPost(`/learning/wrong-questions/${questionId}/complete_redo/`, { is_correct: isCorrect }, true)
+      return response.data || response
+    } catch (error) {
+      console.error('完成错题重做失败:', error)
+      throw error
+    }
+  },
+  
+  // 批量删除错题
+  async batchDeleteWrongQuestions(questionIds) {
+    try {
+      return await httpDelete('/learning/wrong-questions/batch_delete/', true, { question_ids: questionIds })
+    } catch (error) {
+      console.error('批量删除错题失败:', error)
+      throw error
+    }
+  },
+  
+  // 从练习题直接添加错题
+  // 支持两种模式：
+  // 1. exerciseId模式：传递Exercise模型的ID
+  // 2. practiceId模式：传递Practice的ID
+  async addWrongQuestionFromExercise(options) {
+    try {
+      const { 
+        practiceId, 
+        exerciseId, 
+        errorReason = '', 
+        knowledgePoints = [], 
+        questionIndex = null, 
+        questionId = null,
+        questionType = null
+      } = options
+      
+      const data = {
+        error_reason: errorReason,
+        knowledge_points: knowledgePoints
+      }
+      
+      // 如果提供了question_type，添加到数据中
+      if (questionType) {
+        data.question_type = questionType
+      }
+      
+      // 如果提供了practiceId且它是有效的值，使用Practice模式
+      if (practiceId) {
+        data.practice_id = practiceId
+        if (questionIndex !== null) {
+          data.question_index = questionIndex
+        }
+        if (questionId !== null) {
+          data.question_id = questionId
+        }
+      } else if (exerciseId) {
+        // 否则使用Exercise模式
+        data.exercise_id = exerciseId
+      } else {
+        throw new Error('必须提供exercise_id或practice_id')
+      }
+      
+      return await httpPost('/learning/wrong-questions/add_from_exercise/', data, true)
+    } catch (error) {
+      console.error('从练习题添加错题失败:', error)
+      throw error
+    }
+  },
   async importPdf({ title, author, description, language, file }) {
     console.log('PDF导入请求参数检查:')
     console.log('- title:', title ? '存在' : '不存在')
@@ -657,77 +816,6 @@ export const api = {
     return httpGet(`/learning/roadmaps/?${params.toString()}`, false)
   },
   
-  // 个性化学习路径（基于知识图谱和大模型）
-  async generatePersonalizedPath(learningGoal, maxNodes = 10) {
-    // 对应后端 /learning/personalized-path/generate/
-    return httpPost(
-      '/learning/personalized-path/generate/',
-      {
-        learning_goal: learningGoal,
-        max_nodes: maxNodes
-      },
-      true
-    );
-  },
-
-  // 基于知识图谱 + LLM 的个性化学习建议
-  async generatePersonalizedSuggestions(payload) {
-    // 对应后端 /learning/recommendations/personalized-suggestions/
-    return httpPost(
-      '/learning/recommendations/personalized-suggestions/',
-      payload,
-      true
-    );
-  },
-
-  // 知识图谱节点列表
-  async getKnowledgeNodes(params = {}) {
-    // 对应后端 /learning/knowledge-graph/nodes/
-    const search = new URLSearchParams();
-    Object.entries(params).forEach(([key, value]) => {
-      if (value !== undefined && value !== null && value !== '') {
-        search.append(key, value);
-      }
-    });
-    const query = search.toString();
-    const url = query
-      ? `/learning/knowledge-graph/nodes/?${query}`
-      : '/learning/knowledge-graph/nodes/';
-    return httpGet(url, true);
-  },
-
-  // 知识关系全部列表（前端自行过滤）
-  async getKnowledgeRelationsAll(params = {}) {
-    // 对应后端 /learning/knowledge-graph/relations/
-    const search = new URLSearchParams();
-    Object.entries(params).forEach(([key, value]) => {
-      if (value !== undefined && value !== null && value !== '') {
-        search.append(key, value);
-      }
-    });
-    const query = search.toString();
-    const url = query
-      ? `/learning/knowledge-graph/relations/?${query}`
-      : '/learning/knowledge-graph/relations/';
-    return httpGet(url, true);
-  },
-
-  // 学习偏好（与学习推荐模块绑定，而不是用户基础信息）
-  async getLearningPreference() {
-    // 对应后端 /learning/recommendations/preference/
-    return httpGet('/learning/recommendations/preference/', true);
-  },
-
-  async updateLearningPreference(preference) {
-    // 对应后端 /learning/recommendations/update_preference/
-    // 这里直接按后端 serializer 需要的 snake_case 字段传递
-    return httpPost(
-      '/learning/recommendations/update_preference/',
-      preference,
-      true
-    );
-  },
-
   // 删除书籍
   async deleteBook(bookId) {
     const fullUrl = `${API_BASE_URL}/books/${bookId}/`;
@@ -748,7 +836,8 @@ export const api = {
       
       console.log(`[HTTP DELETE] 响应状态: ${res.status} ${res.statusText}`);
       
-      if (res.status === 401 || res.status === 403) {
+      if (res.status === 401) {
+        // 401表示未认证，仍然清除token并重定向
         console.warn('[HTTP] 认证失败，清除token');
         try { localStorage.removeItem('token') } catch {}
         // 仅在非登录页面时重定向，避免无限循环
@@ -757,6 +846,11 @@ export const api = {
           window.location.href = `/?redirect=${redirect}`
         }
         throw new Error(`AUTH ${res.status}`)
+      } else if (res.status === 403) {
+        // 403表示权限不足，不清除token，只显示错误
+        const errorData = await res.json().catch(() => ({ detail: '您没有权限执行此操作' }));
+        console.error('[HTTP] 权限不足:', errorData);
+        throw new Error(`PERMISSION ${res.status}: ${errorData.detail || '您没有权限删除这本教材'}`);
       }
       
       if (!res.ok) {
@@ -865,64 +959,157 @@ export const api = {
   
   // 笔记相关API
   async getNotes() {
-    return httpGet('/student/learning/notes/', true);
+    return httpGet('/learning/notes/', true);
   },
   
   async getNoteTags() {
-    return httpGet('/student/learning/notes/tags/', true);
+    return httpGet('/learning/notes/tags/', true);
   },
   
   async createNote(noteData) {
-    return httpPost('/student/learning/notes/', noteData, true);
+    return httpPost('/learning/notes/', noteData, true);
   },
   
   async updateNote(noteId, noteData) {
-    return httpPut(`/student/learning/notes/${noteId}/`, noteData, true);
+    return httpPut(`/learning/notes/${noteId}/`, noteData, true);
   },
   
   async deleteNote(noteId) {
-    return httpDelete(`/student/learning/notes/${noteId}/`, true);
+    return httpDelete(`/learning/notes/${noteId}/`, true);
   },
   
   async toggleNoteFavorite(noteId) {
-    return httpPost(`/student/learning/notes/${noteId}/toggle_favorite/`, {}, true);
+    return httpPost(`/learning/notes/${noteId}/toggle_favorite/`, {}, true);
   },
   
   async createNoteTag(tagData) {
-    return httpPost('/student/learning/notes/create_tag/', tagData, true);
+    return httpPost('/learning/notes/create_tag/', tagData, true);
   },
   
   async addNoteTag(noteId, tagId) {
-    return httpPost(`/student/learning/notes/${noteId}/add_tag/`, { tag_id: tagId }, true);
+    return httpPost(`/learning/notes/${noteId}/add_tag/`, { tag_id: tagId }, true);
   },
   
   async removeNoteTag(noteId, tagId) {
-    return httpPost(`/student/learning/notes/${noteId}/remove_tag/`, { tag_id: tagId }, true);
+    return httpPost(`/learning/notes/${noteId}/remove_tag/`, { tag_id: tagId }, true);
   },
   
   async getNoteVersions(noteId) {
-    return httpGet(`/student/learning/notes/${noteId}/versions/`, true);
+    return httpGet(`/learning/notes/${noteId}/versions/`, true);
   },
   
   async restoreNoteVersion(noteId, versionId) {
-    return httpPost(`/student/learning/notes/${noteId}/restore_version/`, { version_id: versionId }, true);
-  },
-  
-  // 工具包相关API
-  async getTools() {
-    console.log('[API] 调用getTools，URL: /api/toolkit/tools/');
-    return httpGet('/api/toolkit/tools/', false);
-  },
-  
-  async runTool(toolId, params) {
-    const url = `/api/toolkit/tools/${toolId}/run/`;
-    console.log('[API] 调用runTool，URL:', url, '参数:', { parameters: params });
-    return httpPost(url, { parameters: params }, false);
+    return httpPost(`/learning/notes/${noteId}/restore_version/`, { version_id: versionId }, true);
   },
   
   async addNoteAttachment(noteId, file) {
     const formData = new FormData();
     formData.append('files', file);
-    return httpPostForm(`/student/learning/notes/${noteId}/add_attachment/`, formData, true);
+    return httpPostForm(`/learning/notes/${noteId}/add_attachment/`, formData, true);
+  },
+  
+  // 个性化学习路径相关API
+  async generatePersonalizedPath(learningGoal, maxNodes = 10) {
+    try {
+      // 直接调用完整的API路径，不使用API_BASE_URL
+      const fullUrl = 'http://127.0.0.1:8000/api/learning/personalized-path/generate/';
+      const headers = {
+        'Content-Type': 'application/json',
+        ...(true ? authHeaders() : {})
+      };
+      
+      const response = await fetch(fullUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          learning_goal: learningGoal,
+          max_nodes: maxNodes
+        }),
+        credentials: 'omit'
+      });
+      
+      if (!response.ok) {
+        throw new Error(`POST ${fullUrl} ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('生成个性化学习路径失败:', error);
+      throw error;
+    }
+  },
+  
+  async updatePersonalizedPath(path, performance) {
+    try {
+      return await httpPost('/learning/personalized-path/update/', {
+        path: path,
+        performance: performance
+      }, true);
+    } catch (error) {
+      console.error('更新个性化学习路径失败:', error);
+      throw error;
+    }
+  },
+  
+  async generateLearningFeedback(performance) {
+    try {
+      return await httpPost('/learning/personalized-path/feedback/', {
+        performance: performance
+      }, true);
+    } catch (error) {
+      console.error('生成学习反馈失败:', error);
+      throw error;
+    }
+  },
+  
+  // 知识图谱相关API
+  async getKnowledgeNodes(filters = {}) {
+    try {
+      const params = new URLSearchParams();
+      if (filters.graph_id) params.append('graph_id', filters.graph_id);
+      if (filters.type) params.append('type', filters.type);
+      if (filters.level) params.append('level', filters.level);
+      if (filters.professional_group) params.append('professional_group', filters.professional_group);
+      
+      const url = `/learning/knowledge-graph/nodes/${params.toString() ? '?' + params.toString() : ''}`;
+      return await httpGet(url, true);
+    } catch (error) {
+      console.error('获取知识节点失败:', error);
+      throw error;
+    }
+  },
+  
+  async getKnowledgeRelations(sourceId, targetId) {
+    try {
+      const params = new URLSearchParams();
+      if (sourceId) params.append('source_id', sourceId);
+      if (targetId) params.append('target_id', targetId);
+      
+      const url = `/learning/knowledge-graph/relations/${params.toString() ? '?' + params.toString() : ''}`;
+      return await httpGet(url, true);
+    } catch (error) {
+      console.error('获取知识关系失败:', error);
+      throw error;
+    }
+  },
+  
+  async getKnowledgeRelationsAll() {
+    try {
+      const url = `/learning/knowledge-graph/relations/`;
+      return await httpGet(url, true);
+    } catch (error) {
+      console.error('获取所有知识关系失败:', error);
+      throw error;
+    }
+  },
+  
+  // 个性化学习建议API
+  async generatePersonalizedSuggestions(data = {}) {
+    try {
+      return await httpPost('/learning/recommendations/personalized-suggestions/', data, true);
+    } catch (error) {
+      console.error('生成个性化学习建议失败:', error);
+      throw error;
+    }
   }
 };

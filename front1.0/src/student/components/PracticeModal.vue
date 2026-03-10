@@ -336,7 +336,7 @@
             
             <div class="footer-center">
               <!-- 选择题/填空题/判断题按钮 -->
-              <template v-if="['choice', 'fill', 'fillBlank', 'Judgment'].includes(currentQuestion.type)">
+              <template v-if="['choice', 'fill', 'fillBlank', 'Judgment', 'judgment', 'true_false'].includes(currentQuestion.type)">
                 <button 
                   v-if="!showFeedback"
                   class="btn-primary"
@@ -344,13 +344,13 @@
                 >
                   提交答案
                 </button>
-              <button 
+                <button 
                   v-else
                   class="btn-primary"
-                @click="nextQuestion" 
-              >
+                  @click="nextQuestion" 
+                >
                   下一题
-              </button>
+                </button>
               </template>
           
               <!-- 代码补全题按钮 -->
@@ -634,9 +634,9 @@ export default {
     // 已回答的题目数量
     const answeredCount = computed(() => {
       return props.questions.filter(q => {
-        if (q.type === 'choice' || q.type === 'judgment' || q.type === 'Judgment') {
+        if (q.type === 'choice' || q.type === 'judgment' || q.type === 'Judgment' || q.type === 'true_false') {
           return q.selectedOption !== undefined && q.selectedOption !== null
-        } else if (q.type === 'fill') {
+        } else if (q.type === 'fill' || q.type === 'fillBlank') {
           return q.userAnswers && q.userAnswers.length > 0 && q.userAnswers.some(ans => ans && ans.trim() !== '')
         } else if (q.type === 'codeCompletion' || q.type === 'programming') {
           return q.userCode && q.userCode.trim() !== ''
@@ -699,9 +699,9 @@ export default {
       ) || props.questions[currentIndex.value]
       
       if (originalQuestion) {
-        if (question.type === 'choice') {
+        if (question.type === 'choice' || question.type === 'judgment' || question.type === 'Judgment' || question.type === 'true_false') {
           originalQuestion.selectedOption = selectedOptions.value.length > 0 ? selectedOptions.value[0] : null
-        } else if (question.type === 'fill') {
+        } else if (question.type === 'fill' || question.type === 'fillBlank') {
           originalQuestion.userAnswers = [...userAnswers.value]
         } else if (question.type === 'codeCompletion') {
           originalQuestion.userCode = codeCompletionAnswer.value

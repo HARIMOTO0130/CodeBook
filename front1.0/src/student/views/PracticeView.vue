@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="practice-view">
     <!-- 顶部面包屑 -->
     <div class="breadcrumb">
@@ -12,8 +12,20 @@
       <p class="page-description">通过实践巩固所学知识，提升编程能力</p>
     </div>
 
+    <!-- 功能标签页 -->
+    <div class="feature-tabs">
+      <div class="tab-item" :class="{ active: activeTab === 'list' }" @click="activeTab = 'list'">
+        <span class="tab-icon">📋</span>
+        <span class="tab-label">习题列表</span>
+      </div>
+      <div class="tab-item" :class="{ active: activeTab === 'generator' }" @click="activeTab = 'generator'">
+        <span class="tab-icon">✨</span>
+        <span class="tab-label">生成习题</span>
+      </div>
+    </div>
+
     <!-- 书籍标签 -->
-    <div class="book-tabs" v-if="books.length > 0">
+    <div class="book-tabs" v-if="activeTab === 'list' && books.length > 0">
       <button
         v-for="book in books"
         :key="book.book_id"
@@ -26,7 +38,7 @@
     </div>
 
     <!-- 练习题列表 - 按章节分组 -->
-    <div class="practice-list">
+    <div v-if="activeTab === 'list'" class="practice-list">
       <div v-if="loading" class="loading-state">
         <div class="loading-spinner"></div>
         <p>正在加载练习题...</p>
@@ -90,7 +102,7 @@
     </div>
 
     <!-- 练习统计 -->
-    <div class="stats-section">
+    <div v-if="activeTab === 'list'" class="stats-section">
       <div class="stats-header">
         <h2>练习统计</h2>
       </div>
@@ -118,6 +130,11 @@
       </div>
     </div>
 
+    <!-- 练习生成标签页内容 -->
+    <div v-if="activeTab === 'generator'" class="generator-section">
+      <ExerciseGeneratorComponent />
+    </div>
+
     <!-- 练习题模态框 -->
     <PracticeModal
         v-model:visible="showPracticeModal"
@@ -135,15 +152,20 @@ import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { api } from '../api/api.js'
 import PracticeModal from '../components/PracticeModal.vue'
+import ExerciseGeneratorComponent from '../components/ExerciseGeneratorComponent.vue'
 
 export default {
   name: 'PracticeView',
   components: {
-    PracticeModal
+    PracticeModal,
+    ExerciseGeneratorComponent
   },
   setup() {
     const router = useRouter()
     const route = useRoute()
+    
+    // 标签页状态
+    const activeTab = ref('list')
     
     // 状态管理
     const loading = ref(true)
@@ -881,6 +903,9 @@ export default {
     })
 
     return {
+      // 标签页状态
+      activeTab,
+      
       // 状态
       loading,
       books,
@@ -913,6 +938,56 @@ export default {
 </script>
 
 <style scoped>
+/* 标签页样式 */
+.feature-tabs {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 30px;
+  border-bottom: 1px solid #e8e8e8;
+  padding-bottom: 10px;
+}
+
+.tab-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: 1px solid #e8e8e8;
+  background-color: #f5f5f5;
+}
+
+.tab-item:hover {
+  background-color: #e6f7ff;
+  border-color: #91d5ff;
+}
+
+.tab-item.active {
+  background-color: #4CAF50;
+  color: white;
+  border-color: #4CAF50;
+}
+
+.tab-icon {
+  font-size: 18px;
+}
+
+.tab-label {
+  font-size: 16px;
+  font-weight: 500;
+}
+
+/* 生成器区域样式 */
+.generator-section {
+  background-color: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  padding: 20px;
+  margin-bottom: 30px;
+}
+
 /* 全局样式 */
 .practice-view {
   max-width: 1200px;

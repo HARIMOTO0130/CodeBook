@@ -12,7 +12,7 @@ urlpatterns = [
     path('api/student/books/', include('apps.books.urls')),      # 学生端书籍浏览
     path('api/student/learning/', include('apps.learning.urls')),  # 学习记录、练习等
     path('api/student/users/', include('apps.users.urls')),      # 用户相关（登录、注册等）
-    path('api/student/toolkit/', include('toolkit.urls')),       # 学生端工具箱
+    path('api/student/toolkit/', include('apps.toolkit.urls')),       # 学生端工具箱
     
     # 教师端API
     path('api/teacher/', include('apps.teacher.urls')),  # 班级、作业、学生管理等
@@ -24,7 +24,8 @@ urlpatterns = [
     path('api/books/', include('apps.books.urls')),
     path('api/users/', include('apps.users.urls')),
     path('api/learning/', include('apps.learning.urls')),
-    path('api/toolkit/', include('toolkit.urls')),
+    path('api/toolkit/', include('apps.toolkit.urls')),
+    path('api/review/', include('apps.review.urls')),
 ]
 
 # Serve media files in development

@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import studentRoutes from '../student/router'
 import teacherRoutes from '../teacher/router'
 import providerRoutes from '../provider/router'
+import reviewRoutes from '../review/router'
 
 // 主路由配置 - 整合所有端的路由
 // 确保所有路由都是数组
@@ -39,6 +40,13 @@ if (Array.isArray(providerRoutes)) {
   allRoutes.push(...providerRoutes)
 } else {
   console.error('providerRoutes is not an array:', providerRoutes)
+}
+
+// 添加教材审核端路由
+if (Array.isArray(reviewRoutes)) {
+  allRoutes.push(...reviewRoutes)
+} else {
+  console.error('reviewRoutes is not an array:', reviewRoutes)
 }
 
 // 添加404页面（必须放在最后）

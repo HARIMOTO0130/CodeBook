@@ -1137,6 +1137,67 @@ export const api = {
     }
   },
   
+  // 习题生成相关API
+  async generateExercises(config) {
+    try {
+      console.log('[API] 生成习题请求:', config);
+      const response = await httpPost('/learning/exercise-generator/', config, true);
+      console.log('[API] 生成习题响应:', response);
+      return response;
+    } catch (error) {
+      console.error('[API] 生成习题失败:', error);
+      throw error;
+    }
+  },
+  
+  async generateExerciseSet(config) {
+    try {
+      console.log('[API] 生成习题集请求:', config);
+      const response = await httpPost('/learning/exercise-generator/set/', config, true);
+      console.log('[API] 生成习题集响应:', response);
+      return response;
+    } catch (error) {
+      console.error('[API] 生成习题集失败:', error);
+      throw error;
+    }
+  },
+  
+  async getExerciseTypes() {
+    try {
+      console.log('[API] 获取习题类型');
+      const response = await httpGet('/learning/exercise-generator/types/', true);
+      console.log('[API] 习题类型响应:', response);
+      return response;
+    } catch (error) {
+      console.error('[API] 获取习题类型失败:', error);
+      throw error;
+    }
+  },
+  
+  async getExerciseHistory() {
+    try {
+      console.log('[API] 获取习题生成历史');
+      const response = await httpGet('/learning/exercise-generator/history/', true);
+      console.log('[API] 习题生成历史响应:', response);
+      return response;
+    } catch (error) {
+      console.error('[API] 获取习题生成历史失败:', error);
+      throw error;
+    }
+  },
+  
+  async getExerciseRecommendations() {
+    try {
+      console.log('[API] 获取习题推荐');
+      const response = await httpGet('/learning/exercise-generator/recommend/', true);
+      console.log('[API] 习题推荐响应:', response);
+      return response;
+    } catch (error) {
+      console.error('[API] 获取习题推荐失败:', error);
+      throw error;
+    }
+  },
+
   // 学生端班级相关API
   async getStudentClasses() {
     // 获取学生所在的所有班级

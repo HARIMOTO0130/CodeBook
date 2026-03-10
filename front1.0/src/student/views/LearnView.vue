@@ -964,6 +964,19 @@ export default {
               questionAnswer.code = userCodes.value[index]
               questionAnswer.language = practiceData.value.language
               break
+            
+            case 'true_false':
+            case 'judgment':
+            case 'Judgment':
+              if (selectedOptions.value[index] === null) {
+                allAnswered = false
+              }
+              // 判断题的正确答案可能是true/false，将其转换为相应的选项ID或值
+              // 注意：这里的处理需要与后端API的期望格式一致
+              questionAnswer.option_id = selectedOptions.value[index]
+              // 有些后端可能期望布尔值而不是选项ID
+              questionAnswer.answer = selectedOptions.value[index]
+              break
           }
           
           answerData.questions.push(questionAnswer)
@@ -1199,26 +1212,65 @@ export default {
     
     // 计算是否可以提交
     const canSubmit = computed(() => {
-      if (!practiceData.value || !practiceData.value.questions) return false
+      console.log('🔍 canSubmit计算属性调用:')
+      console.log('  - practiceData存在:', !!practiceData.value)
+      console.log('  - practiceData.questions存在:', practiceData.value?.questions !== undefined)
+      
+      if (!practiceData.value || !practiceData.value.questions) {
+        console.log('  ❌ 没有练习数据或问题')
+        return false
+      }
+      
+      console.log('  - 问题数量:', practiceData.value.questions.length)
+      console.log('  - selectedOptions长度:', selectedOptions.value.length)
+      console.log('  - selectedOptions内容:', selectedOptions.value)
       
       // 检查是否所有问题都已回答
       for (let i = 0; i < practiceData.value.questions.length; i++) {
         const question = practiceData.value.questions[i]
+        console.log(`  \n  📝 检查问题${i + 1}:`)
+        console.log(`    - 类型: ${question.type}`)
+        console.log(`    - selectedOptions[${i}]:`, selectedOptions.value[i])
+        console.log(`    - selectedOptions[${i}] === null:`, selectedOptions.value[i] === null)
         
         switch (question.type) {
           case 'choice':
-            if (selectedOptions.value[i] === null) return false
+            if (selectedOptions.value[i] === null) {
+              console.log(`    ❌ 选择题${i + 1}未选择答案`)
+              return false
+            }
+            console.log(`    ✅ 选择题${i + 1}已选择答案`)
             break
           case 'fill':
-            if (!blankAnswers.value[i] || Object.keys(blankAnswers.value[i]).length === 0) return false
+            if (!blankAnswers.value[i] || Object.keys(blankAnswers.value[i]).length === 0) {
+              console.log(`    ❌ 填空题${i + 1}未填写答案`)
+              return false
+            }
+            console.log(`    ✅ 填空题${i + 1}已填写答案`)
             break
           case 'code_completion':
           case 'programming':
-            if (!userCodes.value[i] || userCodes.value[i].trim().length === 0) return false
+            if (!userCodes.value[i] || userCodes.value[i].trim().length === 0) {
+              console.log(`    ❌ 代码题${i + 1}未填写答案`)
+              return false
+            }
+            console.log(`    ✅ 代码题${i + 1}已填写答案`)
             break
+          case 'judgment':
+          case 'Judgment':
+          case 'true_false':
+            if (selectedOptions.value[i] === null) {
+              console.log(`    ❌ 判断题${i + 1}未选择答案`)
+              return false
+            }
+            console.log(`    ✅ 判断题${i + 1}已选择答案`)
+            break
+          default:
+            console.log(`    ⚠️  未知题型${question.type}，跳过检查`)
         }
       }
       
+      console.log('  \n✅ 所有问题都已回答，可以提交')
       return true
     })
     

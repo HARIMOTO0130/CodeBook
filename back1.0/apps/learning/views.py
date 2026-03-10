@@ -88,9 +88,112 @@ class LearningRecordViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     pagination_class = PageNumberPagination
     
+    @action(detail=False, methods=['get'])
+    def heatmap(self, request):
+        """获取学习热力图数据"""
+        try:
+            user = request.user
+            
+            # 获取热力图数据
+            heatmap_data = HeatmapData.objects.filter(user=user).order_by('date')
+            
+            # 使用序列化器序列化数据
+            serializer = HeatmapDataSerializer(heatmap_data, many=True)
+            
+            return Response(serializer.data, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"获取学习热力图数据失败: {str(e)}")
+            return Response({'error': f'获取学习热力图数据失败: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
     def get_queryset(self):
         # 用户只能查看自己的学习记录
         return LearningRecord.objects.filter(user=self.request.user)
+    
+    @action(detail=False, methods=['get'])
+    def activity(self, request):
+        """获取统一的学习活动记录（合并阅读和练习记录）"""
+        try:
+            # 获取当前用户
+            user = request.user
+            
+            # 获取学习记录
+            learning_records = LearningRecord.objects.filter(user=user).select_related('book', 'chapter')
+            
+            # 获取练习记录
+            practice_records = PracticeRecord.objects.filter(user=user).select_related('book', 'chapter')
+            
+            # 合并活动记录
+            activities = []
+            
+            # 添加学习记录
+            for record in learning_records:
+                if not record.book or not record.chapter:
+                    continue
+                    
+                activity = {
+                    'id': f'reading-{record.id}',
+                    'type': 'reading',
+                    'bookId': record.book.id,
+                    'chapterId': record.chapter.id,
+                    'bookTitle': record.book.title,
+                    'chapterTitle': record.chapter.title,
+                    'duration': None,
+                    'status': 'completed' if record.progress >= 100 else 'inProgress',
+                    'timestamp': record.last_learn_time,
+                    'progress': record.progress,
+                    'score': None
+                }
+                activities.append(activity)
+            
+            # 添加练习记录
+            for record in practice_records:
+                if not record.book or not record.chapter:
+                    continue
+                    
+                activity = {
+                    'id': f'practice-{record.id}',
+                    'type': 'practice',
+                    'bookId': record.book.id,
+                    'chapterId': record.chapter.id,
+                    'bookTitle': record.book.title,
+                    'chapterTitle': record.chapter.title,
+                    'duration': None,
+                    'status': 'completed' if record.completed else 'inProgress',
+                    'timestamp': record.completed_time or record.created_at,
+                    'progress': None,
+                    'score': record.score
+                }
+                activities.append(activity)
+            
+            # 按时间戳排序
+            order_by = request.query_params.get('order_by', '-timestamp')
+            reverse = order_by.startswith('-')
+            field = order_by.lstrip('-')
+            
+            if field == 'timestamp':
+                activities.sort(key=lambda x: x['timestamp'], reverse=reverse)
+            elif field == 'bookId':
+                activities.sort(key=lambda x: x['bookId'], reverse=reverse)
+            elif field == 'chapterId':
+                activities.sort(key=lambda x: x['chapterId'], reverse=reverse)
+            elif field == 'score':
+                activities.sort(key=lambda x: x['score'] or 0, reverse=reverse)
+            elif field == 'progress':
+                activities.sort(key=lambda x: x['progress'] or 0, reverse=reverse)
+            
+            # 分页
+            page = self.paginate_queryset(activities)
+            if page is not None:
+                serializer = LearningActivitySerializer(page, many=True)
+                return self.get_paginated_response(serializer.data)
+            
+            serializer = LearningActivitySerializer(activities, many=True)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"获取学习活动记录失败: {str(e)}")
+            return Response({'error': f'获取学习活动记录失败: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     # 定义为普通方法而不是action，以便直接在urls.py中使用
     def execute(self, request):

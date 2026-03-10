@@ -14,10 +14,6 @@
               <span class="btn-icon">✨</span>
               {{ generatingSmartPath ? '生成中...' : '智能推荐' }}
             </button>
-            <button class="btn-secondary" @click="showPersonalizedPathDialog = true">
-              <span class="btn-icon">🎯</span>
-              生成个性建议
-            </button>
             <button class="btn-secondary" @click="openPreferenceDialog">
               <span class="btn-icon">⚙️</span>
               学习偏好
@@ -27,462 +23,535 @@
       </div>
     </div>
 
-    <!-- 路线图模板列表 -->
-    <div class="roadmap-templates" v-if="!selectedRoadmap">
-      <h2>学习画像</h2>
-      
-      <!-- 用户画像摘要 -->
-      <div v-if="userProfileSummary" class="user-profile-summary">
-        <div class="summary-header">
-          <div class="summary-title-section">
-            <h3>✨ 您的学习画像</h3>
-            <span class="summary-subtitle">基于AI分析的个性化学习特征</span>
-          </div>
-          <button class="refresh-profile-btn" @click="loadRecommendedRoadmaps" title="刷新画像">
-            🔄
-          </button>
-        </div>
-        <div class="summary-details">
-          <div class="summary-item">
-            <div class="summary-icon">🎨</div>
-            <div class="summary-content">
-              <span class="summary-label">学习风格</span>
-              <span class="summary-value">{{ userProfileSummary.learning_style }}</span>
-            </div>
-          </div>
-          <div class="summary-item">
-            <div class="summary-icon">📊</div>
-            <div class="summary-content">
-              <span class="summary-label">知识水平</span>
-              <span class="summary-value">{{ userProfileSummary.knowledge_level }}</span>
-            </div>
-          </div>
-          <div class="summary-item">
-            <div class="summary-icon">💡</div>
-            <div class="summary-content">
-              <span class="summary-label">兴趣方向</span>
-              <div class="interests-list">
-                <span 
-                  v-for="(interest, index) in userProfileSummary.interests" 
-                  :key="index"
-                  class="interest-tag"
-                >
-                  {{ interest }}
-                </span>
-              </div>
-            </div>
-          </div>
-          <div class="summary-item">
-            <div class="summary-icon">🎯</div>
-            <div class="summary-content">
-              <span class="summary-label">专业组</span>
-              <span class="summary-value">{{ userProfileSummary.professional_group }}</span>
-            </div>
-          </div>
-        </div>
-        
-        <!-- 学习统计数据 -->
-        <div class="learning-stats">
-          <h4>📈 学习情况</h4>
-          <div class="stats-grid">
-            <div class="stat-item">
-              <div class="stat-label">学习时长</div>
-              <div class="stat-value">{{ userProfileSummary.learning_stats.total_learning_minutes }} 分钟</div>
-            </div>
-            <div class="stat-item">
-              <div class="stat-label">完成练习</div>
-              <div class="stat-value">{{ userProfileSummary.learning_stats.completed_practices }}/{{ userProfileSummary.learning_stats.total_practices }}</div>
-            </div>
-            <div class="stat-item">
-              <div class="stat-label">平均得分</div>
-              <div class="stat-value">{{ userProfileSummary.learning_stats.avg_practice_score }}</div>
-            </div>
-            <div class="stat-item">
-              <div class="stat-label">学习章节</div>
-              <div class="stat-value">{{ userProfileSummary.learning_stats.completed_chapters }}/{{ userProfileSummary.learning_stats.total_chapters }}</div>
-            </div>
-          </div>
-        </div>
-        
-        <!-- 专业组详情 -->
-        <div class="professional-group-detail" v-if="userProfileSummary.professional_group_info">
-          <h4>🎓 专业组详情</h4>
-          <div class="group-details">
-            <div class="group-features">
-              <h5>核心特征</h5>
-              <div class="feature-tags">
-                <span 
-                  v-for="(feature, index) in userProfileSummary.professional_group_info.features.core_features" 
-                  :key="index"
-                  class="feature-tag"
-                >
-                  {{ feature }}
-                </span>
-              </div>
-            </div>
-            <div class="group-tools">
-              <h5>推荐工具</h5>
-              <div class="tool-tags">
-                <span 
-                  v-for="(tool, index) in userProfileSummary.professional_group_info.features.recommended_tools" 
-                  :key="index"
-                  class="tool-tag"
-                >
-                  {{ tool }}
-                </span>
-              </div>
-            </div>
-            <div class="group-career">
-              <h5>职业方向</h5>
-              <div class="career-tags">
-                <span 
-                  v-for="(career, index) in userProfileSummary.professional_group_info.features.career_paths" 
-                  :key="index"
-                  class="career-tag"
-                >
-                  {{ career }}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
+    <!-- 功能导航标签 -->
+    <div class="feature-tabs">
+      <div 
+        class="tab-item" 
+        :class="{ active: activeTab === 'roadmap' }" 
+        @click="activeTab = 'roadmap'"
+      >
+        <span class="tab-icon">🗺️</span>
+        <span class="tab-label">学习路径</span>
       </div>
-      
-      <!-- 学习路径组件 -->
-      <div class="learning-path-section">
-        <h3>🚀 您的学习路径</h3>
-        <!-- 智能推荐路径图 -->
-        <div v-if="smartPathData && smartPathData.nodes && smartPathData.nodes.length > 0" class="smart-path-container">
-          <div class="smart-path-header">
-            <h4>智能推荐学习路径</h4>
-            <button class="btn-sm btn-refresh" @click="generateSmartPath">重新生成</button>
-          </div>
-          <div class="smart-path-explanation" v-if="smartPathData.explanation">
-            <p>{{ smartPathData.explanation }}</p>
-          </div>
-          <!-- 路径图可视化 -->
-          <div class="smart-path-visualization">
-            <svg :width="smartPathWidth" :height="smartPathHeight" class="path-svg">
-              <!-- 绘制连接线 -->
-              <g class="edges">
-                <line
-                  v-for="edge in smartPathData.edges"
-                  :key="`${edge.source}-${edge.target}`"
-                  :x1="getNodePosition(edge.source).x"
-                  :y1="getNodePosition(edge.source).y"
-                  :x2="getNodePosition(edge.target).x"
-                  :y2="getNodePosition(edge.target).y"
-                  class="path-edge"
-                  :class="`edge-${edge.type}`"
-                />
-              </g>
-              <!-- 绘制节点 -->
-              <g class="nodes">
-                <g
-                  v-for="node in smartPathData.nodes"
-                  :key="node.id"
-                  :transform="`translate(${node.x}, ${node.y})`"
-                  class="path-node"
-                  :class="`node-${node.type} node-${node.status}`"
-                  @click="selectPathNode(node)"
-                >
-                  <circle
-                    :r="node.importance * 8 + 20"
-                    class="node-circle"
-                    :class="`difficulty-${Math.floor(node.difficulty)}`"
-                  />
-                  <text class="node-title" dy="5">{{ node.title }}</text>
-                  <text class="node-level" dy="25">L{{ node.level }}</text>
-                </g>
-              </g>
-            </svg>
-          </div>
-          <!-- 学习建议 -->
-          <div v-if="smartPathData.suggestions && smartPathData.suggestions.length > 0" class="smart-path-suggestions">
-            <h5>💡 学习建议</h5>
-            <ul>
-              <li v-for="(suggestion, index) in smartPathData.suggestions" :key="index">{{ suggestion }}</li>
-            </ul>
-          </div>
-        </div>
-        <!-- 未生成路径时的提示 -->
-        <div v-else class="no-path">
-          <p>点击"智能推荐"按钮生成您的个性化学习路径</p>
-        </div>
+      <div 
+        class="tab-item" 
+        :class="{ active: activeTab === 'analytics' }" 
+        @click="activeTab = 'analytics'"
+      >
+        <span class="tab-icon">📊</span>
+        <span class="tab-label">学习分析</span>
       </div>
-      
-      <!-- 加载状态 -->
-      <div class="template-grid">
-        <!-- 骨架屏 -->
-        <div
-          v-if="loading"
-          v-for="i in 4"
-          :key="`skeleton-${i}`"
-          class="roadmap-card"
-        >
-          <div class="roadmap-card-inner">
-            <div class="skeleton skeleton-badge"></div>
-            <div class="roadmap-header">
-              <div class="skeleton skeleton-title"></div>
-            </div>
-            <div class="roadmap-image-placeholder">
-              <div class="roadmap-image-bg"></div>
-            </div>
-            <div class="skeleton skeleton-content"></div>
-            <div class="skeleton skeleton-content"></div>
-            <div class="skeleton skeleton-content"></div>
-            <div class="roadmap-meta">
-              <div class="skeleton skeleton-tag"></div>
-              <div class="skeleton skeleton-tag"></div>
-              <div class="skeleton skeleton-tag"></div>
-            </div>
-            <div class="tags">
-              <div class="skeleton skeleton-tag"></div>
-              <div class="skeleton skeleton-tag"></div>
-            </div>
-          </div>
-        </div>
-        <!-- 实际内容 -->
-        <div
-          v-else
-          v-for="roadmap in roadmaps"
-          :key="roadmap.id"
-          class="roadmap-card"
-          @click="selectRoadmap(roadmap)"
-        >
-          <div class="roadmap-card-inner">
-            <div class="roadmap-header">
-              <h3>{{ roadmap.title }}</h3>
-              <div v-if="roadmap.is_recommended" class="recommended-badge">
-                <span class="recommended-icon">✨</span>
-                <span class="recommended-text">智能推荐</span>
+      <div 
+        class="tab-item" 
+        :class="{ active: activeTab === 'records' }" 
+        @click="activeTab = 'records'"
+      >
+        <span class="tab-icon">📋</span>
+        <span class="tab-label">学习记录</span>
+      </div>
+      <div 
+        class="tab-item" 
+        :class="{ active: activeTab === 'adaptive' }" 
+        @click="activeTab = 'adaptive'"
+      >
+        <span class="tab-icon">🎯</span>
+        <span class="tab-label">难度调整</span>
+      </div>
+      <div 
+        class="tab-item" 
+        :class="{ active: activeTab === 'similarity' }" 
+        @click="activeTab = 'similarity'"
+      >
+        <span class="tab-icon">🔍</span>
+        <span class="tab-label">代码相似度</span>
+      </div>
+      <div 
+        class="tab-item" 
+        :class="{ active: activeTab === 'summary' }" 
+        @click="activeTab = 'summary'"
+      >
+        <span class="tab-icon">📊</span>
+        <span class="tab-label">学习摘要</span>
+      </div>
+    </div>
+
+    <!-- 内容区域 -->
+    <div class="content-area">
+      <!-- 学习路径内容 -->
+      <div v-if="activeTab === 'roadmap'">
+        <!-- 路线图模板列表 -->
+        <div class="roadmap-templates" v-if="!selectedRoadmap">
+          <h2>学习画像</h2>
+          
+          <!-- 用户画像摘要 -->
+          <div v-if="userProfileSummary" class="user-profile-summary">
+            <div class="summary-header">
+              <div class="summary-title-section">
+                <h3>✨ 您的学习画像</h3>
+                <span class="summary-subtitle">基于AI分析的个性化学习特征</span>
               </div>
-            </div>
-            <div class="roadmap-image-placeholder">
-              <div class="roadmap-image-icon">🗺️</div>
-              <div class="roadmap-image-bg" :style="{ backgroundColor: getRandomColor(roadmap.id) }"></div>
-            </div>
-            <p class="roadmap-description">{{ roadmap.description }}</p>
-            
-            <!-- 推荐理由 -->
-            <div v-if="roadmap.recommendation_reason" class="recommendation-reason">
-              <strong>推荐理由：</strong>{{ roadmap.recommendation_reason }}
-            </div>
-            
-            <!-- 个性化匹配度 -->
-            <div v-if="roadmap.matching_score" class="matching-score">
-              <div class="score-label">匹配度</div>
-              <div class="score-bar">
-                <div class="score-fill" :style="{ width: roadmap.matching_score + '%' }"></div>
-              </div>
-              <div class="score-text">{{ roadmap.matching_score }}%</div>
-            </div>
-            <div class="roadmap-meta">
-              <span class="difficulty" :class="roadmap.difficulty_level">
-                {{ getDifficultyText(roadmap.difficulty_level) }}
-              </span>
-              <span class="duration">{{ roadmap.estimated_hours }} 小时</span>
-              <span class="stages">{{ roadmap.stages.length }} 个阶段</span>
-            </div>
-            <div class="tags">
-              <span v-for="tag in roadmap.tags" :key="tag" class="tag">{{ tag }}</span>
-              <!-- 个性化标签 -->
-              <span v-for="(feature, index) in roadmap.personalized_features" :key="index" class="tag personalized-tag">
-                {{ feature }}
-              </span>
-            </div>
-            <!-- 悬停时显示的额外信息 -->
-            <div class="roadmap-hover-info">
-              <div class="hover-info-item">
-                <span class="info-icon">📚</span>
-                <span class="info-text">{{ getTotalBooks(roadmap) }} 本教材</span>
-              </div>
-              <div class="hover-info-item">
-                <span class="info-icon">💡</span>
-                <span class="info-text">{{ getTotalLearningGoals(roadmap) }} 个学习目标</span>
-              </div>
-              <button class="hover-view-btn" @click.stop="selectRoadmap(roadmap)">
-                查看详情 →
+              <button class="refresh-profile-btn" @click="loadRecommendedRoadmaps" title="刷新画像">
+                🔄
               </button>
             </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 路线图详情和用户路径 -->
-    <div class="roadmap-detail" v-else>
-      <div class="back-button" @click="goBack">← 返回列表</div>
-      
-      <!-- 路线图信息 -->
-      <div class="roadmap-info">
-        <div class="roadmap-title-section">
-          <h2>{{ selectedRoadmap.title }}</h2>
-          <div v-if="selectedRoadmap.is_recommended" class="recommended-badge-large">
-            <span class="recommended-icon-large">✨</span>
-            <span class="recommended-text-large">智能推荐</span>
-          </div>
-        </div>
-        <p class="description">{{ selectedRoadmap.description }}</p>
-        
-        <!-- 详情页面中的推荐理由 -->
-        <div v-if="selectedRoadmap.recommendation_reason" class="detail-recommendation-reason">
-          <h4>🎯 推荐理由</h4>
-          <p>{{ selectedRoadmap.recommendation_reason }}</p>
-        </div>
-        <div class="roadmap-stats">
-          <div class="stat-item">
-            <span class="label">难度等级</span>
-            <span class="value" :class="selectedRoadmap.difficulty_level">
-              {{ getDifficultyText(selectedRoadmap.difficulty_level) }}
-            </span>
-          </div>
-          <div class="stat-item">
-            <span class="label">预计时长</span>
-            <span class="value">{{ selectedRoadmap.estimated_hours }} 小时</span>
-          </div>
-          <div class="stat-item">
-            <span class="label">总阶段数</span>
-            <span class="value">{{ selectedRoadmap.stages.length }}</span>
-          </div>
-        </div>
-        
-        <!-- 操作按钮 -->
-        <div class="action-buttons">
-          <button class="btn-primary" v-if="!userPath" @click="startLearningPath">开始学习</button>
-          <button class="btn-secondary" v-else-if="userPath.status !== 'completed'" @click="continueLearningPath">
-            {{ userPath.status === 'paused' ? '继续学习' : '学习中' }}
-          </button>
-          <button class="btn-success" v-else disabled>已完成</button>
-          <button v-if="userPath && userPath.status === 'active'" @click="pauseLearningPath" class="btn-warning">暂停学习</button>
-        </div>
-      </div>
-
-      <!-- 进度显示 -->
-      <div class="progress-section" v-if="userPath">
-        <h3>学习进度</h3>
-        <div class="progress-bar">
-          <div class="progress-fill" :style="{ width: userPath.progress + '%' }"></div>
-        </div>
-        <div class="progress-text">{{ userPath.progress }}% 完成</div>
-      </div>
-
-      <!-- 阶段列表 -->
-      <div class="stages-container">
-        <h3>学习阶段</h3>
-        <div class="stages-list">
-          <div
-            v-for="stage in selectedRoadmap.stages"
-            :key="stage.id"
-            class="stage-item"
-            :class="{
-              'completed': isStageCompleted(stage.id),
-              'current': isCurrentStage(stage.id),
-              'locked': isStageLocked(stage.id)
-            }"
-          >
-            <div class="stage-header">
-              <div class="stage-number">{{ stage.stage_order }}</div>
-              <div class="stage-info">
-                <h4>{{ stage.title }}</h4>
-                <p class="stage-description">{{ stage.description }}</p>
-                <div class="stage-meta">
-                  <span>{{ stage.estimated_duration }} 小时</span>
-                  <span>{{ stage.books.length }} 本教材</span>
+            <div class="summary-details">
+              <div class="summary-item">
+                <div class="summary-icon">🎨</div>
+                <div class="summary-content">
+                  <span class="summary-label">学习风格</span>
+                  <span class="summary-value">{{ userProfileSummary.learning_style }}</span>
                 </div>
               </div>
-              <div class="stage-status">
-                <span v-if="isStageCompleted(stage.id)" class="status-completed">✓ 已完成</span>
-                <span v-else-if="isCurrentStage(stage.id)" class="status-current">→ 当前阶段</span>
-                <span v-else-if="isStageLocked(stage.id)" class="status-locked">🔒 未解锁</span>
-                <span v-else class="status-pending">⏳ 待学习</span>
+              <div class="summary-item">
+                <div class="summary-icon">📊</div>
+                <div class="summary-content">
+                  <span class="summary-label">知识水平</span>
+                  <span class="summary-value">{{ userProfileSummary.knowledge_level }}</span>
+                </div>
               </div>
-            </div>
-            
-            <!-- 学习目标 -->
-            <div class="learning-goals" v-if="stage.learning_goals && stage.learning_goals.length > 0">
-              <h5>学习目标：</h5>
-              <ul>
-                <li v-for="(goal, index) in stage.learning_goals" :key="index">{{ goal }}</li>
-              </ul>
-            </div>
-            
-            <!-- 推荐教材 -->
-            <div class="recommended-books">
-              <h5>推荐教材：</h5>
-              <div class="books-grid">
-                <div v-for="book in stage.books" :key="book.id" class="book-item">
-                  <div class="book-info">
-                    <h6>{{ book.title }}</h6>
-                    <p>{{ book.author }}</p>
+              <div class="summary-item">
+                <div class="summary-icon">💡</div>
+                <div class="summary-content">
+                  <span class="summary-label">兴趣方向</span>
+                  <div class="interests-list">
+                    <span 
+                      v-for="(interest, index) in userProfileSummary.interests" 
+                      :key="index"
+                      class="interest-tag"
+                    >
+                      {{ interest }}
+                    </span>
                   </div>
-                  <button class="btn-sm" @click="goToBook(book.id)">开始学习</button>
+                </div>
+              </div>
+              <div class="summary-item">
+                <div class="summary-icon">🎯</div>
+                <div class="summary-content">
+                  <span class="summary-label">专业组</span>
+                  <span class="summary-value">{{ userProfileSummary.professional_group }}</span>
+                </div>
+              </div>
+            </div>
+            
+            <!-- 学习统计数据 -->
+            <div class="learning-stats">
+              <h4>📈 学习情况</h4>
+              <div class="stats-grid">
+                <div class="stat-item">
+                  <div class="stat-label">学习时长</div>
+                  <div class="stat-value">{{ userProfileSummary.learning_stats.total_learning_minutes }} 分钟</div>
+                </div>
+                <div class="stat-item">
+                  <div class="stat-label">完成练习</div>
+                  <div class="stat-value">{{ userProfileSummary.learning_stats.completed_practices }}/{{ userProfileSummary.learning_stats.total_practices }}</div>
+                </div>
+                <div class="stat-item">
+                  <div class="stat-label">平均得分</div>
+                  <div class="stat-value">{{ userProfileSummary.learning_stats.avg_practice_score }}</div>
+                </div>
+                <div class="stat-item">
+                  <div class="stat-label">学习章节</div>
+                  <div class="stat-value">{{ userProfileSummary.learning_stats.completed_chapters }}/{{ userProfileSummary.learning_stats.total_chapters }}</div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- 专业组详情 -->
+            <div class="professional-group-detail" v-if="userProfileSummary.professional_group_info">
+              <h4>🎓 专业组详情</h4>
+              <div class="group-details">
+                <div class="group-features">
+                  <h5>核心特征</h5>
+                  <div class="feature-tags">
+                    <span 
+                      v-for="(feature, index) in userProfileSummary.professional_group_info.features.core_features" 
+                      :key="index"
+                      class="feature-tag"
+                    >
+                      {{ feature }}
+                    </span>
+                  </div>
+                </div>
+                <div class="group-tools">
+                  <h5>推荐工具</h5>
+                  <div class="tool-tags">
+                    <span 
+                      v-for="(tool, index) in userProfileSummary.professional_group_info.features.recommended_tools" 
+                      :key="index"
+                      class="tool-tag"
+                    >
+                      {{ tool }}
+                    </span>
+                  </div>
+                </div>
+                <div class="group-career">
+                  <h5>职业方向</h5>
+                  <div class="career-tags">
+                    <span 
+                      v-for="(career, index) in userProfileSummary.professional_group_info.features.career_paths" 
+                      :key="index"
+                      class="career-tag"
+                    >
+                      {{ career }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- 学习路径组件 -->
+          <div class="learning-path-section">
+            <h3>🚀 您的学习路径</h3>
+            <!-- 智能推荐路径图 -->
+            <div v-if="smartPathData && smartPathData.nodes && smartPathData.nodes.length > 0" class="smart-path-container">
+              <div class="smart-path-header">
+                <h4>智能推荐学习路径</h4>
+                <button class="btn-sm btn-refresh" @click="generateSmartPath">重新生成</button>
+              </div>
+              <div class="smart-path-explanation" v-if="smartPathData.explanation">
+                <p v-html="formatExplanation(smartPathData.explanation)"></p>
+              </div>
+              <!-- 路径图可视化 -->
+              <div class="smart-path-visualization">
+                <svg :width="smartPathWidth" :height="smartPathHeight" class="path-svg">
+                  <!-- 绘制连接线 -->
+                  <g class="edges">
+                    <line
+                      v-for="edge in smartPathData.edges"
+                      :key="`${edge.source}-${edge.target}`"
+                      :x1="getNodePosition(edge.source).x"
+                      :y1="getNodePosition(edge.source).y"
+                      :x2="getNodePosition(edge.target).x"
+                      :y2="getNodePosition(edge.target).y"
+                      class="path-edge"
+                      :class="`edge-${edge.type}`"
+                    />
+                  </g>
+                  <!-- 绘制节点 -->
+                  <g class="nodes">
+                    <g
+                      v-for="node in smartPathData.nodes"
+                      :key="node.id"
+                      :transform="`translate(${node.x}, ${node.y})`"
+                      class="path-node"
+                      :class="`node-${node.type} node-${node.status}`"
+                      @click="selectPathNode(node)"
+                    >
+                      <circle
+                        :r="node.importance * 8 + 20"
+                        class="node-circle"
+                        :class="`difficulty-${Math.floor(node.difficulty)}`"
+                      />
+                      <text class="node-title" dy="5">{{ node.title }}</text>
+                      <text class="node-level" dy="25">L{{ node.level }}</text>
+                    </g>
+                  </g>
+                </svg>
+              </div>
+              <!-- 学习建议 -->
+              <div v-if="smartPathData.suggestions && smartPathData.suggestions.length > 0" class="smart-path-suggestions">
+                <h5>💡 学习建议</h5>
+                <ul>
+                  <li v-for="(suggestion, index) in smartPathData.suggestions" :key="index">{{ suggestion }}</li>
+                </ul>
+              </div>
+            </div>
+            <!-- 未生成路径时的提示 -->
+            <div v-else class="no-path">
+              <p>点击"智能推荐"按钮生成您的个性化学习路径</p>
+            </div>
+          </div>
+          
+          <!-- 加载状态 -->
+          <div class="template-grid">
+            <!-- 骨架屏 -->
+            <div
+              v-if="loading"
+              v-for="i in 4"
+              :key="`skeleton-${i}`"
+              class="roadmap-card"
+            >
+              <div class="roadmap-card-inner">
+                <div class="skeleton skeleton-badge"></div>
+                <div class="roadmap-header">
+                  <div class="skeleton skeleton-title"></div>
+                </div>
+                <div class="roadmap-image-placeholder">
+                  <div class="roadmap-image-bg"></div>
+                </div>
+                <div class="skeleton skeleton-content"></div>
+                <div class="skeleton skeleton-content"></div>
+                <div class="skeleton skeleton-content"></div>
+                <div class="roadmap-meta">
+                  <div class="skeleton skeleton-tag"></div>
+                  <div class="skeleton skeleton-tag"></div>
+                  <div class="skeleton skeleton-tag"></div>
+                </div>
+                <div class="tags">
+                  <div class="skeleton skeleton-tag"></div>
+                  <div class="skeleton skeleton-tag"></div>
+                </div>
+              </div>
+            </div>
+            <!-- 实际内容 -->
+            <div
+              v-else
+              v-for="roadmap in roadmaps"
+              :key="roadmap.id"
+              class="roadmap-card"
+              @click="selectRoadmap(roadmap)"
+            >
+              <div class="roadmap-card-inner">
+                <div class="roadmap-header">
+                  <h3>{{ roadmap.title }}</h3>
+                  <div v-if="roadmap.is_recommended" class="recommended-badge">
+                    <span class="recommended-icon">✨</span>
+                    <span class="recommended-text">智能推荐</span>
+                  </div>
+                </div>
+                <div class="roadmap-image-placeholder">
+                  <div class="roadmap-image-icon">🗺️</div>
+                  <div class="roadmap-image-bg" :style="{ backgroundColor: getRandomColor(roadmap.id) }"></div>
+                </div>
+                <p class="roadmap-description">{{ roadmap.description }}</p>
+                
+                <!-- 推荐理由 -->
+                <div v-if="roadmap.recommendation_reason" class="recommendation-reason">
+                  <strong>推荐理由：</strong>{{ roadmap.recommendation_reason }}
+                </div>
+                
+                <!-- 个性化匹配度 -->
+                <div v-if="roadmap.matching_score" class="matching-score">
+                  <div class="score-label">匹配度</div>
+                  <div class="score-bar">
+                    <div class="score-fill" :style="{ width: roadmap.matching_score + '%' }"></div>
+                  </div>
+                  <div class="score-text">{{ roadmap.matching_score }}%</div>
+                </div>
+                <div class="roadmap-meta">
+                  <span class="difficulty" :class="roadmap.difficulty_level">
+                    {{ getDifficultyText(roadmap.difficulty_level) }}
+                  </span>
+                  <span class="duration">{{ roadmap.estimated_hours }} 小时</span>
+                  <span class="stages">{{ roadmap.stages.length }} 个阶段</span>
+                </div>
+                <div class="tags">
+                  <span v-for="tag in roadmap.tags" :key="tag" class="tag">{{ tag }}</span>
+                  <!-- 个性化标签 -->
+                  <span v-for="(feature, index) in roadmap.personalized_features" :key="index" class="tag personalized-tag">
+                    {{ feature }}
+                  </span>
+                </div>
+                <!-- 悬停时显示的额外信息 -->
+                <div class="roadmap-hover-info">
+                  <div class="hover-info-item">
+                    <span class="info-icon">📚</span>
+                    <span class="info-text">{{ getTotalBooks(roadmap) }} 本教材</span>
+                  </div>
+                  <div class="hover-info-item">
+                    <span class="info-icon">💡</span>
+                    <span class="info-text">{{ getTotalLearningGoals(roadmap) }} 个学习目标</span>
+                  </div>
+                  <button class="hover-view-btn" @click.stop="selectRoadmap(roadmap)">
+                    查看详情 →
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 路线图详情和用户路径 -->
+        <div class="roadmap-detail" v-else>
+          <div class="back-button" @click="goBack">← 返回列表</div>
+          
+          <!-- 路线图信息 -->
+          <div class="roadmap-info">
+            <div class="roadmap-title-section">
+              <h2>{{ selectedRoadmap.title }}</h2>
+              <div v-if="selectedRoadmap.is_recommended" class="recommended-badge-large">
+                <span class="recommended-icon-large">✨</span>
+                <span class="recommended-text-large">智能推荐</span>
+              </div>
+            </div>
+            <p class="description">{{ selectedRoadmap.description }}</p>
+            
+            <!-- 详情页面中的推荐理由 -->
+            <div v-if="selectedRoadmap.recommendation_reason" class="detail-recommendation-reason">
+              <h4>🎯 推荐理由</h4>
+              <p>{{ selectedRoadmap.recommendation_reason }}</p>
+            </div>
+            <div class="roadmap-stats">
+              <div class="stat-item">
+                <span class="label">难度等级</span>
+                <span class="value" :class="selectedRoadmap.difficulty_level">
+                  {{ getDifficultyText(selectedRoadmap.difficulty_level) }}
+                </span>
+              </div>
+              <div class="stat-item">
+                <span class="label">预计时长</span>
+                <span class="value">{{ selectedRoadmap.estimated_hours }} 小时</span>
+              </div>
+              <div class="stat-item">
+                <span class="label">总阶段数</span>
+                <span class="value">{{ selectedRoadmap.stages.length }}</span>
+              </div>
+            </div>
+            
+            <!-- 操作按钮 -->
+            <div class="action-buttons">
+              <button class="btn-primary" v-if="!userPath" @click="startLearningPath">开始学习</button>
+              <button class="btn-secondary" v-else-if="userPath.status !== 'completed'" @click="continueLearningPath">
+                {{ userPath.status === 'paused' ? '继续学习' : '学习中' }}
+              </button>
+              <button class="btn-success" v-else disabled>已完成</button>
+              <button v-if="userPath && userPath.status === 'active'" @click="pauseLearningPath" class="btn-warning">暂停学习</button>
+            </div>
+          </div>
+
+          <!-- 进度显示 -->
+          <div class="progress-section" v-if="userPath">
+            <h3>学习进度</h3>
+            <div class="progress-bar">
+              <div class="progress-fill" :style="{ width: userPath.progress + '%' }"></div>
+            </div>
+            <div class="progress-text">{{ userPath.progress }}% 完成</div>
+          </div>
+
+          <!-- 阶段列表 -->
+          <div class="stages-container">
+            <h3>学习阶段</h3>
+            <div class="stages-list">
+              <div
+                v-for="stage in selectedRoadmap.stages"
+                :key="stage.id"
+                class="stage-item"
+                :class="{
+                  'completed': isStageCompleted(stage.id),
+                  'current': isCurrentStage(stage.id),
+                  'locked': isStageLocked(stage.id)
+                }"
+              >
+                <div class="stage-header">
+                  <div class="stage-number">{{ stage.stage_order }}</div>
+                  <div class="stage-info">
+                    <h4>{{ stage.title }}</h4>
+                    <p class="stage-description">{{ stage.description }}</p>
+                    <div class="stage-meta">
+                      <span>{{ stage.estimated_duration }} 小时</span>
+                      <span>{{ stage.books.length }} 本教材</span>
+                    </div>
+                  </div>
+                  <div class="stage-status">
+                    <span v-if="isStageCompleted(stage.id)" class="status-completed">✓ 已完成</span>
+                    <span v-else-if="isCurrentStage(stage.id)" class="status-current">→ 当前阶段</span>
+                    <span v-else-if="isStageLocked(stage.id)" class="status-locked">🔒 未解锁</span>
+                    <span v-else class="status-pending">⏳ 待学习</span>
+                  </div>
+                </div>
+                
+                <!-- 学习目标 -->
+                <div class="learning-goals" v-if="stage.learning_goals && stage.learning_goals.length > 0">
+                  <h5>学习目标：</h5>
+                  <ul>
+                    <li v-for="(goal, index) in stage.learning_goals" :key="index">{{ goal }}</li>
+                  </ul>
+                </div>
+                
+                <!-- 推荐教材 -->
+                <div class="recommended-books">
+                  <h5>推荐教材：</h5>
+                  <div class="books-grid">
+                    <div v-for="book in stage.books" :key="book.id" class="book-item">
+                      <div class="book-info">
+                        <h6>{{ book.title }}</h6>
+                        <p>{{ book.author }}</p>
+                      </div>
+                      <button class="btn-sm" @click="goToBook(book.id)">开始学习</button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
 
-    <!-- 个性化路径生成对话框 -->
-    <div v-if="showPersonalizedPathDialog" class="dialog-overlay" @click="showPersonalizedPathDialog = false">
-      <div class="dialog-content" @click.stop>
-        <div class="dialog-header">
-          <h3>🎯 生成个性建议</h3>
-          <button class="dialog-close" @click="showPersonalizedPathDialog = false">×</button>
-        </div>
-        <div class="dialog-body">
-          <div class="form-group">
-            <label>学习目标：</label>
-            <input 
-              type="text" 
-              v-model="personalizedPathGoal" 
-              placeholder="例如：掌握Python数据分析"
-              class="form-input"
-            />
-          </div>
-          <div class="form-group">
-          <label>建议数量：</label>
-          <input 
-            type="number" 
-            v-model.number="personalizedPathMaxNodes" 
-            min="5" 
-            max="20"
-            class="form-input"
-          />
-        </div>
-          <div v-if="generatingPath" class="generating-status">
-            <div class="loading-spinner-small"></div>
-            <p>正在生成个性建议...</p>
-          </div>
-          <div v-if="personalizedPathResult" class="personalized-path-result">
-            <h4>✨ 为您生成的个性建议：</h4>
-            <div class="path-explanation">
-              <p>{{ personalizedPathResult.explanation }}</p>
-            </div>
-            <div class="path-suggestions" v-if="personalizedPathResult.suggestions">
-              <h5>💡 学习建议：</h5>
-              <ul>
-                <li v-for="(suggestion, index) in personalizedPathResult.suggestions" :key="index">
-                  {{ suggestion }}
-                </li>
-              </ul>
+      <!-- 学习分析内容 -->
+      <div v-if="activeTab === 'analytics'">
+        <LearningAnalyticsComponent />
+      </div>
+
+      <!-- 学习记录内容 -->
+      <div v-if="activeTab === 'records'" class="learning-records">
+        <div class="records-header">
+          <h2>📋 学习记录</h2>
+          <div class="records-actions">
+            <button class="btn-primary" @click="refreshRecords">
+              <span class="btn-icon">🔄</span>
+              刷新记录
+            </button>
+            <div class="records-filter">
+              <select v-model="recordsFilter" class="form-select">
+                <option value="all">全部记录</option>
+                <option value="today">今日记录</option>
+                <option value="week">本周记录</option>
+                <option value="month">本月记录</option>
+              </select>
             </div>
           </div>
         </div>
-        <div class="dialog-footer">
-          <button class="btn-secondary" @click="showPersonalizedPathDialog = false">取消</button>
-          <button 
-            class="btn-primary" 
-            @click="generatePersonalizedPath"
-            :disabled="!personalizedPathGoal || generatingPath"
+
+        <div v-if="isLoadingRecords" class="loading-state">
+          <div class="loading-spinner"></div>
+          <p>加载学习记录中...</p>
+        </div>
+
+        <div v-else-if="learningRecords.length === 0" class="empty-state">
+          <p>暂无学习记录</p>
+          <p class="empty-hint">开始学习后，您的学习记录将显示在这里</p>
+        </div>
+
+        <div v-else class="records-list">
+          <div 
+            v-for="record in learningRecords" 
+            :key="record.id"
+            class="record-item"
           >
-            {{ generatingPath ? '生成中...' : '生成建议' }}
-          </button>
+            <div class="record-header">
+              <div class="record-title">{{ record.title }}</div>
+              <div class="record-meta">
+                <span class="record-time">{{ formatTime(record.created_at) }}</span>
+                <span class="record-duration">{{ record.duration }}分钟</span>
+              </div>
+            </div>
+            <div class="record-content">
+              <div class="record-details">
+                <span class="record-type">{{ record.type }}</span>
+                <span v-if="record.score" class="record-score">得分: {{ record.score }}</span>
+              </div>
+              <div class="record-description">{{ record.description }}</div>
+            </div>
+          </div>
         </div>
       </div>
+
+      <!-- 自适应难度调整内容 -->
+      <div v-if="activeTab === 'adaptive'">
+        <AdaptiveDifficultyComponent />
+      </div>
+      <!-- 代码相似度检测内容 -->
+      <div v-if="activeTab === 'similarity'">
+        <CodeSimilarityComponent />
+      </div>
+      <!-- 学习摘要生成内容 -->
+      <div v-if="activeTab === 'summary'">
+        <LearningSummaryComponent />
+      </div>
     </div>
+
+
     
     <!-- 个性化学习建议面板 -->
     <div class="personalized-suggestions-panel" v-if="selectedRoadmap">
@@ -1276,21 +1345,37 @@
 <script>
 import { httpGet, httpPost } from '../api/api.js'
 import { api } from '../api/api.js'
+import LearningAnalyticsComponent from '../components/LearningAnalyticsComponent.vue'
+import AdaptiveDifficultyComponent from '../components/AdaptiveDifficultyComponent.vue'
+import CodeSimilarityComponent from '../components/CodeSimilarityComponent.vue'
+import LearningSummaryComponent from '../components/LearningSummaryComponent.vue'
 export default {
   name: 'LearningPathView',
+  
+  components: {
+    LearningAnalyticsComponent,
+    AdaptiveDifficultyComponent,
+    CodeSimilarityComponent,
+    LearningSummaryComponent
+  },
+  
   data() {
     return {
+      // 功能标签
+      activeTab: 'roadmap',
+      
       selectedMajor: 'business',
       roadmaps: [],
       selectedRoadmap: null,
       userPath: null,
       userPathStages: [],
       loading: false,
-      showPersonalizedPathDialog: false,
-      personalizedPathGoal: '',
-      personalizedPathMaxNodes: 5,
-      generatingPath: false,
-      personalizedPathResult: null,
+      
+      // 学习记录相关
+      learningRecords: [],
+      isLoadingRecords: false,
+      recordsFilter: 'all',
+
       // 个性化学习建议相关
       generatingSuggestions: false,
       personalizedSuggestions: [],
@@ -1567,6 +1652,103 @@ export default {
       if (this.$message) {
         this.$message.info(`已选择节点：${node.title}`);
       }
+    },
+    
+    // 格式化路径解释文本
+    formatExplanation(explanation) {
+      if (!explanation) return '';
+      
+      // 去除杂乱符号和多余的空白
+      let formatted = explanation
+        .replace(/[\u0000-\u001F\u007F]/g, '') // 去除控制字符
+        .replace(/\s+/g, ' ') // 合并多余空白
+        .trim();
+      
+      // 处理换行
+      formatted = formatted.replace(/\n/g, '<br>');
+      
+      // 处理列表项
+      formatted = formatted.replace(/\*\s+(.*?)(?=\*\s+|$)/g, '<li>$1</li>');
+      
+      if (formatted.includes('<li>')) {
+        formatted = `<ul>${formatted}</ul>`;
+      }
+      
+      return formatted;
+    },
+    
+    // 刷新学习记录
+    async refreshRecords() {
+      this.isLoadingRecords = true;
+      
+      try {
+        // 调用API获取学习记录
+        const response = await httpGet('/learning/records/', true);
+        if (response && response.records) {
+          this.learningRecords = response.records;
+        } else {
+          // 使用模拟数据
+          this.learningRecords = this.generateMockLearningRecords();
+        }
+      } catch (error) {
+        console.error('获取学习记录失败:', error);
+        // 使用模拟数据
+        this.learningRecords = this.generateMockLearningRecords();
+      } finally {
+        this.isLoadingRecords = false;
+      }
+    },
+    
+    // 生成模拟学习记录
+    generateMockLearningRecords() {
+      return [
+        {
+          id: 1,
+          title: '学习JavaScript基础',
+          type: '学习',
+          duration: 45,
+          created_at: new Date().toISOString(),
+          description: '完成了JavaScript基础语法的学习，包括变量、函数和对象等内容'
+        },
+        {
+          id: 2,
+          title: '完成数学练习',
+          type: '练习',
+          duration: 30,
+          score: 85,
+          created_at: new Date(Date.now() - 86400000).toISOString(),
+          description: '完成了数学练习，得分85分'
+        },
+        {
+          id: 3,
+          title: '学习HTML/CSS',
+          type: '学习',
+          duration: 60,
+          created_at: new Date(Date.now() - 172800000).toISOString(),
+          description: '学习了HTML和CSS的基本语法和布局技巧'
+        },
+        {
+          id: 4,
+          title: '完成编程练习',
+          type: '练习',
+          duration: 40,
+          score: 90,
+          created_at: new Date(Date.now() - 259200000).toISOString(),
+          description: '完成了编程练习，得分90分'
+        }
+      ];
+    },
+    
+    // 格式化时间
+    formatTime(timeString) {
+      const date = new Date(timeString);
+      return date.toLocaleString('zh-CN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
     },
     
     // 加载用户画像数据
@@ -2494,131 +2676,7 @@ export default {
       this.showPreferenceDialog = false;
     },
     
-    // 生成个性建议
-    async generatePersonalizedPath() {
-      try {
-        this.generatingPath = true;
-        
-        // 调用实际API生成个性建议
-        const response = await api.generatePersonalizedPath(this.personalizedPathGoal, this.personalizedPathMaxNodes);
-        
-        // 处理API返回的结果
-        let generatedSuggestions = [];
-        let explanation = `基于您的学习目标"${this.personalizedPathGoal}"和知识图谱分析，我们为您生成了个性化学习建议。这些建议结合了您的知识水平、学习目标和知识图谱关系，帮助您高效地达成学习目标。`;
-        
-        // 检查API返回结果
-        if (response) {
-          // 如果返回了suggestions，直接使用
-          if (response.suggestions && Array.isArray(response.suggestions)) {
-            generatedSuggestions = response.suggestions;
-          }
-          // 如果返回了explanation，使用它
-          if (response.explanation) {
-            explanation = response.explanation;
-          }
-          // 如果没有返回suggestions但返回了path，基于path生成建议
-          if (response.path && Array.isArray(response.path) && generatedSuggestions.length === 0) {
-            generatedSuggestions = response.path.map((node, index) => {
-              return `建议学习${node.title}（${node.type}，难度：${node.difficulty}），${node.description}`;
-            });
-          }
-        }
-        
-        // 如果API没有返回有效的建议，使用默认建议
-        if (generatedSuggestions.length === 0) {
-          generatedSuggestions = [
-            `建议先了解${this.personalizedPathGoal}的基本概念和核心知识点`,
-            `建议寻找${this.personalizedPathGoal}相关的优质学习资源`,
-            `建议制定${this.personalizedPathGoal}的学习计划，分阶段推进`,
-            `建议加入${this.personalizedPathGoal}相关的学习社区，与他人交流`,
-            `建议定期总结${this.personalizedPathGoal}的学习成果，巩固记忆`
-          ];
-        }
-        
-        // 直接使用API返回的建议，跳过本地知识图谱检查
-        if (false) {
-          // 根据学习目标过滤相关节点
-          const relevantNodes = this.knowledgeGraphNodes.filter(node => 
-            node.title.toLowerCase().includes(this.personalizedPathGoal.toLowerCase()) ||
-            this.personalizedPathGoal.toLowerCase().includes(node.title.toLowerCase())
-          );
-          
-          // 如果找到相关节点，基于知识图谱生成建议
-          if (relevantNodes.length > 0) {
-            // 生成基于知识图谱的建议
-            relevantNodes.forEach((node, index) => {
-              const masteryLevel = node.mastery_level || 0;
-              const difficulty = node.difficulty || 'medium';
-              
-              // 根据节点属性生成个性化建议
-              if (masteryLevel < 30) {
-                generatedSuggestions.push(`建议从${node.title}的基础知识开始学习，这是您当前掌握度较低的领域`);
-              } else if (masteryLevel < 60) {
-                generatedSuggestions.push(`建议深入学习${node.title}，您已经掌握了基础，可以进一步提升`);
-              } else {
-                generatedSuggestions.push(`建议将${node.title}应用到实践项目中，您已经有较好的掌握度`);
-              }
-              
-              // 根据难度生成建议
-              if (difficulty === 'easy') {
-                generatedSuggestions.push(`建议加快${node.title}的学习进度，这是一个相对简单的主题`);
-              } else if (difficulty === 'hard') {
-                generatedSuggestions.push(`建议放慢${node.title}的学习节奏，多做练习巩固`);
-              }
-            });
-            
-            // 添加一些通用建议
-            generatedSuggestions.push('建议结合知识图谱中的关联节点学习，形成完整的知识体系');
-            generatedSuggestions.push('定期检查知识图谱，更新您的学习进度和掌握度');
-            generatedSuggestions.push('根据知识图谱的层级关系，有序推进学习计划');
-          } else {
-            // 如果没有找到相关节点，生成基于学习目标的通用建议
-            generatedSuggestions = [
-              `建议先了解${this.personalizedPathGoal}的基本概念和核心知识点`,
-              `建议寻找${this.personalizedPathGoal}相关的优质学习资源`,
-              `建议制定${this.personalizedPathGoal}的学习计划，分阶段推进`,
-              `建议加入${this.personalizedPathGoal}相关的学习社区，与他人交流`,
-              `建议定期总结${this.personalizedPathGoal}的学习成果，巩固记忆`,
-              `建议将${this.personalizedPathGoal}应用到实际项目中，提升实践能力`,
-              `建议关注${this.personalizedPathGoal}的最新发展动态和趋势`,
-              `建议寻找${this.personalizedPathGoal}领域的专家资源，学习他们的经验`,
-              `建议通过练习和测试检验${this.personalizedPathGoal}的学习效果`,
-              `建议将${this.personalizedPathGoal}与其他相关领域结合学习，拓宽知识面`
-            ];
-          }
-        } else {
-          // 如果没有知识图谱数据，生成基于学习目标的通用建议
-          generatedSuggestions = [
-            `建议先了解${this.personalizedPathGoal}的基本概念和核心知识点`,
-            `建议寻找${this.personalizedPathGoal}相关的优质学习资源`,
-            `建议制定${this.personalizedPathGoal}的学习计划，分阶段推进`,
-            `建议加入${this.personalizedPathGoal}相关的学习社区，与他人交流`,
-            `建议定期总结${this.personalizedPathGoal}的学习成果，巩固记忆`,
-            `建议将${this.personalizedPathGoal}应用到实际项目中，提升实践能力`,
-            `建议关注${this.personalizedPathGoal}的最新发展动态和趋势`,
-            `建议寻找${this.personalizedPathGoal}领域的专家资源，学习他们的经验`,
-            `建议通过练习和测试检验${this.personalizedPathGoal}的学习效果`,
-            `建议将${this.personalizedPathGoal}与其他相关领域结合学习，拓宽知识面`
-          ];
-        }
-        
-        // 确保建议数量不超过用户指定的数量
-        generatedSuggestions = generatedSuggestions.slice(0, this.personalizedPathMaxNodes);
-        
-        // 生成最终结果
-        this.personalizedPathResult = {
-          id: `personalized-path-${Date.now()}`,
-          goal: this.personalizedPathGoal,
-          explanation: `基于您的学习目标"${this.personalizedPathGoal}"和知识图谱分析，我们为您生成了${generatedSuggestions.length}条个性化学习建议。这些建议结合了您的知识水平、学习目标和知识图谱关系，帮助您高效地达成学习目标。`,
-          suggestions: generatedSuggestions
-        };
-      } catch (error) {
-        console.error('Failed to generate personalized suggestions:', error);
-        this.$message?.error('生成个性建议失败');
-      } finally {
-        this.generatingPath = false;
-      }
-    },
+
     
     // 知识图谱编辑相关方法
     // 切换编辑模式
@@ -3039,6 +3097,155 @@ export default {
   padding: 20px;
   min-height: 100vh;
   background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+}
+
+/* 功能标签样式 */
+.feature-tabs {
+  display: flex;
+  background: white;
+  border-radius: 8px;
+  padding: 10px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  margin-bottom: 30px;
+}
+
+.tab-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 15px 30px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: all 0.3s;
+  min-width: 120px;
+}
+
+.tab-item:hover {
+  background: #f7fafc;
+}
+
+.tab-item.active {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.tab-icon {
+  font-size: 20px;
+}
+
+.tab-label {
+  font-size: 14px;
+  font-weight: bold;
+}
+
+/* 内容区域样式 */
+.content-area {
+  min-height: 600px;
+}
+
+/* 学习记录样式 */
+.learning-records {
+  background: white;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.records-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.records-header h2 {
+  margin: 0;
+  color: #2d3748;
+}
+
+.records-actions {
+  display: flex;
+  gap: 15px;
+  align-items: center;
+}
+
+.records-filter select {
+  padding: 8px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.records-list {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.record-item {
+  background: #f7fafc;
+  border-radius: 8px;
+  padding: 20px;
+  transition: all 0.2s;
+  border-left: 4px solid #667eea;
+}
+
+.record-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.record-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 10px;
+}
+
+.record-title {
+  font-size: 16px;
+  font-weight: bold;
+  color: #2d3748;
+  flex: 1;
+}
+
+.record-meta {
+  display: flex;
+  gap: 15px;
+  font-size: 14px;
+  color: #718096;
+}
+
+.record-content {
+  margin-top: 10px;
+}
+
+.record-details {
+  display: flex;
+  gap: 15px;
+  margin-bottom: 10px;
+  font-size: 14px;
+}
+
+.record-type {
+  padding: 2px 8px;
+  background: #667eea;
+  color: white;
+  border-radius: 12px;
+  font-size: 12px;
+}
+
+.record-score {
+  color: #38a169;
+  font-weight: bold;
+}
+
+.record-description {
+  color: #4a5568;
+  line-height: 1.5;
+  font-size: 14px;
 }
 
 /* 顶部导航样式增强 */

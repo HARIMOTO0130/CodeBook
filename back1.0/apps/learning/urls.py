@@ -6,42 +6,43 @@ from .views import (
     LearningRecordViewSet,
     PracticeRecordViewSet,
     WrongQuestionViewSet,
-    # RoadmapTemplateViewSet,
-    # UserLearningPathViewSet,
     NoteViewSet,
-    # JupyterDocumentViewSet,
-    # create_jupyter_document,
-    # update_jupyter_document,
-    # LearningRecommendationViewSet,
     PersonalizedLearningPathAPIView,
     KnowledgeGraphAPIView,
-    # LLMAPIView,
-    # AIInteractionRecordViewSet,
-    # StudentClassViewSet,
-    # StudentHomeworkViewSet,
-    # StudentResourceViewSet,
-    # StudentNoticeViewSet,
     execute_code,
     get_recommended_roadmaps,
 )
 from .views_ai_assistant import AIAssistantView, CodeCompletionView
-# from .views_code_sandbox import get_languages, get_code_template, validate_language
+from .views_code_review import CodeReviewView, CodeReviewHistoryView, CodeReviewDetailView, CodeReviewStatsView
+from .views_exercise_generator import ExerciseGeneratorView, ExerciseSetGeneratorView, ExerciseRecommendationView, ExerciseHistoryView, ExerciseTypesView
+from .views_learning_prediction import LearningPredictionView, BatchPredictionView, PredictionHistoryView, InterventionView, PredictionStatsView
+from .views_learning_analytics import LearningAnalyticsView, LearningPatternsView, LearningRecommendationsView, LearningEfficiencyView
+from .views_adaptive_difficulty import AdaptiveDifficultyView, AbilityEvaluationView, OptimalDifficultyView, DifficultyRecommendationsView
+from .views_code_similarity import CodeSimilarityView, BatchSimilarityView, SimilarityAnalysisView
+from .views_learning_summary import LearningSummaryView, TopicSummaryView, SummaryHistoryView, SummaryStatsView
+from .strategy_kg_views import (
+    StrategyKnowledgeNodeViewSet,
+    StrategyRelationViewSet,
+    StrategyLearningPathViewSet,
+    UserStrategyPathViewSet,
+    StrategyRecommendationViewSet,
+    StrategyUserProfileViewSet,
+    StrategyResourceViewSet,
+)
 
 router = DefaultRouter()
 router.register(r'records', LearningRecordViewSet, basename='learning-record')
 router.register(r'practice-records', PracticeRecordViewSet, basename='practice-record')
 router.register(r'wrong-questions', WrongQuestionViewSet, basename='wrong-question')
-# router.register(r'roadmaps', RoadmapTemplateViewSet, basename='roadmap')
-# router.register(r'user-paths', UserLearningPathViewSet, basename='user-learning-path')
 router.register(r'notes', NoteViewSet, basename='note')
-# router.register(r'jupyter-documents', JupyterDocumentViewSet, basename='jupyter-document')
-# router.register(r'recommendations', LearningRecommendationViewSet, basename='learning-recommendation')
-# router.register(r'ai-interactions', AIInteractionRecordViewSet, basename='ai-interaction')
-# # 学生端核心功能
-# router.register(r'classes', StudentClassViewSet, basename='student-class')
-# router.register(r'homeworks', StudentHomeworkViewSet, basename='student-homework')
-# router.register(r'resources', StudentResourceViewSet, basename='student-resource')
-# router.register(r'notices', StudentNoticeViewSet, basename='student-notice')
+
+router.register(r'strategy/nodes', StrategyKnowledgeNodeViewSet, basename='strategy-node')
+router.register(r'strategy/relations', StrategyRelationViewSet, basename='strategy-relation')
+router.register(r'strategy/paths', StrategyLearningPathViewSet, basename='strategy-path')
+router.register(r'strategy/user-paths', UserStrategyPathViewSet, basename='strategy-user-path')
+router.register(r'strategy/recommendations', StrategyRecommendationViewSet, basename='strategy-recommendation')
+router.register(r'strategy/profile', StrategyUserProfileViewSet, basename='strategy-profile')
+router.register(r'strategy/resources', StrategyResourceViewSet, basename='strategy-resource')
 
 urlpatterns = [
     path('', include(router.urls)),
@@ -61,4 +62,40 @@ urlpatterns = [
     # AI助手相关路由
     path('ai-assistant/', AIAssistantView.as_view(), name='ai-assistant'),
     path('ai-assistant/code-completion/', CodeCompletionView.as_view(), name='code-completion'),
+    # 代码审查相关路由
+    path('code-review/', CodeReviewView.as_view(), name='code-review'),
+    path('code-review/history/', CodeReviewHistoryView.as_view(), name='code-review-history'),
+    path('code-review/history/<int:record_id>/', CodeReviewDetailView.as_view(), name='code-review-detail'),
+    path('code-review/stats/', CodeReviewStatsView.as_view(), name='code-review-stats'),
+    # 习题生成相关路由
+    path('exercise-generator/', ExerciseGeneratorView.as_view(), name='exercise-generator'),
+    path('exercise-generator/set/', ExerciseSetGeneratorView.as_view(), name='exercise-set-generator'),
+    path('exercise-generator/recommend/', ExerciseRecommendationView.as_view(), name='exercise-recommendation'),
+    path('exercise-generator/history/', ExerciseHistoryView.as_view(), name='exercise-history'),
+    path('exercise-generator/types/', ExerciseTypesView.as_view(), name='exercise-types'),
+    # 学习效果预测相关路由
+    path('learning-prediction/', LearningPredictionView.as_view(), name='learning-prediction'),
+    path('learning-prediction/batch/', BatchPredictionView.as_view(), name='batch-prediction'),
+    path('learning-prediction/history/', PredictionHistoryView.as_view(), name='prediction-history'),
+    path('learning-prediction/intervention/', InterventionView.as_view(), name='intervention'),
+    path('learning-prediction/stats/', PredictionStatsView.as_view(), name='prediction-stats'),
+    # 学情智能分析相关路由
+    path('learning-analytics/', LearningAnalyticsView.as_view(), name='learning-analytics'),
+    path('learning-analytics/patterns/', LearningPatternsView.as_view(), name='learning-patterns'),
+    path('learning-analytics/recommendations/', LearningRecommendationsView.as_view(), name='learning-recommendations'),
+    path('learning-analytics/efficiency/', LearningEfficiencyView.as_view(), name='learning-efficiency'),
+    # 自适应难度调整相关路由
+    path('adaptive-difficulty/', AdaptiveDifficultyView.as_view(), name='adaptive-difficulty'),
+    path('adaptive-difficulty/ability/', AbilityEvaluationView.as_view(), name='ability-evaluation'),
+    path('adaptive-difficulty/optimal/', OptimalDifficultyView.as_view(), name='optimal-difficulty'),
+    path('adaptive-difficulty/recommendations/', DifficultyRecommendationsView.as_view(), name='difficulty-recommendations'),
+    # 代码相似度检测相关路由
+    path('code-similarity/', CodeSimilarityView.as_view(), name='code-similarity'),
+    path('code-similarity/batch/', BatchSimilarityView.as_view(), name='code-similarity-batch'),
+    path('code-similarity/analysis/', SimilarityAnalysisView.as_view(), name='code-similarity-analysis'),
+    # 学习摘要生成相关路由
+    path('learning-summary/', LearningSummaryView.as_view(), name='learning-summary'),
+    path('learning-summary/topic/', TopicSummaryView.as_view(), name='topic-summary'),
+    path('learning-summary/history/', SummaryHistoryView.as_view(), name='summary-history'),
+    path('learning-summary/stats/', SummaryStatsView.as_view(), name='summary-stats'),
 ]

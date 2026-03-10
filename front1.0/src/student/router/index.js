@@ -8,7 +8,7 @@ const FullCodeView = () => import('../../views/FullCodeView.vue')
 const RecordsView = () => import('../views/RecordsView.vue')
 const SettingsView = () => import('../views/SettingsView.vue')
 const ToolKitView = () => import('../../views/ToolKitView.vue')
-const LearningPathView = () => import('../views/LearningPathView.vue')
+const CombinedLearningPathView = () => import('../views/CombinedLearningPathView.vue')
 const PracticeView = () => import('../views/PracticeView.vue')
 const JupyterNotebookView = () => import('../views/JupyterNotebookView.vue')
 const JupyterDocumentsListView = () => import('../views/JupyterDocumentsListView.vue')
@@ -19,6 +19,9 @@ const HomeworksView = () => import('../views/HomeworksView.vue')
 const HomeworkDetailView = () => import('../views/HomeworkDetailView.vue')
 const ResourcesView = () => import('../views/ResourcesView.vue')
 const NoticesView = () => import('../views/NoticesView.vue')
+const CodeReviewView = () => import('../views/CodeReviewView.vue')
+const ExerciseGeneratorView = () => import('../views/ExerciseGeneratorView.vue')
+const LearningPredictionView = () => import('../views/LearningPredictionView.vue')
 
 // 学生端路由配置
 const studentRoutes = [
@@ -73,8 +76,9 @@ const studentRoutes = [
   {
     path: '/student/learning-paths',
     name: 'StudentLearningPath',
-    component: LearningPathView,
-    meta: { title: '学习路线图', role: 'student' }
+    component: CombinedLearningPathView,
+    meta: { title: '智能学习路径', role: 'student' },
+    alias: '/student/strategy-kg'
   },
   {
     path: '/student/practice',
@@ -142,6 +146,27 @@ const studentRoutes = [
     name: 'StudentNotices',
     component: NoticesView,
     meta: { title: '通知消息', requiresAuth: true, role: 'student' }
+  },
+  // 新增代码审查路由
+  {
+    path: '/student/code-review',
+    name: 'StudentCodeReview',
+    component: CodeReviewView,
+    meta: { title: '智能代码审查', requiresAuth: true, role: 'student' }
+  },
+  // 新增习题生成路由
+  {
+    path: '/student/exercise-generator',
+    name: 'StudentExerciseGenerator',
+    component: ExerciseGeneratorView,
+    meta: { title: '自动习题生成', requiresAuth: true, role: 'student' }
+  },
+  // 新增学习效果预测路由
+  {
+    path: '/student/learning-prediction',
+    name: 'StudentLearningPrediction',
+    component: LearningPredictionView,
+    meta: { title: '学习效果预测', requiresAuth: true, role: 'student' }
   }
 ]
 

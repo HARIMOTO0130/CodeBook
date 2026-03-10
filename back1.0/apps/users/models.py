@@ -35,6 +35,7 @@ class User(AbstractUser):
         ('student', '学生'),
         ('teacher', '教师'),
         ('provider', '教材提供者'),
+        ('reviewer', '审核员'),
         ('admin', '管理员'),
     ]
     
@@ -86,6 +87,10 @@ class User(AbstractUser):
     def is_provider(self):
         """判断是否为教材提供者"""
         return self.role == 'provider'
+    
+    def is_reviewer(self):
+        """判断是否为审核员"""
+        return self.role == 'reviewer'
     
     def is_admin(self):
         """判断是否为管理员"""
